@@ -1,3 +1,5 @@
+#include <iostream>
+
 #include "acceleration_structure.h"
 #include "additional_math.h"
 
@@ -56,7 +58,7 @@ namespace app {
         max = fastgltf::math::max(max, ws_point);
     }
     // Todo: optimize
-    constexpr ray_bbox_hit_info BBox::ray_box_intersection(const ray& ray) const noexcept {
+    ray_bbox_hit_info BBox::ray_box_intersection(const ray& ray) const noexcept {
         auto ray_direction_inv = fvec3{
             1.0f / ray.direction[0],
             1.0f / ray.direction[1],
@@ -90,14 +92,17 @@ namespace app {
 
     NaiveAS::NaiveAS(const Model& model) : mesh_data_(&model.meshes_)
     {
+        auto start = std::chrono::high_resolution_clock::now();
         object_data_.reserve(model.objects_.size());
         for (const auto& obj : model.objects_) {
             BBox bbox = object_to_ws_bbox(obj, model.meshes_[obj.meshIndex]);
-            object_data_.emplace_back(bbox, obj.ModelMatrix, inverse(obj.ModelMatrix), obj.meshIndex);
+            object_data_.emplace_back(bbox, obj.ModelMatrix, transpose(obj.NormalMatrix), obj.meshIndex);
         }
+        auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+        std::cout << "NaiveAS constructed in " << diff.count() << " ms." << '\n';
     }
 
-    ray_triangle_hit_info NaiveAS::intersect_ray(const ray& ray, size_t& out_object_index) const
+    ray_triangle_hit_info NaiveAS::intersect_ray(const ray& ray) const
     {
         ray_triangle_hit_info hit{};
         // ToDo: optimize
@@ -109,7 +114,8 @@ namespace app {
                 ray_triangle_hit_info potential_mesh_hit = mesh_ray_intersection(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_->at(obj.meshIndex));
                 if (potential_mesh_hit.forward_hit() && (potential_mesh_hit.distance < hit.distance)) {
                     hit = potential_mesh_hit;
-                    out_object_index = i;
+                    hit.objectIndex = i;
+                    hit.meshIndex = obj.meshIndex;
                 }
             }
         }
@@ -124,19 +130,21 @@ namespace app {
     {
         using namespace fastgltf::math;
 
-        ray_triangle_hit_info hit{};
-        
         // Transform ray to object space
         auto ray_origin_os = fvec3(invModelMatrix * fvec4(ray_ws.origin[0], ray_ws.origin[1], ray_ws.origin[2], 1.0f));
         auto ray_direction_os = fvec3(invModelMatrix * fvec4(ray_ws.direction[0], ray_ws.direction[1], ray_ws.direction[2], 0.0f));
+        
         ray os_ray{
             ray_origin_os,
             normalize(ray_direction_os)
         };
 
+        ray_triangle_hit_info hit{};
+
         fvec3 best_p1;
         fvec3 best_p2;
         fvec3 best_p3;
+        fvec3 best_hit_point;
         // Test all triangles
         for (std::uint32_t tri_idx = 0; tri_idx < mesh.indices.size(); tri_idx += 3) {
             fvec3 p1 = mesh.vertices[mesh.indices[tri_idx + 0]].position;
@@ -147,7 +155,8 @@ namespace app {
                 continue; // No hit
             }
             fvec3 hit_point = p1 * tri_hit.A + p2 * tri_hit.B + p3 * tri_hit.C();
-            float distance_os = length(hit_point - os_ray.origin);
+            auto vec_to_hit_os = hit_point - os_ray.origin;
+            float distance_os = dot(vec_to_hit_os, vec_to_hit_os);
             if (distance_os < hit.distance) {
                 hit = {
                     .hit = true,
@@ -158,14 +167,14 @@ namespace app {
                 best_p1 = p1;
                 best_p2 = p2;
                 best_p3 = p3;
+                best_hit_point = hit_point;
             }
         }
         if (!hit.hit) {
             return hit; // No hit
         }
         // Transform hit back to world space
-        fvec3 hit_point_os = best_p1 * hit.b_coords.A + best_p2 * hit.b_coords.B + best_p3 * hit.b_coords.C();
-        fvec3 hit_point_ws = fvec3(ModelMatrix * fvec4(hit_point_os[0], hit_point_os[1], hit_point_os[2], 1.0f));
+        fvec3 hit_point_ws = fvec3(ModelMatrix * fvec4(best_hit_point[0], best_hit_point[1], best_hit_point[2], 1.0f));
         hit.distance = length(hit_point_ws - ray_ws.origin);
         return hit;
     }

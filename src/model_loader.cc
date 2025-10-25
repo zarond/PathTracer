@@ -59,7 +59,7 @@ Model ModelLoader::constructModel() const
 		.objects_ = {},
 		.images_ = {},
 	};
-    model.materials_.reserve(asset_.materials.size());
+    model.materials_.reserve(asset_.materials.size()+1);
     model.meshes_.reserve(asset_.meshes.size());
     model.objects_.reserve(asset_.nodes.size());
 	model.images_.reserve(asset_.images.size());
@@ -71,21 +71,22 @@ Model ModelLoader::constructModel() const
 	TangentSpaceHelper tangent_space_helper;
 
 	for (const auto& material : asset_.materials) {
-        size_t baseColor_imageIndex = 0;
+		int baseColor_imageIndex = -1;
 		if (material.pbrData.baseColorTexture.has_value()) {
             auto textureIndex = material.pbrData.baseColorTexture->textureIndex;
-			baseColor_imageIndex = asset_.textures[textureIndex].imageIndex.value_or(0);
+            baseColor_imageIndex = asset_.textures[textureIndex].imageIndex.value_or(0); // narrows size_t to int, but imageIndex should be small enough not to overflow
 		}
 		model.materials_.emplace_back(
 			material.pbrData.baseColorFactor,
 			baseColor_imageIndex
         );
 	}
+	model.materials_.emplace_back(); // default material at last index
 
-	std::vector<size_t> mesh_ids{};
+	std::vector<uint32_t> mesh_ids{};
     mesh_ids.reserve(asset_.meshes.size());
 
-	size_t count = 0;
+	uint32_t count = 0;
 	for (const auto& gltf_mesh : asset_.meshes) {
 		for (const auto& primitive : gltf_mesh.primitives) {
 			Mesh mesh;
@@ -101,22 +102,15 @@ Model ModelLoader::constructModel() const
 			assert(uvIt != primitive.attributes.end());
 
             // Load material index
-			mesh.materialIndex = primitive.materialIndex.value_or(0); // Todo: think about default material
+			mesh.materialIndex = primitive.materialIndex.value_or(model.materials_.size() - 1); // value or default material
 
 			// Load indices
 			{
 				auto& indexAccessor = asset_.accessors[primitive.indicesAccessor.value()];
 				if (!indexAccessor.bufferViewIndex.has_value())
 					throw 1; // Todo
-				mesh.indices.reserve(indexAccessor.count);
-                // Todo: problem - indices can be uint16 or uint32
-				//auto* indices = static_cast<std::uint32_t*>(&*mesh.indices.begin());
-				//fastgltf::copyFromAccessor<std::uint32_t>(asset_, indexAccessor, &*mesh.indices.begin());
-				// Todo: optimize
-				for (size_t i = 0; i < indexAccessor.count; ++i) {
-					auto indices = fastgltf::getAccessorElement<std::uint32_t>(asset_, indexAccessor, i);
-					mesh.indices.emplace_back(indices);
-				}
+				mesh.indices.resize(indexAccessor.count);
+                fastgltf::copyFromAccessor<std::uint32_t>(asset_, indexAccessor, mesh.indices.data());
 			}
 
             // Load vertices
@@ -139,7 +133,6 @@ Model ModelLoader::constructModel() const
 					auto uv = fastgltf::getAccessorElement<fvec2>(asset_, uvAccessor, i);
 					mesh.vertices.emplace_back(position, normal, fvec4{}, uv);
                 }
-                // Todo: tangent
 				const auto* tangentAccessor = (tangentIt != primitive.attributes.end()) ? &asset_.accessors[tangentIt->accessorIndex] : nullptr;
 				if (tangentAccessor != nullptr) {
 					fastgltf::iterateAccessorWithIndex<fvec4>(asset_, *tangentAccessor, [&](fvec4 tangent, std::size_t idx) {

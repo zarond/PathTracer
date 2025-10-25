@@ -8,7 +8,7 @@ namespace app {
 
 using namespace fastgltf::math;
 
-Viewer::Viewer(Model&& model, CPUTexture&& environmentTexture): 
+Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture):
     model_(std::move(model)),
     environmentTexture_(std::move(environmentTexture))
 {
@@ -16,9 +16,8 @@ Viewer::Viewer(Model&& model, CPUTexture&& environmentTexture):
         activeCameraIndex_ = 0;
     }
     framebuffer_ = CPUFrameBuffer(windowDimensions_[0], windowDimensions_[1]);
-    // Todo: choose renderer dynamically
-    renderer_ = std::make_unique<PerspectiveCameraRenderer>();
-    renderer_->load_scene(model_);
+
+    renderer_.load_scene(model_);
 
     snap_to_camera();
 }
@@ -33,13 +32,10 @@ ivec2 Viewer::get_window_dimensions() const { return windowDimensions_; }
 
 void Viewer::render()
 {
-    if (!renderer_) {
-        throw std::runtime_error("No renderer set in Viewer");
-    } 
-    renderer_->render_frame(framebuffer_);
+    renderer_.render_frame(framebuffer_);
 }
 
-void Viewer::set_active_camera(std::optional<size_t> cameraIndex)
+void Viewer::set_active_camera(std::optional<uint32_t> cameraIndex)
 {
     if (cameraIndex.has_value()) {
         if (*cameraIndex >= model_.cameras_.size()) {
@@ -50,7 +46,7 @@ void Viewer::set_active_camera(std::optional<size_t> cameraIndex)
     snap_to_camera();
 }
 
-std::optional<size_t> Viewer::get_active_camera() const
+std::optional<uint32_t> Viewer::get_active_camera() const
 {
     return activeCameraIndex_;
 }
@@ -74,7 +70,7 @@ bool Viewer::snap_to_camera()
             direction_ = fvec3(-camera.ModelMatrix[2].x(), -camera.ModelMatrix[2].y(), -camera.ModelMatrix[2].z());
             up_ = fvec3(camera.ModelMatrix[1].x(), camera.ModelMatrix[1].y(), camera.ModelMatrix[1].z());
             
-            renderer_->update_camera_transform_state(
+            renderer_.update_camera_transform_state(
                 position_,
                 direction_,
                 up_,

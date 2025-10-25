@@ -14,7 +14,6 @@
 namespace app {
 
 struct BBox {
-
     fvec3 min, max;
 
     BBox() noexcept;
@@ -23,7 +22,7 @@ struct BBox {
     constexpr bool is_empty() const noexcept;
     void expand(const fvec3& ws_point) noexcept;
 
-    constexpr ray_bbox_hit_info ray_box_intersection(const ray& ray) const noexcept;
+    ray_bbox_hit_info ray_box_intersection(const ray& ray) const noexcept;
 };
 
 BBox object_to_ws_bbox(const Object& obj, const Mesh& mesh);
@@ -34,25 +33,27 @@ ray_triangle_hit_info mesh_ray_intersection(
     const fmat4x4& invModelMatrix,
     const Mesh& mesh) noexcept;
 
-class AccelerationStructure {
+class IAccelerationStructure {
 public:
-    virtual ~AccelerationStructure() = default;
+    virtual ~IAccelerationStructure() = default;
+    virtual ray_triangle_hit_info intersect_ray(const ray& ray) const = 0;
 };
 
-class NaiveAS : public AccelerationStructure {
+class NaiveAS : public IAccelerationStructure {
 public:
     explicit NaiveAS(const Model& model);
+    virtual ~NaiveAS() override = default;
 
+    ray_triangle_hit_info intersect_ray(const ray& ray) const;
+
+private:
     struct ObjectData {
         BBox bbox;
         fmat4x4 ModelMatrix;
         fmat4x4 invModelMatrix;
-        size_t meshIndex;
+        uint32_t meshIndex;
     };
 
-    ray_triangle_hit_info intersect_ray(const ray& ray, size_t& out_object_index) const;
-
-//private:
     std::vector<ObjectData> object_data_;
     const std::vector<Mesh>* mesh_data_ = nullptr;
 };

@@ -22,6 +22,7 @@ int main(int argc, char* argv[]) {
     console_arguments.modelPath = "C:/Users/artur/Documents/GitHub/PathTracer/data/Diesel_shoe.gltf"; // For testing only
     //console_arguments.modelPath = "C:/Users/artur/Documents/GitHub/PathTracer/data/boxes_scene/boxes.gltf"; // For testing only
     
+    auto start = std::chrono::high_resolution_clock::now();
     Model model;
     {
         ModelLoader loader{};
@@ -33,15 +34,19 @@ int main(int argc, char* argv[]) {
         model = loader.constructModel();
     }
     // Todo: load environment
-    CPUTexture environment_texture = console_arguments.useDefaultEnv ?
-        CPUTexture::create_white_texture() :
-        CPUTexture(console_arguments.environmentPath);
+    CPUTexture<hdr_pixel> environment_texture = console_arguments.useDefaultEnv ?
+        CPUTexture<hdr_pixel>::create_white_texture() :
+        CPUTexture<hdr_pixel>(console_arguments.environmentPath);
+    
+    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+    std::cout << "loaded in " << diff.count() << " ms." << '\n';
+    
     // Create viewer
     Viewer viewer(std::move(model), std::move(environment_texture));
 
-    auto start = std::chrono::high_resolution_clock::now();
+    start = std::chrono::high_resolution_clock::now();
     viewer.render();
-    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+    diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
     std::cout << "rendered in " << diff.count() << " ms." << '\n';
 
     viewer.take_snapshot("snapshot.hdr");

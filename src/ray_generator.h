@@ -43,19 +43,13 @@ struct ray_triangle_hit_info {
     bool hit = false;
     float distance = std::numeric_limits<float>::infinity(); // distance along the ray
     barycentric_coords b_coords = {};
-    std::uint32_t triangleIndex = 0; // index of the first point of the triangle in vector of indices in mesh
+    uint32_t objectIndex = 0; // index of the object hit
+    uint32_t meshIndex = 0; // index of the mesh hit
+    uint32_t triangleIndex = 0; // index of the first vertex of the triangle in vector of indices in mesh
     
     constexpr bool forward_hit() const noexcept {
         return hit && (distance > 0.0f);
     }
 };
-
-class ray_generator {};
-
-class ray_caster : public ray_generator {};
-
-class ray_ao : public ray_generator {};
-
-class path_tracer : public ray_generator {};
 
 }

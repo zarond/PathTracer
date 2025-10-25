@@ -9,44 +9,36 @@
 namespace app {
 
 class Renderer {
-protected:
-    std::unique_ptr<ray_generator> rayGen;
-    //std::unique_ptr<AccelerationStructure> accelStruct; // Todo
-    std::unique_ptr<NaiveAS> accelStruct; // Todo
-    int samplesPerPixel = 1;
-    bool distributeSamples = false; // uniformly distribute samples across pixel
-
 public:
-    virtual void load_scene(const Model& model) = 0;
-    virtual void render_frame(CPUFrameBuffer& framebuffer) = 0;
-    virtual void update_camera_transform_state(
-        fvec3 position, 
-        fvec3 direction, 
-        fvec3 up,
-        fastgltf::Camera::Perspective perspectiveParams
-    ) = 0;
+    Renderer() = default;
+    Renderer(const Renderer&) = delete;
+    Renderer& operator=(const Renderer&) = delete;
 
-    virtual ~Renderer() = default;
-};
-
-class PerspectiveCameraRenderer : public Renderer {
-private:
-    fmat4x4 viewMatrix_ = fmat4x4(1.0f);
-    fmat4x4 projectionMatrix_ = fmat4x4(1.0f);
-
-    fmat4x4 NDC2WorldMatrix_ = fmat4x4(1.0f);
-
-    fvec3 origin_;
-
-public:
-    virtual void load_scene(const Model& model);
-    virtual void render_frame(CPUFrameBuffer& framebuffer);
-    virtual void update_camera_transform_state(
+    void update_camera_transform_state(
         fvec3 position,
         fvec3 direction,
         fvec3 up,
         fastgltf::Camera::Perspective perspectiveParams
     );
+
+    void load_scene(const Model& model); // should be in constructor?
+    void render_frame(CPUFrameBuffer& framebuffer);
+
+    ~Renderer() = default;
+
+protected:
+    std::unique_ptr<IAccelerationStructure> accelStruct;
+    const Model* modelRef = nullptr;
+    int samplesPerPixel = 1;
+    bool distributeSamples = false; // uniformly distribute samples across pixel
+
+    fmat4x4 viewMatrix_ = fmat4x4(1.0f);
+    fmat4x4 projectionMatrix_ = fmat4x4(1.0f);
+    fmat4x4 NDC2WorldMatrix_ = fmat4x4(1.0f);
+    fvec3 origin_;
+
+public:
+    ray generate_camera_ray(int x, int y, int width, int height, int sampleIndex = 0) const;
 };
 
 }

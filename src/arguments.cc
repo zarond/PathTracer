@@ -18,13 +18,13 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         .help("gltf model file location.")
         .required()
         .nargs(1)
-        .default_value(""); // ????
+        .default_value("");
 
     program.add_argument("-e", "--env")
         .help("HDRI environment map file location.")
         .required()
         .nargs(1)
-        .default_value(""); // ????
+        .default_value("");
 
     program.parse_args(argc, argv);
 

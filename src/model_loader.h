@@ -23,21 +23,21 @@ struct vertex {
 struct Mesh { // primitive in gltf terms
     std::vector<std::uint32_t> indices; // invariant: size is multiple of 3, values are indices into vertices
     std::vector<vertex> vertices;
-    size_t materialIndex;
+    uint32_t materialIndex;
 };
 
 struct Object { // individual flat nodes with a single mesh
     fmat4x4 ModelMatrix;
     fmat4x4 NormalMatrix;
-    size_t meshIndex;
+    uint32_t meshIndex;
 };
 
 struct Material {
-    nvec4 baseColorFactor;
-    //float metallicFactor;
-    //float roughnessFactor;
-    size_t baseColorTextureIndex;
-    //size_t metallicRoughnessTextureIndex;
+    nvec4 baseColorFactor{1.0f, 1.0f, 1.0f, 1.0f};
+    //float metallicFactor = 1.0f;
+    //float roughnessFactor = 1.0f;
+    int baseColorTextureIndex = -1; // -1 is no texture
+    //int metallicRoughnessTextureIndex = -1;
 };
 
 struct Camera {
@@ -50,7 +50,7 @@ struct Model {
     std::vector<Material> materials_;
     std::vector<Mesh> meshes_;
     std::vector<Object> objects_;
-    std::vector<CPUTexture> images_;
+    std::vector<CPUTexture<sdr_pixel>> images_;
 };
 
 class ModelLoader {

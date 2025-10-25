@@ -22,9 +22,13 @@ set(APP_SOURCES
     src/renderer.cc
     src/ui.cc
     src/additional_math.cc
+    src/brdf.cc
 )
 
 add_executable(${PROJECT_NAME} ${APP_SOURCES})
+
+# Warning options for compiler
+#target_compile_options(${PROJECT_NAME} PRIVATE -Wall)
 
 # doesn't work?
 set_target_properties(${PROJECT_NAME} PROPERTIES
