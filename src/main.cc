@@ -44,6 +44,8 @@ int main(int argc, char* argv[]) {
     // Create viewer
     Viewer viewer(std::move(model), std::move(environment_texture));
 
+    viewer.set_render_settings(RenderSettings{ .samplesPerPixel = 4, .maxRayBounces = 1 }); // For testing only
+
     start = std::chrono::high_resolution_clock::now();
     viewer.render();
     diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);

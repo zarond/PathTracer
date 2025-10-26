@@ -44,5 +44,8 @@ namespace fastgltf::math {
 
 	fvec3 min(const fvec3& x, const fvec3& y) noexcept;
 	fvec3 max(const fvec3& x, const fvec3& y) noexcept;
+	
+	fvec3 sqrt(const fvec3& x) noexcept;
+	fvec4 sqrt(const fvec4& x) noexcept;
 
 } // namespace fastgltf::math

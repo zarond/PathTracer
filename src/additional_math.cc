@@ -77,4 +77,19 @@ namespace fastgltf::math {
 			x[2] > y[2] ? x[2] : y[2]
 		);
 	}
+	fvec3 sqrt(const fvec3& x) noexcept {
+		return fvec3(
+			std::sqrtf(x[0]),
+			std::sqrtf(x[1]),
+			std::sqrtf(x[2])
+        );
+	}
+	fvec4 sqrt(const fvec4& x) noexcept {
+		return fvec4(
+			std::sqrtf(x[0]),
+			std::sqrtf(x[1]),
+			std::sqrtf(x[2]),
+			std::sqrtf(x[3])
+		);
+	}
 } // namespace fastgltf::math

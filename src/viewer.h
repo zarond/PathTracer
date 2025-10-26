@@ -33,6 +33,9 @@ public:
 
     bool snap_to_camera();
 
+    void set_render_settings(const RenderSettings& settings);
+    RenderSettings get_render_settings() const;
+
 private:
     Model model_;
     CPUTexture<hdr_pixel> environmentTexture_;

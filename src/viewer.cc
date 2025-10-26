@@ -89,4 +89,9 @@ bool Viewer::snap_to_camera()
 
 }
 
+void Viewer::set_render_settings(const RenderSettings& settings) {
+    renderer_.set_render_settings(settings);
+}
+RenderSettings Viewer::get_render_settings() const { return renderer_.get_render_settings(); }
+
 }
