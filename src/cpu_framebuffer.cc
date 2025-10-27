@@ -33,7 +33,8 @@ namespace {
 }
 
 namespace app {
-    using namespace fastgltf::math;
+using namespace fastgltf::math;
+
 // CPUTexture
 
 template<>

@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <vector>
 #include <array>
+#include <cmath>
 
 #include <fastgltf/core.hpp>
 #include <fastgltf/types.hpp>
@@ -12,11 +13,47 @@ namespace app {
 
 using namespace fastgltf::math;
 
+inline float linear_to_srgb(float channel)
+{
+    if (channel <= 0.0031308f) {
+        return 12.92f * channel;
+    }
+    else {
+        return 1.055f * std::pow(channel, 1.0f / 2.4f) - 0.055f;
+    }
+}
+inline float srgb_to_linear(float channel)
+{
+    if (channel <= 0.04045f) {
+        return channel / 12.92f;
+    }
+    else {
+        return std::pow((channel + 0.055f) / 1.055f, 2.4f);
+    }
+}
+
 using sdr_pixel = std::array<std::uint8_t, 4>;
 using hdr_pixel = fastgltf::math::fvec4;
 
 template<typename T>
 concept PixelType = std::is_same_v<T, sdr_pixel> || std::is_same_v<T, hdr_pixel>;
+
+template<PixelType pixel>
+inline fvec4 pixel_to_float(pixel sample) {
+    return fvec4(
+        static_cast<float>(sample[0]) / 255.0f,
+        static_cast<float>(sample[1]) / 255.0f,
+        static_cast<float>(sample[2]) / 255.0f,
+        static_cast<float>(sample[3]) / 255.0f);
+};
+template<PixelType pixel>
+inline fvec4 srgb_pixel_to_float(pixel sample) {
+    return fvec4(
+        srgb_to_linear(static_cast<float>(sample[0]) / 255.0f),
+        srgb_to_linear(static_cast<float>(sample[1]) / 255.0f),
+        srgb_to_linear(static_cast<float>(sample[2]) / 255.0f),
+        static_cast<float>(sample[3]) / 255.0f);
+}
 
 template<PixelType pixel>
 class CPUTexture {
@@ -30,12 +67,48 @@ public:
     int width() const { return width_; }
     int height() const { return height_; }
 
-    pixel sample_nearest(fvec2 uv) const { // Idea: sampler to individual class
-        // TODO: wrap coords, better code
-        size_t x = static_cast<size_t>(uv.x() * static_cast<float>(width_)) % width_;
-        size_t y = static_cast<size_t>(uv.y() * static_cast<float>(height_)) % height_;
+    fvec4 sample_nearest(fvec2 uv, bool srgb_tex = false) const { // Idea: sampler to individual class
+        auto xf = std::fmod(uv.x(), 1.0f);
+        auto yf = std::fmod(uv.y(), 1.0f);
+        if (xf < 0.0f) xf += 1.0f;
+        if (yf < 0.0f) yf += 1.0f;
+        size_t x = static_cast<size_t>(xf * width_);
+        size_t y = static_cast<size_t>(yf * height_);
         assert(x < width_ && y < height_);
-        return data_[y * width_ + x];
+        pixel sample = data_[y * width_ + x];
+        if (srgb_tex) {
+            return srgb_pixel_to_float(sample);
+        }
+        else {
+            return pixel_to_float(sample);
+        }
+    }
+
+    fvec4 sample_bilinear(fvec2 uv, bool srgb_tex = false) const {
+        auto xf = uv.x() * static_cast<float>(width_) - 0.5f;
+        auto yf = uv.y() * static_cast<float>(height_) - 0.5f;
+        float tx = xf - std::floor(xf);
+        float ty = yf - std::floor(yf);
+        int x0 = static_cast<int>(std::floor(xf));
+        int y0 = static_cast<int>(std::floor(yf));
+        int x1 = x0 + 1;
+        int y1 = y0 + 1;
+        x0 = ((x0 % width_) + width_) % width_;
+        y0 = ((y0 % height_) + height_) % height_;
+        x1 = ((x1 % width_) + width_) % width_;
+        y1 = ((y1 % height_) + height_) % height_;
+        const pixel c00 = data_[y0 * width_ + x0];
+        const pixel c10 = data_[y0 * width_ + x1];
+        const pixel c01 = data_[y1 * width_ + x0];
+        const pixel c11 = data_[y1 * width_ + x1];
+        const fvec4 col00 = srgb_tex ? srgb_pixel_to_float(c00) : pixel_to_float(c00);
+        const fvec4 col10 = srgb_tex ? srgb_pixel_to_float(c10) : pixel_to_float(c10);
+        const fvec4 col01 = srgb_tex ? srgb_pixel_to_float(c01) : pixel_to_float(c01);
+        const fvec4 col11 = srgb_tex ? srgb_pixel_to_float(c11) : pixel_to_float(c11);
+
+        fvec4 top = lerp(col00, col10, tx);
+        fvec4 bottom = lerp(col01, col11, tx);
+        return lerp(top, bottom, ty);
     }
 
     static CPUTexture create_white_texture();
