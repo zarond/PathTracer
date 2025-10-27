@@ -21,7 +21,9 @@ int main(int argc, char* argv[]) {
 
     console_arguments.modelPath = "C:/Users/artur/Documents/GitHub/PathTracer/data/Diesel_shoe.gltf"; // For testing only
     //console_arguments.modelPath = "C:/Users/artur/Documents/GitHub/PathTracer/data/boxes_scene/boxes.gltf"; // For testing only
-    
+    console_arguments.environmentPath = "C:/Users/artur/Documents/GitHub/PathTracer/data/mud_road_1k.hdr"; // For testing only
+    console_arguments.useDefaultEnv = false; // For testing only
+
     auto start = std::chrono::high_resolution_clock::now();
     Model model;
     {
@@ -44,7 +46,7 @@ int main(int argc, char* argv[]) {
     // Create viewer
     Viewer viewer(std::move(model), std::move(environment_texture));
 
-    viewer.set_render_settings(RenderSettings{ .samplesPerPixel = 4, .maxRayBounces = 1 }); // For testing only
+    viewer.set_render_settings(RenderSettings{ .samplesPerPixel = 1, .maxRayBounces = 1 }); // For testing only
 
     start = std::chrono::high_resolution_clock::now();
     viewer.render();

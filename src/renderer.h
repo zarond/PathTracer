@@ -57,7 +57,7 @@ public:
         fastgltf::Camera::Perspective perspectiveParams
     );
 
-    void load_scene(const Model& model); // should be in constructor?
+    void load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap); // should be in constructor?
     void render_frame(CPUFrameBuffer& framebuffer);
     void set_render_settings(const RenderSettings& settings);
     RenderSettings get_render_settings() const;
@@ -67,6 +67,7 @@ public:
 protected:
     std::unique_ptr<IAccelerationStructure> accelStruct;
     const Model* modelRef = nullptr;
+    const CPUTexture<hdr_pixel>* envmapRef = nullptr;
     RenderSettings renderSettings_;
 
     fmat4x4 viewMatrix_ = fmat4x4(1.0f);

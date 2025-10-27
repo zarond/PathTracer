@@ -38,10 +38,11 @@ void Renderer::update_camera_transform_state(
     NDC2WorldMatrix_ = inverse(projectionMatrix_ * viewMatrixNoTranslation);
 }
 
-void Renderer::load_scene(const Model& model)
+void Renderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap)
 {
     accelStruct = std::make_unique<NaiveAS>(model);
     modelRef = &model;
+    envmapRef = &envmap;
 }
 
 ray Renderer::generate_camera_ray(int x, int y, int width, int height, int sampleIndex) const {
@@ -89,7 +90,9 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer)
 
                 auto mat_index = mesh_data.materialIndex;
                 auto albedo_color = sample_albedo(modelRef->materials_[mat_index], modelRef->images_, uv);
-                albedo_color = hit.forward_hit() ? albedo_color : fvec4(0.0f);
+                if (hit.forward_hit() == false) {
+                    albedo_color = sample_environment(ray.direction, *envmapRef);
+                }
 
                 final_color.add_sample(fvec3(albedo_color));
             }

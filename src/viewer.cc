@@ -17,7 +17,7 @@ Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture):
     }
     framebuffer_ = CPUFrameBuffer(windowDimensions_[0], windowDimensions_[1]);
 
-    renderer_.load_scene(model_);
+    renderer_.load_scene(model_, environmentTexture_);
 
     snap_to_camera();
 }

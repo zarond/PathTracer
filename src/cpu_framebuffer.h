@@ -101,10 +101,19 @@ public:
         const pixel c10 = data_[y0 * width_ + x1];
         const pixel c01 = data_[y1 * width_ + x0];
         const pixel c11 = data_[y1 * width_ + x1];
-        const fvec4 col00 = srgb_tex ? srgb_pixel_to_float(c00) : pixel_to_float(c00);
-        const fvec4 col10 = srgb_tex ? srgb_pixel_to_float(c10) : pixel_to_float(c10);
-        const fvec4 col01 = srgb_tex ? srgb_pixel_to_float(c01) : pixel_to_float(c01);
-        const fvec4 col11 = srgb_tex ? srgb_pixel_to_float(c11) : pixel_to_float(c11);
+        fvec4 col00, col10, col01, col11;
+        if constexpr (std::is_same_v<pixel, sdr_pixel>) {
+            col00 = srgb_tex ? srgb_pixel_to_float(c00) : pixel_to_float(c00);
+            col10 = srgb_tex ? srgb_pixel_to_float(c10) : pixel_to_float(c10);
+            col01 = srgb_tex ? srgb_pixel_to_float(c01) : pixel_to_float(c01);
+            col11 = srgb_tex ? srgb_pixel_to_float(c11) : pixel_to_float(c11);
+        }
+        else if constexpr (std::is_same_v<pixel, hdr_pixel>) {
+            col00 = c00;
+            col10 = c10;
+            col01 = c01;
+            col11 = c11;
+        }
 
         fvec4 top = lerp(col00, col10, tx);
         fvec4 bottom = lerp(col01, col11, tx);
