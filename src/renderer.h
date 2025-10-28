@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "ray_generator.h"
+#include "ray_program.h"
 #include "acceleration_structure.h"
 #include "cpu_framebuffer.h"
 

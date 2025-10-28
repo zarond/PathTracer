@@ -17,7 +17,7 @@ set(APP_SOURCES
     src/arguments.cc
     src/compute_tangents.cc
     src/viewer.cc
-    src/ray_generator.cc
+    src/ray_program.cc
     src/acceleration_structure.cc
     src/renderer.cc
     src/ui.cc

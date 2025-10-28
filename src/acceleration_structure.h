@@ -8,7 +8,7 @@
 #include <fastgltf/types.hpp>
 
 #include "additional_math.h"
-#include "ray_generator.h"
+#include "ray_program.h"
 #include "model_loader.h"
 
 namespace app {
