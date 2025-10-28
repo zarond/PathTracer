@@ -27,6 +27,7 @@ struct BBox {
 
 BBox object_to_ws_bbox(const Object& obj, const Mesh& mesh);
 
+template<bool any_hit = false>
 ray_triangle_hit_info mesh_ray_intersection(
     const ray& ray_ws,
     const fmat4x4& ModelMatrix,
@@ -36,7 +37,7 @@ ray_triangle_hit_info mesh_ray_intersection(
 class IAccelerationStructure {
 public:
     virtual ~IAccelerationStructure() = default;
-    virtual ray_triangle_hit_info intersect_ray(const ray& ray) const = 0;
+    virtual ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const = 0;
 };
 
 class NaiveAS : public IAccelerationStructure {
@@ -44,7 +45,7 @@ public:
     explicit NaiveAS(const Model& model);
     virtual ~NaiveAS() override = default;
 
-    ray_triangle_hit_info intersect_ray(const ray& ray) const;
+    ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const;
 
 private:
     struct ObjectData {

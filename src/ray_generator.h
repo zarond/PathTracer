@@ -20,6 +20,7 @@ struct barycentric_coords {
     float A = 0.0f;
     float B = 0.0f;
     // implicit C = 1.0 - A - B
+    float t = std::numeric_limits<float>::infinity();
     bool hit = false;
 
     float C() const noexcept {

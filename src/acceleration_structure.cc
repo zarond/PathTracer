@@ -33,15 +33,15 @@ namespace {
 
         fvec3 tvec = ray_os.origin - p1;
         float u = dot(tvec, pvec) * invDet;
-        if (u < 0 || u > 1) return { 0.0, 0.0, false };
+        if (u < 0 || u > 1) return { 0.0, 0.0, 0.0, false };
 
         fvec3 qvec = cross(tvec, p1p2);
         float v = dot(ray_os.direction, qvec) * invDet;
-        if (v < 0 || u + v > 1) return { 0.0, 0.0, false };
+        if (v < 0 || u + v > 1) return { 0.0, 0.0, 0.0, false };
 
         float t = dot(p1p3, qvec) * invDet;
 
-        return { 1.0f - u - v, u, true };
+        return { 1.0f - u - v, u, t, true };
     }
 }
 
@@ -102,26 +102,32 @@ namespace app {
         std::cout << "NaiveAS constructed in " << diff.count() << " ms." << '\n';
     }
 
-    ray_triangle_hit_info NaiveAS::intersect_ray(const ray& ray) const
+    ray_triangle_hit_info NaiveAS::intersect_ray(const ray& ray, bool any_hit) const
     {
         ray_triangle_hit_info hit{};
         // ToDo: optimize
         for (size_t i = 0; i < object_data_.size(); ++i) {
             const auto& obj = object_data_[i];
-            auto potential_obj_hit = obj.bbox.ray_box_intersection(ray);
+            ray_bbox_hit_info potential_obj_hit = obj.bbox.ray_box_intersection(ray);
             if (potential_obj_hit.forward_hit()) {
                 // Perform detailed intersection test with the mesh
-                ray_triangle_hit_info potential_mesh_hit = mesh_ray_intersection(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_->at(obj.meshIndex));
+                ray_triangle_hit_info potential_mesh_hit = (any_hit)? 
+                    mesh_ray_intersection<true>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_->at(obj.meshIndex)) :
+                    mesh_ray_intersection<false>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_->at(obj.meshIndex));
                 if (potential_mesh_hit.forward_hit() && (potential_mesh_hit.distance < hit.distance)) {
                     hit = potential_mesh_hit;
                     hit.objectIndex = i;
                     hit.meshIndex = obj.meshIndex;
+                    if (any_hit) {
+                        break;
+                    }
                 }
             }
         }
         return hit;
     }
 
+    template<bool any_hit>
     ray_triangle_hit_info mesh_ray_intersection(
         const ray& ray_ws,
         const fmat4x4& ModelMatrix,
@@ -141,39 +147,33 @@ namespace app {
 
         ray_triangle_hit_info hit{};
 
-        fvec3 best_p1;
-        fvec3 best_p2;
-        fvec3 best_p3;
-        fvec3 best_hit_point;
         // Test all triangles
         for (std::uint32_t tri_idx = 0; tri_idx < mesh.indices.size(); tri_idx += 3) {
             fvec3 p1 = mesh.vertices[mesh.indices[tri_idx + 0]].position;
             fvec3 p2 = mesh.vertices[mesh.indices[tri_idx + 1]].position;
             fvec3 p3 = mesh.vertices[mesh.indices[tri_idx + 2]].position;
             barycentric_coords tri_hit = intersect_ray_triangle(os_ray, p1, p2, p3);
-            if (!tri_hit.hit) {
-                continue; // No hit
+            if (!tri_hit.hit || tri_hit.t < 0.0f) {
+                continue; // No hit or back from origin
             }
-            fvec3 hit_point = p1 * tri_hit.A + p2 * tri_hit.B + p3 * tri_hit.C();
-            auto vec_to_hit_os = hit_point - os_ray.origin;
-            float distance_os = dot(vec_to_hit_os, vec_to_hit_os);
-            if (distance_os < hit.distance) {
-                hit = {
-                    .hit = true,
-                    .distance = distance_os,
-                    .b_coords = tri_hit,
-                    .triangleIndex = tri_idx
-                };
-                best_p1 = p1;
-                best_p2 = p2;
-                best_p3 = p3;
-                best_hit_point = hit_point;
+            if (tri_hit.t >= hit.b_coords.t) {
+                continue; // Not the closest hit
+            }
+            hit = {
+                .hit = true,
+                .distance = 0.0f,
+                .b_coords = tri_hit,
+                .triangleIndex = tri_idx
+            };
+            if constexpr (any_hit) {
+                break;
             }
         }
         if (!hit.hit) {
             return hit; // No hit
         }
         // Transform hit back to world space
+        fvec3 best_hit_point = os_ray.origin + os_ray.direction * hit.b_coords.t;
         fvec3 hit_point_ws = fvec3(ModelMatrix * fvec4(best_hit_point[0], best_hit_point[1], best_hit_point[2], 1.0f));
         hit.distance = length(hit_point_ws - ray_ws.origin);
         return hit;
