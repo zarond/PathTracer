@@ -2,6 +2,10 @@
 
 #include <type_traits>
 #include <concepts>
+#include <random>
+
+#include "model_loader.h"
+#include "cpu_framebuffer.h"
 
 #include <fastgltf/types.hpp>
 
@@ -14,6 +18,12 @@ concept TriviallyCopyableStruct = std::is_trivially_copyable_v<T> && std::is_sta
 struct ray {
     fvec3 origin;
     fvec3 direction; // should always be normalized
+};
+
+struct ray_with_payload : ray {
+    fvec4 payload = fvec4(1.0f); // accumulated color or other data
+    std::uint8_t depth = 0; // current recursion depth left
+    bool any_hit = false;
 };
 
 struct barycentric_coords {
@@ -51,6 +61,34 @@ struct ray_triangle_hit_info {
     constexpr bool forward_hit() const noexcept {
         return hit && (distance > 0.0f);
     }
+};
+
+class IRayProgram {
+public:
+    virtual fvec4 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const = 0;
+};
+
+class RayCasterProgram : public IRayProgram {
+public:
+    RayCasterProgram(const Model& model, const CPUTexture<hdr_pixel>& env);
+
+    virtual fvec4 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const override;
+private:
+    const Model& modelRef;
+    const CPUTexture<hdr_pixel>& envmapRef;
+};
+
+class AOProgram : public IRayProgram {
+public:
+    AOProgram(const Model& model, const CPUTexture<hdr_pixel>& env);
+
+    virtual fvec4 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const override;
+private:
+    const Model& modelRef;
+    const CPUTexture<hdr_pixel>& envmapRef;
+
+    mutable std::mt19937 gen;
+    mutable std::uniform_real_distribution<float> dist;
 };
 
 }

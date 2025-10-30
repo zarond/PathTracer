@@ -43,19 +43,27 @@ void Renderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& envma
     accelStruct = std::make_unique<NaiveAS>(model);
     modelRef = &model;
     envmapRef = &envmap;
+    //rayProgram = std::make_unique<RayCasterProgram>(model, envmap); // Todo
+    rayProgram = std::make_unique<AOProgram>(model, envmap);
 }
 
-ray Renderer::generate_camera_ray(int x, int y, int width, int height, int sampleIndex) const {
+ray_with_payload Renderer::generate_camera_ray(int x, int y, int width, int height, int sampleIndex) const {
     fvec2 pixel_coords = fvec2{static_cast<float>(x), static_cast<float>(y)} + subsamplesPositions[sampleIndex];
     auto ndc_coords = ndc_from_pixel(pixel_coords.x(), pixel_coords.y(), width, height);
     auto direction = fvec3(NDC2WorldMatrix_ * ndc_coords);
-    return ray{ origin_, normalize(direction) };
+    return ray_with_payload{
+        origin_, 
+        normalize(direction), 
+        fvec4(1.0f), 
+        static_cast<std::uint8_t>(renderSettings_.maxRayBounces),
+        false
+    };
 }
 
 void Renderer::render_frame(CPUFrameBuffer& framebuffer)
 {
     assert(modelRef);
-    if (modelRef == nullptr) {
+    if (modelRef == nullptr || envmapRef == nullptr || accelStruct == nullptr || rayProgram == nullptr) {
         throw 1; // Todo
     }
 
@@ -73,28 +81,19 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer)
             SamplesAccumulator<fvec3> final_color;
 
             for (int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
-                auto ray = generate_camera_ray(x, y, width, height, i);    
-                auto hit = accelStruct->intersect_ray(ray);
-                
-                auto mesh_hit_index = hit.meshIndex;
-                const auto& mesh_data = modelRef->meshes_[mesh_hit_index];
-                auto p1 = mesh_data.indices[hit.triangleIndex];
-                auto p2 = mesh_data.indices[hit.triangleIndex + 1];
-                auto p3 = mesh_data.indices[hit.triangleIndex + 2];
-                auto normal = mesh_data.vertices[p1].normal * hit.b_coords.A +
-                            mesh_data.vertices[p2].normal * hit.b_coords.B +
-                            mesh_data.vertices[p3].normal * hit.b_coords.C();
-                auto uv = mesh_data.vertices[p1].uv * hit.b_coords.A +
-                    mesh_data.vertices[p2].uv * hit.b_coords.B +
-                    mesh_data.vertices[p3].uv * hit.b_coords.C();
+                std::vector<ray_with_payload> rays;
+                rays.reserve(1 + renderSettings_.maxRayBounces + renderSettings_.maxNewRaysPerBounce);
+                fvec4 sample_col{};
 
-                auto mat_index = mesh_data.materialIndex;
-                auto albedo_color = sample_albedo(modelRef->materials_[mat_index], modelRef->images_, uv);
-                if (hit.forward_hit() == false) {
-                    albedo_color = sample_environment(ray.direction, *envmapRef);
+                rays.push_back(generate_camera_ray(x, y, width, height, i));
+                while (rays.size() > 0) { // Todo: limit number of iterations
+                    auto ray = rays.back();
+                    rays.pop_back();
+                    auto hit = accelStruct->intersect_ray(ray, ray.any_hit);
+                    sample_col += rayProgram->on_hit(ray, hit, rays);
                 }
 
-                final_color.add_sample(fvec3(albedo_color));
+                final_color.add_sample(fvec3(sample_col));
             }
             framebuffer.at(x, y) = fvec4(final_color.get_mean());
         }

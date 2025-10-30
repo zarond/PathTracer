@@ -40,8 +40,8 @@ struct SamplesAccumulator {
 
 struct RenderSettings {
     unsigned int samplesPerPixel = 1;
-    unsigned int maxRayBounces = 1;
-    unsigned int maxNewRaysPerBounce = 0; // Todo: unused for now
+    unsigned int maxRayBounces = 0;
+    unsigned int maxNewRaysPerBounce = 0;
 };
 
 class Renderer {
@@ -66,6 +66,7 @@ public:
 
 protected:
     std::unique_ptr<IAccelerationStructure> accelStruct;
+    std::unique_ptr<IRayProgram> rayProgram;
     const Model* modelRef = nullptr;
     const CPUTexture<hdr_pixel>* envmapRef = nullptr;
     RenderSettings renderSettings_;
@@ -76,7 +77,7 @@ protected:
     fvec3 origin_;
 
 private:
-    ray generate_camera_ray(int x, int y, int width, int height, int sampleIndex = 0) const;
+    ray_with_payload generate_camera_ray(int x, int y, int width, int height, int sampleIndex = 0) const;
     void generate_subsample_positions();
 
     std::vector<fvec2> subsamplesPositions;
