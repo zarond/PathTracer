@@ -48,7 +48,7 @@ int main(int argc, char* argv[]) {
     Viewer viewer(std::move(model), std::move(environment_texture));
 
     viewer.set_render_settings(RenderSettings{ .samplesPerPixel = 1, .maxRayBounces = 1 }); // For testing only
-    viewer.resize_window(ivec2(400, 300)); // For testing only
+    //viewer.resize_window(ivec2(400, 300)); // For testing only
 
     start = std::chrono::high_resolution_clock::now();
     viewer.render();

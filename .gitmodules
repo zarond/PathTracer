@@ -16,3 +16,6 @@
 [submodule "libs/MikkTSpace"]
 	path = libs/MikkTSpace
 	url = https://github.com/mmikk/MikkTSpace
+[submodule "libs/glm"]
+	path = libs/glm
+	url = https://github.com/g-truc/glm

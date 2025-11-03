@@ -5,13 +5,12 @@
 #include <array>
 #include <cmath>
 
-#include <fastgltf/core.hpp>
 #include <fastgltf/types.hpp>
-#include <fastgltf/tools.hpp>
+#include <glm/glm.hpp>
 
 namespace app {
 
-using namespace fastgltf::math;
+using namespace glm;
 
 inline float linear_to_srgb(float channel)
 {
@@ -33,7 +32,7 @@ inline float srgb_to_linear(float channel)
 }
 
 using sdr_pixel = std::array<std::uint8_t, 4>;
-using hdr_pixel = fastgltf::math::fvec4;
+using hdr_pixel = fvec4;
 
 template<typename T>
 concept PixelType = std::is_same_v<T, sdr_pixel> || std::is_same_v<T, hdr_pixel>;
@@ -68,8 +67,8 @@ public:
     int height() const { return height_; }
 
     fvec4 sample_nearest(fvec2 uv, bool srgb_tex = false) const { // Idea: sampler to individual class
-        auto xf = std::fmod(uv.x(), 1.0f);
-        auto yf = std::fmod(uv.y(), 1.0f);
+        auto xf = std::fmod(uv.x, 1.0f);
+        auto yf = std::fmod(uv.y, 1.0f);
         if (xf < 0.0f) xf += 1.0f;
         if (yf < 0.0f) yf += 1.0f;
         size_t x = static_cast<size_t>(xf * width_);
@@ -85,8 +84,8 @@ public:
     }
 
     fvec4 sample_bilinear(fvec2 uv, bool srgb_tex = false) const {
-        auto xf = uv.x() * static_cast<float>(width_) - 0.5f;
-        auto yf = uv.y() * static_cast<float>(height_) - 0.5f;
+        auto xf = uv.x * static_cast<float>(width_) - 0.5f;
+        auto yf = uv.y * static_cast<float>(height_) - 0.5f;
         float tx = xf - std::floor(xf);
         float ty = yf - std::floor(yf);
         int x0 = static_cast<int>(std::floor(xf));
@@ -115,9 +114,9 @@ public:
             col11 = c11;
         }
 
-        fvec4 top = lerp(col00, col10, tx);
-        fvec4 bottom = lerp(col01, col11, tx);
-        return lerp(top, bottom, ty);
+        fvec4 top = mix(col00, col10, tx);
+        fvec4 bottom = mix(col01, col11, tx);
+        return mix(top, bottom, ty);
     }
 
     static CPUTexture create_white_texture();

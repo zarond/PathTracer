@@ -3,13 +3,12 @@
 #include "cpu_framebuffer.h"
 #include "model_loader.h"
 
-#include <fastgltf/core.hpp>
-#include <fastgltf/types.hpp>
-#include <fastgltf/tools.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
 
 namespace app {
 
-using namespace fastgltf::math;
+using namespace glm;
 
 fvec4 sample_albedo(
     const Material& material,

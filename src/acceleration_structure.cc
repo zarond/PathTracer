@@ -1,11 +1,10 @@
 #include <iostream>
 
 #include "acceleration_structure.h"
-#include "additional_math.h"
 
 namespace {
     using namespace app;
-    using namespace fastgltf::math;
+    using namespace glm;
 
 #define CULLING
 
@@ -52,18 +51,14 @@ namespace app {
     }
     constexpr BBox::BBox(fvec3 min_, fvec3 max_) noexcept : min(min_), max(max_) {}
 
-    constexpr bool BBox::is_empty() const noexcept { return max[0] < min[0] || max[1] < min[1] || max[2] < min[2]; }
+    bool BBox::is_empty() const noexcept { return max.x < min.x || max.y < min.y || max.z < min.z; }
     void BBox::expand(const fvec3& ws_point) noexcept {
-        min = fastgltf::math::min(min, ws_point);
-        max = fastgltf::math::max(max, ws_point);
+        min = glm::min(min, ws_point);
+        max = glm::max(max, ws_point);
     }
     // Todo: optimize
     ray_bbox_hit_info BBox::ray_box_intersection(const ray& ray) const noexcept {
-        auto ray_direction_inv = fvec3{
-            1.0f / ray.direction[0],
-            1.0f / ray.direction[1],
-            1.0f / ray.direction[2]
-        };
+        auto ray_direction_inv = 1.0f / ray.direction;
         float t_min = std::numeric_limits<float>::lowest();
         float t_max = std::numeric_limits<float>::max();
         for (int i = 0; i < 3; ++i) {
@@ -83,7 +78,7 @@ namespace app {
         std::for_each(mesh.vertices.begin(), mesh.vertices.end(), 
             [&bbox, &obj](const vertex& vertex) {
                 // Todo: optimize
-                auto pos = fvec4(vertex.position[0], vertex.position[1], vertex.position[2], 1.0);
+                auto pos = fvec4(vertex.position, 1.0f);
                 bbox.expand(fvec3(obj.ModelMatrix * pos));
             }
         );
@@ -134,11 +129,9 @@ namespace app {
         const fmat4x4& invModelMatrix,
         const Mesh& mesh) noexcept
     {
-        using namespace fastgltf::math;
-
         // Transform ray to object space
-        auto ray_origin_os = fvec3(invModelMatrix * fvec4(ray_ws.origin[0], ray_ws.origin[1], ray_ws.origin[2], 1.0f));
-        auto ray_direction_os = fvec3(invModelMatrix * fvec4(ray_ws.direction[0], ray_ws.direction[1], ray_ws.direction[2], 0.0f));
+        auto ray_origin_os = fvec3(invModelMatrix * fvec4(ray_ws.origin, 1.0f));
+        auto ray_direction_os = fvec3(invModelMatrix * fvec4(ray_ws.direction, 0.0f));
         
         ray os_ray{
             ray_origin_os,
@@ -174,7 +167,7 @@ namespace app {
         }
         // Transform hit back to world space
         fvec3 best_hit_point = os_ray.origin + os_ray.direction * hit.b_coords.t;
-        fvec3 hit_point_ws = fvec3(ModelMatrix * fvec4(best_hit_point[0], best_hit_point[1], best_hit_point[2], 1.0f));
+        fvec3 hit_point_ws = fvec3(ModelMatrix * fvec4(best_hit_point, 1.0f));
         hit.distance = length(hit_point_ws - ray_ws.origin);
         return hit;
     }

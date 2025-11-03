@@ -21,7 +21,6 @@ set(APP_SOURCES
     src/acceleration_structure.cc
     src/renderer.cc
     src/ui.cc
-    src/additional_math.cc
     src/brdf.cc
 )
 
@@ -59,12 +58,22 @@ add_library(mikktspace STATIC
 )
 target_include_directories(mikktspace PUBLIC ${LIBS_DIR}/MikkTSpace)
 
+set(GLM_ENABLE_CXX_20 True)
+set(GLM_ENABLE_SIMD_AVX2 "Enable AVX2 optimizations" True)
+add_subdirectory(${LIBS_DIR}/glm)
+
 target_link_libraries(${PROJECT_NAME} PRIVATE 
     imgui 
     argparse 
     stb
     fastgltf::fastgltf
     mikktspace
+    glm
+)
+
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    GLM_FORCE_INTRINSICS
+    GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 )
 
 # tests

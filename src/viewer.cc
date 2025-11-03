@@ -6,7 +6,7 @@
 
 namespace app {
 
-using namespace fastgltf::math;
+using namespace glm;
 
 Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture):
     model_(std::move(model)),
@@ -15,7 +15,7 @@ Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture):
     if (model_.cameras_.size() > 0) {
         activeCameraIndex_ = 0;
     }
-    framebuffer_ = CPUFrameBuffer(windowDimensions_[0], windowDimensions_[1]);
+    framebuffer_ = CPUFrameBuffer(windowDimensions_.x, windowDimensions_.y);
 
     renderer_.load_scene(model_, environmentTexture_);
 
@@ -25,7 +25,7 @@ Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture):
 void Viewer::resize_window(const ivec2& newDimensions)
 {
     windowDimensions_ = newDimensions;
-    framebuffer_ = CPUFrameBuffer(windowDimensions_[0], windowDimensions_[1]);
+    framebuffer_ = CPUFrameBuffer(windowDimensions_.x, windowDimensions_.y);
 }
 
 ivec2 Viewer::get_window_dimensions() const { return windowDimensions_; }
@@ -66,9 +66,9 @@ bool Viewer::snap_to_camera()
 
 	std::visit(fastgltf::visitor{
 		[&](const fastgltf::Camera::Perspective& perspective) {
-            position_ = fvec3(camera.ModelMatrix[3].x(), camera.ModelMatrix[3].y(), camera.ModelMatrix[3].z());
-            direction_ = fvec3(-camera.ModelMatrix[2].x(), -camera.ModelMatrix[2].y(), -camera.ModelMatrix[2].z());
-            up_ = fvec3(camera.ModelMatrix[1].x(), camera.ModelMatrix[1].y(), camera.ModelMatrix[1].z());
+            position_ = fvec3(camera.ModelMatrix[3]);
+            direction_ = -fvec3(camera.ModelMatrix[2]);
+            up_ = fvec3(camera.ModelMatrix[1]);
             
             renderer_.update_camera_transform_state(
                 position_,

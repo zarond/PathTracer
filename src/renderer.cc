@@ -1,13 +1,15 @@
 #include "renderer.h"
-#include "additional_math.h"
 #include "brdf.h"
 
 #include <ranges>
 #include <algorithm>
 #include <execution>
 
+#include <glm/glm.hpp>
+#include <glm/ext.hpp>
+
 namespace {
-using namespace fastgltf::math;
+using namespace glm;
 using namespace app;
 
 fvec4 ndc_from_pixel(float x, float y, int width, int height) {
@@ -27,15 +29,15 @@ void Renderer::update_camera_transform_state(
     fastgltf::Camera::Perspective perspectiveParams)
 {
     origin_ = position;
-    viewMatrix_ = lookAtRH(position, position + direction, up);
-    projectionMatrix_ = perspectiveRH(
+    viewMatrix_ = glm::lookAt(position, position + direction, up);
+    projectionMatrix_ = glm::perspectiveRH(
         perspectiveParams.yfov,
         perspectiveParams.aspectRatio.value_or(1.77777777777777777f), // Todo ????
         perspectiveParams.znear,
         perspectiveParams.zfar.value_or(1000.f));
     auto viewMatrixNoTranslation = viewMatrix_;
     viewMatrixNoTranslation[3] = fvec4(0.0f, 0.0f, 0.0f, 1.0f); // Remove translation from view matrix for direction calculation
-    NDC2WorldMatrix_ = inverse(projectionMatrix_ * viewMatrixNoTranslation);
+    NDC2WorldMatrix_ = glm::inverse(projectionMatrix_ * viewMatrixNoTranslation);
 }
 
 void Renderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap)
@@ -43,13 +45,13 @@ void Renderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& envma
     accelStruct = std::make_unique<NaiveAS>(model);
     modelRef = &model;
     envmapRef = &envmap;
-    //rayProgram = std::make_unique<RayCasterProgram>(model, envmap); // Todo
-    rayProgram = std::make_unique<AOProgram>(model, envmap);
+    rayProgram = std::make_unique<RayCasterProgram>(model, envmap); // Todo
+    //rayProgram = std::make_unique<AOProgram>(model, envmap);
 }
 
 ray_with_payload Renderer::generate_camera_ray(int x, int y, int width, int height, int sampleIndex) const {
     fvec2 pixel_coords = fvec2{static_cast<float>(x), static_cast<float>(y)} + subsamplesPositions[sampleIndex];
-    auto ndc_coords = ndc_from_pixel(pixel_coords.x(), pixel_coords.y(), width, height);
+    auto ndc_coords = ndc_from_pixel(pixel_coords.x, pixel_coords.y, width, height);
     auto direction = fvec3(NDC2WorldMatrix_ * ndc_coords);
     return ray_with_payload{
         origin_, 
@@ -95,7 +97,7 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer)
 
                 final_color.add_sample(fvec3(sample_col));
             }
-            framebuffer.at(x, y) = fvec4(final_color.get_mean());
+            framebuffer.at(x, y) = hdr_pixel{ final_color.get_mean(), 1.0f };
         }
     });
 

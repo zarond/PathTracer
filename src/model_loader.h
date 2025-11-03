@@ -7,11 +7,13 @@
 #include <fastgltf/types.hpp>
 #include <fastgltf/tools.hpp>
 
+#include <glm/glm.hpp>
+
 #include "cpu_framebuffer.h"
 
 namespace app {
 
-using namespace fastgltf::math;
+using namespace glm;
 
 struct vertex {
     fvec3 position;
@@ -33,7 +35,7 @@ struct Object { // individual flat nodes with a single mesh
 };
 
 struct Material {
-    nvec4 baseColorFactor{1.0f, 1.0f, 1.0f, 1.0f};
+    fvec4 baseColorFactor{1.0f, 1.0f, 1.0f, 1.0f};
     //float metallicFactor = 1.0f;
     //float roughnessFactor = 1.0f;
     int baseColorTextureIndex = -1; // -1 is no texture

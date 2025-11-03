@@ -7,10 +7,10 @@
 #include "model_loader.h"
 #include "cpu_framebuffer.h"
 
-#include <fastgltf/types.hpp>
+#include <glm/glm.hpp>
 
 namespace app {
-    using namespace fastgltf::math;
+    using namespace glm;
 
 template<typename T>
 concept TriviallyCopyableStruct = std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T>;

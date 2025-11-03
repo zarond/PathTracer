@@ -6,6 +6,8 @@
 #include "acceleration_structure.h"
 #include "cpu_framebuffer.h"
 
+#include <glm/glm.hpp>
+
 namespace app {
 
 template<typename T>

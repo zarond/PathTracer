@@ -8,11 +8,11 @@
 #include "cpu_framebuffer.h"
 #include "renderer.h"
 
-#include <fastgltf/core.hpp>
-#include <fastgltf/types.hpp>
-#include <fastgltf/tools.hpp>
+#include <glm/glm.hpp>
 
 namespace app {
+
+using namespace glm;
 
 class Viewer {
 public:

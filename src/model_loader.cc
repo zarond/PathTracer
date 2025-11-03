@@ -9,6 +9,8 @@
 #include <fastgltf/types.hpp>
 #include <fastgltf/tools.hpp>
 
+#include <fastgltf/glm_element_traits.hpp>
+
 namespace app {
 	bool ModelLoader::loadFromFile(std::filesystem::path path)
 {
@@ -77,7 +79,7 @@ Model ModelLoader::constructModel() const
             baseColor_imageIndex = asset_.textures[textureIndex].imageIndex.value_or(0); // narrows size_t to int, but imageIndex should be small enough not to overflow
 		}
 		model.materials_.emplace_back(
-			material.pbrData.baseColorFactor,
+			std::bit_cast<fvec4>(material.pbrData.baseColorFactor),
 			baseColor_imageIndex
         );
 	}
@@ -151,18 +153,21 @@ Model ModelLoader::constructModel() const
 	}
     // Todo: Maybe do all nodes in order, instead of scene nodes only?
 	size_t sceneIndex = asset_.defaultScene.value_or(0);
-	fastgltf::iterateSceneNodes(asset_, sceneIndex, fmat4x4(),
-		[&model, &mesh_ids, this](const fastgltf::Node& node, const fmat4x4& matrix) {
+	fastgltf::iterateSceneNodes(asset_, sceneIndex, fastgltf::math::fmat4x4(),
+		[&model, &mesh_ids, this](const fastgltf::Node& node, const fastgltf::math::fmat4x4 & matrix) {
 			if (node.meshIndex.has_value()) {
                 auto normalMatrix = transpose(inverse(matrix));
                 size_t mesh_index = *node.meshIndex; // Todo: refactor for more clear code
 				for (size_t i = (mesh_index > 0)? mesh_ids[mesh_index - 1] : 0; i < mesh_ids[mesh_index]; ++i) {
-					model.objects_.emplace_back(matrix, normalMatrix, i);
+					model.objects_.emplace_back(
+						std::bit_cast<fmat4>(matrix),
+						std::bit_cast<fmat4>(normalMatrix),
+						i);
 				}
 			}
 			if (node.cameraIndex.has_value()) {
 				model.cameras_.emplace_back(
-					matrix,
+					std::bit_cast<fmat4>(matrix),
 					asset_.cameras[*node.cameraIndex].camera
                 );
 			}

@@ -5,9 +5,6 @@
 #include <span>
 #include <vector>
 
-#include <fastgltf/types.hpp>
-
-#include "additional_math.h"
 #include "ray_program.h"
 #include "model_loader.h"
 
@@ -19,7 +16,7 @@ struct BBox {
     BBox() noexcept;
     constexpr BBox(fvec3 min_, fvec3 max_) noexcept;
    
-    constexpr bool is_empty() const noexcept;
+    bool is_empty() const noexcept;
     void expand(const fvec3& ws_point) noexcept;
 
     ray_bbox_hit_info ray_box_intersection(const ray& ray) const noexcept;

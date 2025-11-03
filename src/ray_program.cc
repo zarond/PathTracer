@@ -2,7 +2,7 @@
 #include "brdf.h"
 
 namespace {
-    using namespace fastgltf::math;
+    using namespace glm;
     using namespace app;
 
     const float GOLDEN_RATIO = 1.618034;
@@ -19,17 +19,17 @@ namespace {
         );
     }
     fvec3 ImportanceSampleCosDir(fvec2 xi) {
-        float cos_theta2 = 1.0f - xi.x();
+        float cos_theta2 = 1.0f - xi.x;
         float cos_theta = sqrt(cos_theta2);
-        float sin_theta = sqrt(xi.x());
-        float phi = 2.0f * xi.y() * pi;
+        float sin_theta = sqrt(xi.x);
+        float phi = 2.0f * xi.y * pi<float>();
 
         float cos_phi = cos(phi);
         float sin_phi = sin(phi);
 
         return fvec3(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta);
     }
-    fvec3 Tangent2World(fvec3 v, fvec3 T, fvec3 B, fvec3 N) { return T * v.x() + B * v.y() + N * v.z(); }
+    fvec3 Tangent2World(fvec3 v, fvec3 T, fvec3 B, fvec3 N) { return T * v.x + B * v.y + N * v.z; }
     fvec3 Tangent2World(fvec3 v, const fmat3x3& TBN) { return TBN * v; }
     
     inline const Mesh& get_mesh_data(const Model& modelref, const ray_triangle_hit_info& hit) {
@@ -104,11 +104,11 @@ namespace app {
         const auto& [p1, p2, p3] = get_vertex_data(mesh_data, hit);
         auto point = interpolate_vertex_data(p1, p2, p3, hit);
 
-        auto tangent_sign = point.tangent.w();
-        point.tangent = fvec3(modelRef.objects_[hit.objectIndex].ModelMatrix * fvec4(point.tangent[0], point.tangent[1], point.tangent[2], 0.0f)); // Todo
+        auto tangent_sign = point.tangent.w;
+        point.tangent = fvec4(modelRef.objects_[hit.objectIndex].ModelMatrix * fvec4(fvec3(point.tangent), 0.0f)); // Todo
         point.tangent[3] = tangent_sign;
-        point.normal = fvec3(modelRef.objects_[hit.objectIndex].NormalMatrix * fvec4(point.normal[0], point.normal[1], point.normal[2], 0.0f)); // Todo
-        auto bitangent = cross(point.normal, fvec3(point.tangent)) * point.tangent.w();
+        point.normal = fvec3(modelRef.objects_[hit.objectIndex].NormalMatrix * fvec4(point.normal, 0.0f)); // Todo
+        auto bitangent = cross(point.normal, fvec3(point.tangent)) * point.tangent.w;
 
         fmat3x3 TBN = construct_TBN(fvec3(point.tangent), bitangent, point.normal);
         
