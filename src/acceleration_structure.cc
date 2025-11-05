@@ -23,20 +23,20 @@ namespace {
 #ifdef CULLING
         // If the determinant is negative, the triangle is back-facing.
         // If the determinant is close to 0, the ray misses the triangle.
-        if (det < 0.0f) return { 0.0, 0.0, false }; // or epsilon?
+        if (det < 0.0f) return { 0.0f, 0.0f, false }; // or epsilon?
 #else
       // If det is close to 0, the ray and triangle are parallel.
         if (fabs(det) < kEpsilon) return { 0.0, 0.0, false };
 #endif
-        float invDet = 1 / det;
+        float invDet = 1.0f / det;
 
         fvec3 tvec = ray_os.origin - p1;
         float u = dot(tvec, pvec) * invDet;
-        if (u < 0 || u > 1) return { 0.0, 0.0, 0.0, false };
+        if (u < 0.0f || u > 1.0f) return { 0.0f, 0.0f, 0.0f, false };
 
         fvec3 qvec = cross(tvec, p1p2);
         float v = dot(ray_os.direction, qvec) * invDet;
-        if (v < 0 || u + v > 1) return { 0.0, 0.0, 0.0, false };
+        if (v < 0.0f || u + v > 1.0f) return { 0.0f, 0.0f, 0.0f, false };
 
         float t = dot(p1p3, qvec) * invDet;
 

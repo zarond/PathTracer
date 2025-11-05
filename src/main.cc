@@ -3,6 +3,7 @@
 #include <chrono>
 
 #include "model_loader.h"
+#include "cpu_framebuffer.h"
 #include "arguments.h"
 #include "viewer.h"
 
@@ -16,14 +17,8 @@ int main(int argc, char* argv[]) {
 
     ConsoleArgs console_arguments = parse_args(argc, argv, fs::current_path());
     if (console_arguments.exitImmediately) {
-        //return 1; // Ignore for now
+        return 1;
     }
-
-    console_arguments.modelPath = "C:/Users/artur/Documents/GitHub/PathTracer/data/Diesel_shoe.gltf"; // For testing only
-    //console_arguments.modelPath = "C:/Users/artur/Documents/GitHub/PathTracer/data/simple_scene/simple_scene.glb"; // For testing only
-    //console_arguments.modelPath = "C:/Users/artur/Documents/GitHub/PathTracer/data/boxes_scene/boxes_joined.glb"; // For testing only
-    console_arguments.environmentPath = "C:/Users/artur/Documents/GitHub/PathTracer/data/mud_road_1k.hdr"; // For testing only
-    console_arguments.useDefaultEnv = false; // For testing only
 
     auto start = std::chrono::high_resolution_clock::now();
     Model model;
@@ -36,7 +31,6 @@ int main(int argc, char* argv[]) {
         }
         model = loader.constructModel();
     }
-    // Todo: load environment
     CPUTexture<hdr_pixel> environment_texture = console_arguments.useDefaultEnv ?
         CPUTexture<hdr_pixel>::create_white_texture() :
         CPUTexture<hdr_pixel>(console_arguments.environmentPath);
@@ -44,11 +38,17 @@ int main(int argc, char* argv[]) {
     auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
     std::cout << "loaded in " << diff.count() << " ms." << '\n';
     
-    // Create viewer
-    Viewer viewer(std::move(model), std::move(environment_texture));
+    auto render_settings = RenderSettings{
+            .samplesPerPixel = console_arguments.samplesPerPixel,
+            .maxRayBounces = console_arguments.maxRayBounces,
+            .maxNewRaysPerBounce = console_arguments.maxNewRaysPerBounce,
+            .programMode = console_arguments.programMode,
+            .accelStructType = console_arguments.accelStructType
+    };
 
-    viewer.set_render_settings(RenderSettings{ .samplesPerPixel = 1, .maxRayBounces = 1 }); // For testing only
-    //viewer.resize_window(ivec2(400, 300)); // For testing only
+    // Create viewer
+    Viewer viewer(std::move(model), std::move(environment_texture), render_settings);
+    viewer.resize_window(ivec2(console_arguments.windowWidth, console_arguments.windowHeight));
 
     start = std::chrono::high_resolution_clock::now();
     viewer.render();

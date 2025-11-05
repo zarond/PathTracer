@@ -23,7 +23,6 @@ namespace {
 
     std::vector<sdr_pixel> from_raw_data(const unsigned char* data, size_t width, size_t height, size_t channels) {
         std::vector<sdr_pixel> vec(width * height);
-        vec.reserve(width * height);
         std::memcpy(vec.data(), data, width * height * sizeof(sdr_pixel));
         return vec;
     }
@@ -74,9 +73,9 @@ CPUTexture<hdr_pixel>::CPUTexture(const std::filesystem::path& filePath) {
 }
 
 template<>
-static CPUTexture<sdr_pixel> CPUTexture<sdr_pixel>::create_white_texture() { return CPUTexture({ 255,255,255,255 }); }
+static CPUTexture<sdr_pixel> CPUTexture<sdr_pixel>::create_white_texture() { return CPUTexture(sdr_pixel{ 255,255,255,255 }); }
 template<>
-static CPUTexture<sdr_pixel> CPUTexture<sdr_pixel>::create_black_texture() { return CPUTexture({ 0,0,0,255 }); }
+static CPUTexture<sdr_pixel> CPUTexture<sdr_pixel>::create_black_texture() { return CPUTexture(sdr_pixel{ 0,0,0,255 }); }
 template<>
 static CPUTexture<hdr_pixel> CPUTexture<hdr_pixel>::create_white_texture() { return CPUTexture(hdr_pixel{ 1.0f }); }
 template<>
@@ -113,11 +112,9 @@ const hdr_pixel& CPUFrameBuffer::at(int x, int y) const
 void CPUFrameBuffer::save_to_file(const std::filesystem::path& filePath) const
 {
     std::vector<float> rawData(width_ * height_ * 4);
-    //static_assert(sizeof(hdr_pixel) == 4 * sizeof(float) && std::alignment_of<hdr_pixel>::value == 4);
+    static_assert(sizeof(hdr_pixel) == 4 * sizeof(float));
     std::memcpy(rawData.data(), data_.data(), rawData.size() * sizeof(float));
     stbi_write_hdr(filePath.string().c_str(), width_, height_, 4, rawData.data());
-    // This is UB according to the standard, so we do the above copy instead.
-    //stbi_write_hdr(filePath.string().c_str(), width_, height_, 4, reinterpret_cast<const float*>(data_.data()));
 }
 
 }

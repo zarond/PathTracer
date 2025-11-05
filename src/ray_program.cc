@@ -5,16 +5,16 @@ namespace {
     using namespace glm;
     using namespace app;
 
-    const float GOLDEN_RATIO = 1.618034;
+    constexpr float GOLDEN_RATIO = 1.618034f;
     
     float fibonacci1D(int i)
     {
-        return std::fmod((static_cast<float>(i) + 1.0) * GOLDEN_RATIO, 1.0f);
+        return std::fmod((static_cast<float>(i) + 1.0f) * GOLDEN_RATIO, 1.0f);
     }
     fvec2 fibonacci2D(int i, int nbSamples)
     {
         return fvec2(
-            (static_cast<float>(i) + 0.5) / static_cast<float>(nbSamples),
+            (static_cast<float>(i) + 0.5f) / static_cast<float>(nbSamples),
             fibonacci1D(i)
         );
     }
@@ -89,13 +89,17 @@ namespace app {
         return albedo_color;
     }
 
-    AOProgram::AOProgram(const Model& model, const CPUTexture<hdr_pixel>& env)
-        : modelRef(model), envmapRef(env), gen(std::random_device{}()), dist(0.0f, 1.0f) {
+    AOProgram::AOProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const unsigned int ao_samples)
+        : modelRef(model), envmapRef(env), aoSamples(ao_samples) {
     }
+
+    std::minstd_rand thread_local AOProgram::gen = std::minstd_rand(std::random_device{}());
+    std::uniform_real_distribution<float> thread_local AOProgram::dist = std::uniform_real_distribution<float>(0.0f, 1.0f);
+
     fvec4 AOProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_info& hit, std::vector<ray_with_payload>& ray_collection) const
     {
         if (hit.forward_hit() == false) { // on miss
-            return ray_.payload * fvec4(1.0f);
+            return ray_.payload;
         }
         if (ray_.depth == 0) {
             return fvec4(0.0f);
@@ -105,9 +109,8 @@ namespace app {
         auto point = interpolate_vertex_data(p1, p2, p3, hit);
 
         auto tangent_sign = point.tangent.w;
-        point.tangent = fvec4(modelRef.objects_[hit.objectIndex].ModelMatrix * fvec4(fvec3(point.tangent), 0.0f)); // Todo
-        point.tangent[3] = tangent_sign;
-        point.normal = fvec3(modelRef.objects_[hit.objectIndex].NormalMatrix * fvec4(point.normal, 0.0f)); // Todo
+        point.tangent = fvec4(fmat3(modelRef.objects_[hit.objectIndex].ModelMatrix) * fvec3(point.tangent), tangent_sign);
+        point.normal = fvec3(fmat3(modelRef.objects_[hit.objectIndex].NormalMatrix) * point.normal);
         auto bitangent = cross(point.normal, fvec3(point.tangent)) * point.tangent.w;
 
         fmat3x3 TBN = construct_TBN(fvec3(point.tangent), bitangent, point.normal);
@@ -116,17 +119,18 @@ namespace app {
 
         auto new_depth = ray_.depth - 1;
 
-        int N = 32; // Todo: from render settings
-        auto jitter_value = dist(gen);
-        for (int i = 0; i < N; ++i) {
-            fvec2 rand = fibonacci2D(i, N);
-            rand[0] = std::fmod(rand[0] + jitter_value, 1.0f); // jitter
+        auto jitter_value_x = dist(gen);
+        auto jitter_value_y = dist(gen);
+        for (int i = 0; i < aoSamples; ++i) {
+            fvec2 rand = fibonacci2D(i, aoSamples);
+            rand.x = std::fmod(rand.x + jitter_value_x, 1.0f); // jitter
+            rand.y = std::fmod(rand.y + jitter_value_y, 1.0f); // jitter
             auto new_direction = ImportanceSampleCosDir(rand);
-            assert(new_direction.z() > 0.0f);
+            assert(new_direction.z > 0.0f);
             assert(abs(length(new_direction) - 1.0f) < 1e-5f);
             new_direction = Tangent2World(new_direction, TBN);
             auto new_pos = ws_pos + point.normal * 1e-5f; // offset to avoid self-intersection
-            ray_with_payload new_ray{ new_pos, normalize(new_direction), fvec4(1.0f/ N), new_depth, true };
+            ray_with_payload new_ray{ new_pos, normalize(new_direction), fvec4(1.0f/ aoSamples), new_depth, true };
             ray_collection.push_back(new_ray);
         }
         

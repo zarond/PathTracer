@@ -54,13 +54,7 @@ namespace app {
 
 Model ModelLoader::constructModel() const
 {
-	Model model{
-		.cameras_ = {},
-        .materials_ = {},
-		.meshes_ = {},
-		.objects_ = {},
-		.images_ = {},
-	};
+	Model model{};
     model.materials_.reserve(asset_.materials.size()+1);
     model.meshes_.reserve(asset_.meshes.size());
     model.objects_.reserve(asset_.nodes.size());

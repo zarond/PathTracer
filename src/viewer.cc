@@ -8,7 +8,7 @@ namespace app {
 
 using namespace glm;
 
-Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture):
+Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture, const RenderSettings& settings):
     model_(std::move(model)),
     environmentTexture_(std::move(environmentTexture))
 {
@@ -17,6 +17,7 @@ Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture):
     }
     framebuffer_ = CPUFrameBuffer(windowDimensions_.x, windowDimensions_.y);
 
+    renderer_.set_render_settings(settings);
     renderer_.load_scene(model_, environmentTexture_);
 
     snap_to_camera();
@@ -90,7 +91,12 @@ bool Viewer::snap_to_camera()
 }
 
 void Viewer::set_render_settings(const RenderSettings& settings) {
+    const auto currentSettings = renderer_.get_render_settings();
     renderer_.set_render_settings(settings);
+    // Todo: reload scene only if settings have changed that require it
+    if (currentSettings != settings) {
+        renderer_.load_scene(model_, environmentTexture_);
+    }
 }
 RenderSettings Viewer::get_render_settings() const { return renderer_.get_render_settings(); }
 

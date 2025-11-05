@@ -5,6 +5,7 @@
 #include "ray_program.h"
 #include "acceleration_structure.h"
 #include "cpu_framebuffer.h"
+#include "arguments.h"
 
 #include <glm/glm.hpp>
 
@@ -44,6 +45,11 @@ struct RenderSettings {
     unsigned int samplesPerPixel = 1;
     unsigned int maxRayBounces = 0;
     unsigned int maxNewRaysPerBounce = 0;
+
+    RayProgramMode programMode = RayProgramMode::RayCaster;
+    AccelerationStructureType accelStructType = AccelerationStructureType::Naive;
+
+    bool operator==(const RenderSettings& other) const = default;
 };
 
 class Renderer {

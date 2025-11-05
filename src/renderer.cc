@@ -1,5 +1,6 @@
 #include "renderer.h"
 #include "brdf.h"
+#include "arguments.h"
 
 #include <ranges>
 #include <algorithm>
@@ -42,11 +43,22 @@ void Renderer::update_camera_transform_state(
 
 void Renderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap)
 {
-    accelStruct = std::make_unique<NaiveAS>(model);
     modelRef = &model;
     envmapRef = &envmap;
-    rayProgram = std::make_unique<RayCasterProgram>(model, envmap); // Todo
-    //rayProgram = std::make_unique<AOProgram>(model, envmap);
+    switch (renderSettings_.accelStructType) {
+        case AccelerationStructureType::Naive:
+        default:
+            accelStruct = std::make_unique<NaiveAS>(model);
+            break;
+    }
+    switch (renderSettings_.programMode) {
+        case RayProgramMode::AmbientOcclusion:
+            rayProgram = std::make_unique<AOProgram>(model, envmap, renderSettings_.maxNewRaysPerBounce);
+            break;
+        case RayProgramMode::RayCaster:
+        default:
+            rayProgram = std::make_unique<RayCasterProgram>(model, envmap);
+    }
 }
 
 ray_with_payload Renderer::generate_camera_ray(int x, int y, int width, int height, int sampleIndex) const {
@@ -71,7 +83,7 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer)
 
     generate_subsample_positions();
 
-    framebuffer.clear(hdr_pixel{ 0.0f, 0.0f, 1.0f, 1.0f }); // Clear to color for testing
+    framebuffer.clear(hdr_pixel{ 0.0f, 0.0f, 0.0f, 1.0f });
 
     int width = framebuffer.width();
     int height = framebuffer.height();

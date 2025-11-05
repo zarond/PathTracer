@@ -68,11 +68,13 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     stb
     fastgltf::fastgltf
     mikktspace
-    glm
+    glm::glm
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
+    GLM_FORCE_MESSAGES
     GLM_FORCE_INTRINSICS
+    GLM_FORCE_ALIGNED_GENTYPES
     GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 )
 

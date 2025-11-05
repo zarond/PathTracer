@@ -16,27 +16,27 @@ namespace {
     void getPosition(const SMikkTSpaceContext* context, float posOut[], const int faceIdx, const int vertIdx) {
         Mesh* mesh = static_cast<Mesh*>(context->m_pUserData);
         auto index = mesh->indices[faceIdx * 3 + vertIdx];
-        memcpy(posOut, &mesh->vertices[index].position, sizeof(fvec3));
+        memcpy(posOut, &mesh->vertices[index].position, 3 * sizeof(fvec3::value_type));
     }
 
     void getNormal(const SMikkTSpaceContext* context, float normOut[], const int faceIdx, const int vertIdx) {
         Mesh* mesh = static_cast<Mesh*>(context->m_pUserData);
         auto index = mesh->indices[faceIdx * 3 + vertIdx];
-        memcpy(normOut, &mesh->vertices[index].normal, sizeof(fvec3));
+        memcpy(normOut, &mesh->vertices[index].normal, 3 * sizeof(fvec3::value_type));
     }
 
     void getTexCoord(const SMikkTSpaceContext* context, float uvOut[], const int faceIdx, const int vertIdx) {
         Mesh* mesh = static_cast<Mesh*>(context->m_pUserData);
         auto index = mesh->indices[faceIdx * 3 + vertIdx];
-        memcpy(uvOut, &mesh->vertices[index].uv, sizeof(fvec2));
+        memcpy(uvOut, &mesh->vertices[index].uv, 2 * sizeof(fvec2::value_type));
     }
 
     void setTSpaceBasic(const SMikkTSpaceContext* context, const float tangent[], const float sign,
         const int faceIdx, const int vertIdx) {
         Mesh* mesh = static_cast<Mesh*>(context->m_pUserData);
         auto index = mesh->indices[faceIdx * 3 + vertIdx];
-        memcpy(&mesh->vertices[index].tangent, tangent, sizeof(fvec3));
-        mesh->vertices[index].tangent[3] = sign;
+        memcpy(&mesh->vertices[index].tangent, tangent, 3 * sizeof(fvec4::value_type));
+        mesh->vertices[index].tangent.w = sign;
     }
 }
 

@@ -16,7 +16,7 @@ using namespace glm;
 
 class Viewer {
 public:
-    explicit Viewer(Model&& model, CPUTexture<hdr_pixel> && environmentTexture);
+    explicit Viewer(Model&& model, CPUTexture<hdr_pixel> && environmentTexture, const RenderSettings& settings);
 
     Viewer(const Viewer&) = delete;
     Viewer& operator=(const Viewer&) = delete;
