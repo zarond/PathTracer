@@ -24,13 +24,6 @@ struct BBox {
 
 BBox object_to_ws_bbox(const Object& obj, const Mesh& mesh);
 
-template<bool any_hit = false>
-ray_triangle_hit_info mesh_ray_intersection(
-    const ray& ray_ws,
-    const fmat4x4& ModelMatrix,
-    const fmat4x4& invModelMatrix,
-    const Mesh& mesh) noexcept;
-
 class IAccelerationStructure {
 public:
     virtual ~IAccelerationStructure() = default;
@@ -52,8 +45,18 @@ private:
         uint32_t meshIndex;
     };
 
+    using MeshData = std::vector<fvec3>; // tuples of 3 vertices positions that form triangles
+
     std::vector<ObjectData> object_data_;
-    const std::vector<Mesh>* mesh_data_ = nullptr;
+    std::vector<MeshData> mesh_data_;
+
+    template<bool any_hit = false>
+    static ray_triangle_hit_info mesh_ray_intersection(
+        const ray& ray_ws,
+        const fmat4x4& ModelMatrix,
+        const fmat4x4& invModelMatrix,
+        const MeshData& mesh) noexcept;
+
 };
 
 }

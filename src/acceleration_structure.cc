@@ -26,7 +26,7 @@ namespace {
         if (det < 0.0f) return { 0.0f, 0.0f, false }; // or epsilon?
 #else
       // If det is close to 0, the ray and triangle are parallel.
-        if (fabs(det) < kEpsilon) return { 0.0, 0.0, false };
+        if (fabs(det) < kEpsilon) return { 0.0f, 0.0f, false };
 #endif
         float invDet = 1.0f / det;
 
@@ -85,13 +85,23 @@ namespace app {
         return bbox;
     }
 
-    NaiveAS::NaiveAS(const Model& model) : mesh_data_(&model.meshes_)
-    {
+    NaiveAS::NaiveAS(const Model& model) {
         auto start = std::chrono::high_resolution_clock::now();
         object_data_.reserve(model.objects_.size());
+        mesh_data_.reserve(model.meshes_.size());
         for (const auto& obj : model.objects_) {
             BBox bbox = object_to_ws_bbox(obj, model.meshes_[obj.meshIndex]);
             object_data_.emplace_back(bbox, obj.ModelMatrix, transpose(obj.NormalMatrix), obj.meshIndex);
+        }
+        for (const auto& mesh : model.meshes_) {
+            std::vector<fvec3> data;
+            data.reserve(mesh.indices.size());
+            std::for_each(mesh.indices.begin(), mesh.indices.end(),
+                [&data, &mesh](std::uint32_t index) {
+                    data.push_back(mesh.vertices[index].position);
+                }
+            );
+            mesh_data_.emplace_back(std::move(data));
         }
         auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
         std::cout << "NaiveAS constructed in " << diff.count() << " ms." << '\n';
@@ -107,8 +117,8 @@ namespace app {
             if (potential_obj_hit.forward_hit()) {
                 // Perform detailed intersection test with the mesh
                 ray_triangle_hit_info potential_mesh_hit = (any_hit)? 
-                    mesh_ray_intersection<true>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_->at(obj.meshIndex)) :
-                    mesh_ray_intersection<false>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_->at(obj.meshIndex));
+                    mesh_ray_intersection<true>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_[obj.meshIndex]) :
+                    mesh_ray_intersection<false>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_[obj.meshIndex]);
                 if (potential_mesh_hit.forward_hit() && (potential_mesh_hit.distance < hit.distance)) {
                     hit = potential_mesh_hit;
                     hit.objectIndex = i;
@@ -123,11 +133,11 @@ namespace app {
     }
 
     template<bool any_hit>
-    ray_triangle_hit_info mesh_ray_intersection(
+    static ray_triangle_hit_info NaiveAS::mesh_ray_intersection(
         const ray& ray_ws,
         const fmat4x4& ModelMatrix,
         const fmat4x4& invModelMatrix,
-        const Mesh& mesh) noexcept
+        const MeshData& mesh) noexcept
     {
         // Transform ray to object space
         auto ray_origin_os = fvec3(invModelMatrix * fvec4(ray_ws.origin, 1.0f));
@@ -141,10 +151,10 @@ namespace app {
         ray_triangle_hit_info hit{};
 
         // Test all triangles
-        for (std::uint32_t tri_idx = 0; tri_idx < mesh.indices.size(); tri_idx += 3) {
-            fvec3 p1 = mesh.vertices[mesh.indices[tri_idx + 0]].position;
-            fvec3 p2 = mesh.vertices[mesh.indices[tri_idx + 1]].position;
-            fvec3 p3 = mesh.vertices[mesh.indices[tri_idx + 2]].position;
+        for (auto it = mesh.cbegin(); it != mesh.cend();) {
+            fvec3 p1 = *it++;
+            fvec3 p2 = *it++;
+            fvec3 p3 = *it++;
             barycentric_coords tri_hit = intersect_ray_triangle(os_ray, p1, p2, p3);
             if (!tri_hit.hit || tri_hit.t < 0.0f) {
                 continue; // No hit or back from origin
@@ -156,7 +166,7 @@ namespace app {
                 .hit = true,
                 .distance = 0.0f,
                 .b_coords = tri_hit,
-                .triangleIndex = tri_idx
+                .triangleIndex = static_cast<uint32_t>(std::distance(mesh.cbegin(), it) - 3)
             };
             if constexpr (any_hit) {
                 break;
