@@ -57,7 +57,7 @@ namespace app {
         max = glm::max(max, ws_point);
     }
     // Todo: optimize
-    ray_bbox_hit_info BBox::ray_box_intersection(const ray& ray) const noexcept {
+    ray_volume_hit_info BBox::ray_volume_intersection(const ray& ray) const noexcept {
         auto ray_direction_inv = 1.0f / ray.direction;
         float t_min = std::numeric_limits<float>::lowest();
         float t_max = std::numeric_limits<float>::max();
@@ -85,13 +85,61 @@ namespace app {
         return bbox;
     }
 
+    DOP::DOP() noexcept {
+        min_max.fill(fvec2{ std::numeric_limits<float>::max(), std::numeric_limits<float>::lowest() });
+    }
+
+    bool DOP::is_empty() const noexcept { 
+        return std::any_of(min_max.cbegin(), min_max.cend(), [](const auto& x) {return x.y < x.x; }); // max < min
+    }
+    void DOP::expand(const fvec3& ws_point) noexcept {
+        for (int i = 0; i < 7; ++i)
+        {
+            float projection = dot(ws_point, axises[i]);
+            auto& axis_min_max = min_max[i];
+            axis_min_max.x = std::min(axis_min_max.x, projection);
+            axis_min_max.y = std::max(axis_min_max.y, projection);
+        }
+    }
+
+    ray_volume_hit_info DOP::ray_volume_intersection(const ray& ray) const noexcept {
+        float t_min = std::numeric_limits<float>::lowest();
+        float t_max = std::numeric_limits<float>::max();
+
+        for (int i = 0; i < 7; ++i) {
+            float o_projection = dot(ray.origin, axises[i]);
+            float d_projection = dot(ray.direction, axises[i]);
+            const auto axis_min_max = min_max[i];
+            float t0 = (axis_min_max.x - o_projection) / d_projection;
+            float t1 = (axis_min_max.y - o_projection) / d_projection;
+            if (t0 > t1) std::swap(t0, t1);
+            t_min = std::max(t0, t_min);
+            t_max = std::min(t1, t_max);
+            if (t_max < t_min) return { false };
+        }
+        return { true, t_min, t_max };
+    }
+
+    DOP object_to_ws_dop(const Object& obj, const Mesh& mesh)
+    {
+        DOP dop;
+        std::for_each(mesh.vertices.begin(), mesh.vertices.end(),
+            [&dop, &obj](const vertex& vertex) {
+                // Todo: optimize
+                auto pos = fvec4(vertex.position, 1.0f);
+                dop.expand(fvec3(obj.ModelMatrix * pos));
+            }
+        );
+        return dop;
+    }
+
     NaiveAS::NaiveAS(const Model& model) {
         auto start = std::chrono::high_resolution_clock::now();
         object_data_.reserve(model.objects_.size());
         mesh_data_.reserve(model.meshes_.size());
         for (const auto& obj : model.objects_) {
-            BBox bbox = object_to_ws_bbox(obj, model.meshes_[obj.meshIndex]);
-            object_data_.emplace_back(bbox, obj.ModelMatrix, transpose(obj.NormalMatrix), obj.meshIndex);
+            DOP volume = object_to_ws_dop(obj, model.meshes_[obj.meshIndex]);
+            object_data_.emplace_back(volume, obj.ModelMatrix, transpose(obj.NormalMatrix), obj.meshIndex);
         }
         for (const auto& mesh : model.meshes_) {
             std::vector<fvec3> data;
@@ -113,7 +161,7 @@ namespace app {
         // ToDo: optimize
         for (size_t i = 0; i < object_data_.size(); ++i) {
             const auto& obj = object_data_[i];
-            ray_bbox_hit_info potential_obj_hit = obj.bbox.ray_box_intersection(ray);
+            ray_volume_hit_info potential_obj_hit = obj.volume.ray_volume_intersection(ray);
             if (potential_obj_hit.forward_hit()) {
                 // Perform detailed intersection test with the mesh
                 ray_triangle_hit_info potential_mesh_hit = (any_hit)? 

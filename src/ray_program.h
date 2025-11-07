@@ -38,7 +38,7 @@ struct barycentric_coords {
     }
 };
 
-struct ray_bbox_hit_info {
+struct ray_volume_hit_info {
     bool hit = false; // Todo: optimize layout, use infinity as no-hit indicator?
     float t0 = 0.0f; // distance along the ray
     float t1 = 0.0f; // distance along the ray
