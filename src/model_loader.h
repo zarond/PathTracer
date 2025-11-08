@@ -34,10 +34,15 @@ struct Object { // individual flat nodes with a single mesh
 
 struct Material {
     fvec4 baseColorFactor{1.0f, 1.0f, 1.0f, 1.0f};
-    //float metallicFactor = 1.0f;
-    //float roughnessFactor = 1.0f;
+    float metallicFactor = 1.0f;
+    float roughnessFactor = 1.0f;
     int baseColorTextureIndex = -1; // -1 is no texture
-    //int metallicRoughnessTextureIndex = -1;
+    int metallicRoughnessTextureIndex = -1;
+    int normalTextureIndex = -1;
+    float ior = 1.5f;
+    float transmisionFactor = 0.0f;
+    int transmissionTextureIndex = -1;
+    bool doubleSided = false;
 };
 
 struct Camera {

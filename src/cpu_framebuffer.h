@@ -59,7 +59,7 @@ class CPUTexture {
 public:
     // Idea: use mdspan
     CPUTexture() = default;
-    explicit CPUTexture(const fastgltf::Image& image); // used to load sdr texture images
+    explicit CPUTexture(const fastgltf::Image& image, const fastgltf::Asset& asset_); // used to load sdr texture images
     explicit CPUTexture(const std::filesystem::path& path); // used to load hdr environment images
     CPUTexture(pixel initial_col) : width_(1), height_(1), channels_(4), data_(1, initial_col) {}
     

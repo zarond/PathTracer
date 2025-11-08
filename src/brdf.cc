@@ -30,6 +30,20 @@ namespace app {
                             material.baseColorTextureIndex >= 0 ? &images[material.baseColorTextureIndex] : nullptr,
                             uv);
     }
+    fvec4 sample_roughness_metallic(const Material& material, const std::vector<CPUTexture<sdr_pixel>>& images, const fvec2 uv)
+    {
+        return sample_rgba(fvec4(1.0f, material.roughnessFactor, material.metallicFactor, 1.0f),
+            material.metallicRoughnessTextureIndex >= 0 ? &images[material.metallicRoughnessTextureIndex] : nullptr,
+            uv);
+    }
+    fvec4 sample_normals(const Material& material, const std::vector<CPUTexture<sdr_pixel>>& images, const fvec2 uv)
+    {
+        const CPUTexture<sdr_pixel>* texture = material.normalTextureIndex >= 0 ? &images[material.normalTextureIndex] : nullptr;
+        if (texture) {
+            return texture->sample_bilinear(uv);
+        }
+        return fvec4(0.5f, 0.5f, 1.0f, 0.0f); // w = 0.0f means no normal map
+    }
     fvec4 sample_environment(const fvec3 dir, const CPUTexture<hdr_pixel>& environment_texture)
     {
         // compared to blender envmap is rotated 180 degrees around Y (blender's Z) axis, but same as SP

@@ -14,20 +14,21 @@ namespace {
         const ray ray_os, 
         const fvec3 p1, 
         const fvec3 p2, 
-        const fvec3 p3) {
+        const fvec3 p3,
+        const bool backface_culling = true) {
 // MOLLER_TRUMBORE algorithm
         fvec3 p1p2 = p2 - p1;
         fvec3 p1p3 = p3 - p1;
         fvec3 pvec = cross(ray_os.direction, p1p3);
         float det = dot(p1p2, pvec);
-#ifdef CULLING
-        // If the determinant is negative, the triangle is back-facing.
-        // If the determinant is close to 0, the ray misses the triangle.
-        if (det < 0.0f) return { 0.0f, 0.0f, false }; // or epsilon?
-#else
-      // If det is close to 0, the ray and triangle are parallel.
-        if (fabs(det) < kEpsilon) return { 0.0f, 0.0f, false };
-#endif
+        if (backface_culling) {
+            // If the determinant is negative, the triangle is back-facing.
+            // If the determinant is close to 0, the ray misses the triangle.
+            if (det < 0.0f) return { 0.0f, 0.0f, false }; // or epsilon?
+        }
+        // If det is close to 0, the ray and triangle are parallel.
+        //if (fabs(det) < kEpsilon) return { 0.0f, 0.0f, false };
+
         float invDet = 1.0f / det;
 
         fvec3 tvec = ray_os.origin - p1;
@@ -149,7 +150,8 @@ namespace app {
                     data.push_back(mesh.vertices[index].position);
                 }
             );
-            mesh_data_.emplace_back(std::move(data));
+            bool doubleSided = model.materials_[mesh.materialIndex].doubleSided;
+            mesh_data_.emplace_back(std::move(data), doubleSided);
         }
         auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
         std::cout << "NaiveAS constructed in " << diff.count() << " ms." << '\n';
@@ -199,11 +201,11 @@ namespace app {
         ray_triangle_hit_info hit{};
 
         // Test all triangles
-        for (auto it = mesh.cbegin(); it != mesh.cend();) {
+        for (auto it = mesh.vertices.cbegin(); it != mesh.vertices.cend();) {
             fvec3 p1 = *it++;
             fvec3 p2 = *it++;
             fvec3 p3 = *it++;
-            barycentric_coords tri_hit = intersect_ray_triangle(os_ray, p1, p2, p3);
+            barycentric_coords tri_hit = intersect_ray_triangle(os_ray, p1, p2, p3, !mesh.doubleSided);
             if (!tri_hit.hit || tri_hit.t < 0.0f) {
                 continue; // No hit or back from origin
             }
@@ -214,7 +216,7 @@ namespace app {
                 .hit = true,
                 .distance = 0.0f,
                 .b_coords = tri_hit,
-                .triangleIndex = static_cast<uint32_t>(std::distance(mesh.cbegin(), it) - 3)
+                .triangleIndex = static_cast<uint32_t>(std::distance(mesh.vertices.cbegin(), it) - 3)
             };
             if constexpr (any_hit) {
                 break;

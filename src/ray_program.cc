@@ -69,6 +69,11 @@ namespace {
         auto b = normalize(bitangent - n * dot(n, bitangent) - t * dot(t, bitangent));
         return fmat3x3( t, b, n );
     }
+    inline fvec3 normal_map_sample_to_world(const fvec3& normal_map_sample, const fmat3x3& TBN) {
+        fvec3 n_ts = glm::fma(normal_map_sample, fvec3(2.0f) , fvec3(-1.0f));
+        n_ts.y *= -1.0f; // flip Y
+        return TBN * n_ts;
+    }
 }
 
 namespace app {
@@ -114,6 +119,13 @@ namespace app {
         auto bitangent = cross(point.normal, fvec3(point.tangent)) * point.tangent.w;
 
         fmat3x3 TBN = construct_TBN(fvec3(point.tangent), bitangent, point.normal);
+
+        auto mat_index = mesh_data.materialIndex;
+        auto normal_map_color = sample_normals(modelRef.materials_[mat_index], modelRef.images_, point.uv);
+        if (normal_map_color.w != 0.0f) {
+            fvec3 normal_vector = normal_map_sample_to_world(normal_map_color, TBN);
+            TBN = construct_TBN(TBN[0], TBN[1], normal_vector); // re-construct TBN with normal from normal map
+        }
         
         auto ws_pos = ray_.origin + ray_.direction * hit.distance;
 

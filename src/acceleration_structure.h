@@ -70,7 +70,10 @@ private:
         uint32_t meshIndex;
     };
 
-    using MeshData = std::vector<fvec3>; // tuples of 3 vertices positions that form triangles
+    struct MeshData {
+        std::vector<fvec3> vertices; // tuples of 3 vertices positions that form triangles
+        bool doubleSided = false;
+    };
 
     std::vector<ObjectData> object_data_;
     std::vector<MeshData> mesh_data_;

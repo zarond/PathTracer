@@ -34,7 +34,7 @@ using namespace glm;
 // CPUTexture
 
 template<>
-CPUTexture<sdr_pixel>::CPUTexture(const fastgltf::Image& image)
+CPUTexture<sdr_pixel>::CPUTexture(const fastgltf::Image& image, const fastgltf::Asset& asset_)
 {
     std::visit(fastgltf::visitor{
         [](const auto& arg) {},
@@ -53,7 +53,16 @@ CPUTexture<sdr_pixel>::CPUTexture(const fastgltf::Image& image)
             stbi_image_free(data);
         },
         [&](const fastgltf::sources::BufferView& view) {
-            // ToDo: Implement loading from buffer view if needed.
+            const auto& bufferView = asset_.bufferViews[view.bufferViewIndex];
+            const auto& buffer = asset_.buffers[bufferView.bufferIndex];
+            std::visit(fastgltf::visitor{
+                [&](const fastgltf::sources::Array& vector) {
+                    unsigned char* data = stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(vector.bytes.data() + bufferView.byteOffset), static_cast<int>(bufferView.byteLength), &width_, &height_, &channels_, 4);
+                    data_ = from_raw_data(data, width_, height_, channels_);
+                    stbi_image_free(data);
+                },
+                [](const auto& arg) {}
+                }, buffer.data);
         },
         }, 
     image.data);

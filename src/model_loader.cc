@@ -61,21 +61,45 @@ Model ModelLoader::constructModel() const
 	model.images_.reserve(asset_.images.size());
 
 	for (const auto& image : asset_.images) {
-		model.images_.emplace_back(image);
+		model.images_.emplace_back(image, asset_);
 	}
 
 	TangentSpaceHelper tangent_space_helper;
 
 	for (const auto& material : asset_.materials) {
 		int baseColor_imageIndex = -1;
+		int metallicRoughness_imageIndex = -1;
+		int normal_imageIndex = -1;
+        int transmission_imageIndex = -1;
 		if (material.pbrData.baseColorTexture.has_value()) {
             auto textureIndex = material.pbrData.baseColorTexture->textureIndex;
             baseColor_imageIndex = asset_.textures[textureIndex].imageIndex.value_or(0); // narrows size_t to int, but imageIndex should be small enough not to overflow
 		}
-		model.materials_.emplace_back(
-			std::bit_cast<fvec4>(material.pbrData.baseColorFactor),
-			baseColor_imageIndex
-        );
+		if (material.pbrData.metallicRoughnessTexture.has_value()) {
+			auto textureIndex = material.pbrData.metallicRoughnessTexture->textureIndex;
+			metallicRoughness_imageIndex = asset_.textures[textureIndex].imageIndex.value_or(0);
+		}
+		if (material.normalTexture.has_value()) {
+			auto textureIndex = material.normalTexture->textureIndex;
+			normal_imageIndex = asset_.textures[textureIndex].imageIndex.value_or(0);
+		}
+		if (material.transmission) {
+			auto textureIndex = material.transmission->transmissionTexture->textureIndex;
+			transmission_imageIndex = asset_.textures[textureIndex].imageIndex.value_or(0);
+		}
+		Material mat{
+			.baseColorFactor = std::bit_cast<fvec4>(material.pbrData.baseColorFactor),
+			.metallicFactor = material.pbrData.metallicFactor,
+			.roughnessFactor = material.pbrData.roughnessFactor,
+			.baseColorTextureIndex = baseColor_imageIndex,
+			.metallicRoughnessTextureIndex = metallicRoughness_imageIndex,
+			.normalTextureIndex = normal_imageIndex,
+			.ior = material.ior,
+			.transmisionFactor = material.transmission ? material.transmission->transmissionFactor : 0.0f,
+			.transmissionTextureIndex = transmission_imageIndex,
+            .doubleSided = material.doubleSided
+		};
+		model.materials_.push_back(mat);
 	}
 	model.materials_.emplace_back(); // default material at last index
 
