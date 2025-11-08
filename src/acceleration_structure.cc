@@ -1,4 +1,6 @@
 #include <iostream>
+#include <queue>
+#include <algorithm>
 
 #include "acceleration_structure.h"
 
@@ -23,8 +25,7 @@ namespace {
         float det = dot(p1p2, pvec);
         if (backface_culling) {
             // If the determinant is negative, the triangle is back-facing.
-            // If the determinant is close to 0, the ray misses the triangle.
-            if (det < 0.0f) return { 0.0f, 0.0f, false }; // or epsilon?
+            if (det <= 0.0f) return { 0.0f, 0.0f, false }; // or epsilon?
         }
         // If det is close to 0, the ray and triangle are parallel.
         //if (fabs(det) < kEpsilon) return { 0.0f, 0.0f, false };
@@ -138,10 +139,25 @@ namespace app {
         auto start = std::chrono::high_resolution_clock::now();
         object_data_.reserve(model.objects_.size());
         mesh_data_.reserve(model.meshes_.size());
-        for (const auto& obj : model.objects_) {
-            DOP volume = object_to_ws_dop(obj, model.meshes_[obj.meshIndex]);
-            object_data_.emplace_back(volume, obj.ModelMatrix, transpose(obj.NormalMatrix), obj.meshIndex);
+        for (uint32_t i = 0; i < model.objects_.size(); ++i) {
+            const auto& obj = model.objects_[i];
+            const auto& mesh = model.meshes_[obj.meshIndex];
+            DOP volume = object_to_ws_dop(obj, mesh);
+            object_data_.emplace_back(
+                volume, 
+                obj.ModelMatrix, 
+                transpose(obj.NormalMatrix), 
+                i,
+                obj.meshIndex,
+                mesh.indices.size()
+            );
         }
+        // sort by complexity (number of triangles) to try easier objects first (starting from the back of array) in case of any_hit
+        const auto complexity_cmp = [](const ObjectData& obj_a, const ObjectData& obj_b) {;
+            return obj_a.complexity > obj_b.complexity; // more complex first
+            };
+        std::sort(object_data_.begin(), object_data_.end(), complexity_cmp);
+
         for (const auto& mesh : model.meshes_) {
             std::vector<fvec3> data;
             data.reserve(mesh.indices.size());
@@ -157,27 +173,51 @@ namespace app {
         std::cout << "NaiveAS constructed in " << diff.count() << " ms." << '\n';
     }
 
+    struct volume_hit_and_obj_index {
+        ray_volume_hit_info hit_info;
+        uint32_t object_index;
+        bool operator < (const volume_hit_and_obj_index& other) const noexcept { // for min-heap
+            return hit_info.forward_hit_distance() > other.hit_info.forward_hit_distance();
+        }
+    };
+
     ray_triangle_hit_info NaiveAS::intersect_ray(const ray& ray, bool any_hit) const
     {
         ray_triangle_hit_info hit{};
-        // ToDo: optimize
-        for (size_t i = 0; i < object_data_.size(); ++i) {
+
+        std::vector<volume_hit_and_obj_index> volume_intersections;
+        volume_intersections.reserve(object_data_.size());
+        
+        for (uint32_t i = 0; i < object_data_.size(); ++i) {
             const auto& obj = object_data_[i];
             ray_volume_hit_info potential_obj_hit = obj.volume.ray_volume_intersection(ray);
-            if (potential_obj_hit.forward_hit()) {
+            volume_intersections.emplace_back(potential_obj_hit, i);
+        }
+        if (!any_hit) {
+            // if closest_hit, make a min-heap to efficiently get closest volume hit
+            std::make_heap(volume_intersections.begin(), volume_intersections.end());
+        }
+        while (!volume_intersections.empty()) {
+            const auto& potential_obj_hit = (!any_hit) ? volume_intersections[0] : volume_intersections.back(); // heap top
+            if (potential_obj_hit.hit_info.forward_hit() && potential_obj_hit.hit_info.forward_hit_distance() < hit.distance) {
                 // Perform detailed intersection test with the mesh
+                const auto& obj = object_data_[potential_obj_hit.object_index];
                 ray_triangle_hit_info potential_mesh_hit = (any_hit)? 
                     mesh_ray_intersection<true>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_[obj.meshIndex]) :
                     mesh_ray_intersection<false>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_[obj.meshIndex]);
                 if (potential_mesh_hit.forward_hit() && (potential_mesh_hit.distance < hit.distance)) {
                     hit = potential_mesh_hit;
-                    hit.objectIndex = i;
+                    hit.objectIndex = obj.objectIndex;
                     hit.meshIndex = obj.meshIndex;
                     if (any_hit) {
                         break;
                     }
                 }
             }
+            if (!any_hit) {
+                std::pop_heap(volume_intersections.begin(), volume_intersections.end());
+            }
+            volume_intersections.pop_back();
         }
         return hit;
     }

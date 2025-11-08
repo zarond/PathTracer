@@ -46,7 +46,7 @@ struct ray_volume_hit_info {
         return hit && (t1 > 0.0f);
     }
     constexpr float forward_hit_distance() const noexcept {
-        return forward_hit() ? (t0 > 0.0f ? t0 : t1) : std::numeric_limits<float>::infinity();
+        return forward_hit() ? (t0 > 0.0f ? t0 : 0.0f) : std::numeric_limits<float>::infinity();
     }
 };
 

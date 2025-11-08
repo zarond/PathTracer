@@ -67,7 +67,9 @@ private:
         DOP volume;
         fmat4x4 ModelMatrix;
         fmat4x4 invModelMatrix;
+        uint32_t objectIndex;
         uint32_t meshIndex;
+        uint32_t complexity;
     };
 
     struct MeshData {
