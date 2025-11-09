@@ -20,6 +20,14 @@ namespace{
         }
         return colorFactor;
     }
+    float sample_r(float Factor, const CPUTexture<sdr_pixel>* texture, const fvec2 uv)
+    {
+        if (texture) {
+            auto sampled_col = texture->sample_bilinear(uv);
+            Factor *= sampled_col.x;
+        }
+        return Factor;
+    }
 
 }
 
@@ -43,6 +51,16 @@ namespace app {
             return texture->sample_bilinear(uv);
         }
         return fvec4(0.5f, 0.5f, 1.0f, 0.0f); // w = 0.0f means no normal map
+    }
+    fvec4 sample_emissive(const Material& material, const std::vector<CPUTexture<sdr_pixel>>& images, const fvec2 uv) {
+        return sample_srgba(fvec4(material.emissiveFactor, 1.0f),
+            material.emissiveTextureIndex >= 0 ? &images[material.emissiveTextureIndex] : nullptr,
+            uv) * material.emissiveStrength;
+    }
+    float sample_transmission(const Material& material, const std::vector<CPUTexture<sdr_pixel>>& images, const fvec2 uv) {
+        return sample_r(material.transmisionFactor,
+            material.transmissionTextureIndex >= 0 ? &images[material.transmissionTextureIndex] : nullptr,
+            uv);
     }
     fvec4 sample_environment(const fvec3 dir, const CPUTexture<hdr_pixel>& environment_texture)
     {

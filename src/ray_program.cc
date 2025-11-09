@@ -35,7 +35,7 @@ namespace {
     inline const Mesh& get_mesh_data(const Model& modelref, const ray_triangle_hit_info& hit) {
         return modelref.meshes_[hit.meshIndex];
     }
-    inline std::tuple<const vertex&, const vertex&, const vertex&> get_vertex_data(const Mesh& mesh_data, const ray_triangle_hit_info& hit) {
+    inline std::tuple<vertex, vertex, vertex> get_vertex_data(const Mesh& mesh_data, const ray_triangle_hit_info& hit) {
         auto p1 = mesh_data.indices[hit.triangleIndex];
         auto p2 = mesh_data.indices[hit.triangleIndex + 1];
         auto p3 = mesh_data.indices[hit.triangleIndex + 2];
@@ -93,6 +93,7 @@ namespace app {
         auto albedo_color = sample_albedo(modelRef.materials_[mat_index], modelRef.images_, uv);
         return albedo_color;
     }
+    // RayCasterProgram
 
     AOProgram::AOProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const unsigned int ao_samples)
         : modelRef(model), envmapRef(env), aoSamples(ao_samples) {
@@ -129,7 +130,7 @@ namespace app {
         
         auto ws_pos = ray_.origin + ray_.direction * hit.distance;
 
-        auto new_depth = ray_.depth - 1;
+        std::uint8_t new_depth = ray_.depth - 1;
 
         auto jitter_value_x = dist(gen);
         auto jitter_value_y = dist(gen);
@@ -148,4 +149,67 @@ namespace app {
         
         return fvec4(0.0f);
     }
+    // AOProgram
+    
+    PBRProgram::PBRProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const unsigned int max_new_rays_)
+        : modelRef(model), envmapRef(env), max_new_rays(max_new_rays_) {
+    }
+
+    std::minstd_rand thread_local PBRProgram::gen = std::minstd_rand(std::random_device{}());
+    std::uniform_real_distribution<float> thread_local PBRProgram::dist = std::uniform_real_distribution<float>(0.0f, 1.0f);
+
+    fvec4 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_info& hit, std::vector<ray_with_payload>& ray_collection) const
+    {
+        // Todo: implement full path tracer
+        if (hit.forward_hit() == false) { // on miss
+            return ray_.payload * sample_environment(ray_.direction, envmapRef);
+        }
+        const auto& mesh_data = get_mesh_data(modelRef, hit);
+        const auto& [p1, p2, p3] = get_vertex_data(mesh_data, hit);
+        auto point = interpolate_vertex_data(p1, p2, p3, hit);
+
+        auto tangent_sign = point.tangent.w;
+        point.tangent = fvec4(fmat3(modelRef.objects_[hit.objectIndex].ModelMatrix) * fvec3(point.tangent), tangent_sign);
+        point.normal = fvec3(fmat3(modelRef.objects_[hit.objectIndex].NormalMatrix) * point.normal);
+        auto bitangent = cross(point.normal, fvec3(point.tangent)) * point.tangent.w;
+
+        fmat3x3 TBN = construct_TBN(fvec3(point.tangent), bitangent, point.normal);
+
+        auto mat_index = mesh_data.materialIndex;
+        auto normal_map_color = sample_normals(modelRef.materials_[mat_index], modelRef.images_, point.uv);
+        if (normal_map_color.w != 0.0f) {
+            fvec3 normal_vector = normal_map_sample_to_world(normal_map_color, TBN);
+            TBN = construct_TBN(TBN[0], TBN[1], normal_vector); // re-construct TBN with normal from normal map
+        }
+
+        auto emissive = sample_emissive(modelRef.materials_[mat_index], modelRef.images_, point.uv);
+        if (ray_.depth == 0) {
+            //return fvec4(0.0f);
+            return ray_.payload * emissive;
+        }
+        auto albedo_color = sample_albedo(modelRef.materials_[mat_index], modelRef.images_, point.uv);
+
+        auto ws_pos = ray_.origin + ray_.direction * hit.distance;
+
+        std::uint8_t new_depth = ray_.depth - 1;
+
+        auto jitter_value_x = dist(gen);
+        auto jitter_value_y = dist(gen);
+        for (int i = 0; i < max_new_rays; ++i) {
+            fvec2 rand = fibonacci2D(i, max_new_rays);
+            rand.x = std::fmod(rand.x + jitter_value_x, 1.0f); // jitter
+            rand.y = std::fmod(rand.y + jitter_value_y, 1.0f); // jitter
+            auto new_direction = ImportanceSampleCosDir(rand);
+            assert(new_direction.z > 0.0f);
+            assert(abs(length(new_direction) - 1.0f) < 1e-5f);
+            new_direction = normalize(Tangent2World(new_direction, TBN));
+            assert(abs(length(new_direction) - 1.0f) < 1e-5f);
+            auto new_pos = ws_pos + point.normal * 1e-5f; // offset to avoid self-intersection
+            ray_with_payload new_ray{ new_pos, new_direction, albedo_color * ray_.payload * fvec4(1.0f / max_new_rays), new_depth, false };
+            ray_collection.push_back(new_ray);
+        }
+
+        return ray_.payload * emissive;
+    }
+    
 }

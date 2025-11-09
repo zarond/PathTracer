@@ -13,6 +13,7 @@ namespace app {
 enum class RayProgramMode {
     RayCaster,
     AmbientOcclusion,
+    PBR,
 
     kNum
 };

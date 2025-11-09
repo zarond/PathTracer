@@ -92,4 +92,18 @@ private:
     static thread_local std::uniform_real_distribution<float> dist;
 };
 
+class PBRProgram : public IRayProgram {
+public:
+    PBRProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const unsigned int max_new_rays);
+
+    virtual fvec4 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const override;
+private:
+    const Model& modelRef;
+    const CPUTexture<hdr_pixel>& envmapRef;
+    const unsigned int max_new_rays;
+
+    static thread_local std::minstd_rand gen;
+    static thread_local std::uniform_real_distribution<float> dist;
+};
+
 }

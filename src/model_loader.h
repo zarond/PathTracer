@@ -42,6 +42,9 @@ struct Material {
     float ior = 1.5f;
     float transmisionFactor = 0.0f;
     int transmissionTextureIndex = -1;
+    fvec3 emissiveFactor{ 0.0f, 0.0f, 0.0f};
+    int emissiveTextureIndex = -1;
+    float emissiveStrength = 1.0f;
     bool doubleSided = false;
 };
 

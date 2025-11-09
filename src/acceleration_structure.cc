@@ -213,6 +213,8 @@ namespace app {
                         break;
                     }
                 }
+            } else if (!any_hit) {
+                break;
             }
             if (!any_hit) {
                 std::pop_heap(volume_intersections.begin(), volume_intersections.end());

@@ -40,7 +40,7 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         .default_value("");
 
     program.add_argument("-p", "--program")
-        .help("choose program mode:\n 1: RayCaster\n 2: AmbientOcclusion")
+        .help("choose program mode:\n 1: RayCaster\n 2: AmbientOcclusion\n 3: PBR")
         .scan<'i', int>()
         .required()
         .nargs(1)

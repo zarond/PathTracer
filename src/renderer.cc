@@ -55,6 +55,9 @@ void Renderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& envma
         case RayProgramMode::AmbientOcclusion:
             rayProgram = std::make_unique<AOProgram>(model, envmap, renderSettings_.maxNewRaysPerBounce);
             break;
+        case RayProgramMode::PBR:
+            rayProgram = std::make_unique<PBRProgram>(model, envmap, renderSettings_.maxNewRaysPerBounce);
+            break;
         case RayProgramMode::RayCaster:
         default:
             rayProgram = std::make_unique<RayCasterProgram>(model, envmap);
@@ -96,17 +99,18 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer)
 
             for (int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
                 std::vector<ray_with_payload> rays;
-                rays.reserve(1 + renderSettings_.maxRayBounces + renderSettings_.maxNewRaysPerBounce);
+                size_t reserved_size = 1 + renderSettings_.maxNewRaysPerBounce * renderSettings_.maxRayBounces;
+                rays.reserve(reserved_size);
                 fvec4 sample_col{};
 
                 rays.push_back(generate_camera_ray(x, y, width, height, i));
                 while (rays.size() > 0) { // Todo: limit number of iterations
+                    assert(rays.size() <= reserved_size);
                     auto ray = rays.back();
                     rays.pop_back();
                     auto hit = accelStruct->intersect_ray(ray, ray.any_hit);
                     sample_col += rayProgram->on_hit(ray, hit, rays);
                 }
-
                 final_color.add_sample(fvec3(sample_col));
             }
             framebuffer.at(x, y) = hdr_pixel{ final_color.get_mean(), 1.0f };

@@ -21,4 +21,8 @@ fvec4 sample_roughness_metallic(const Material& material, const std::vector<CPUT
 
 fvec4 sample_normals(const Material& material, const std::vector<CPUTexture<sdr_pixel>>& images, const fvec2 uv);
 
+fvec4 sample_emissive(const Material& material, const std::vector<CPUTexture<sdr_pixel>>& images, const fvec2 uv);
+
+float sample_transmission(const Material& material, const std::vector<CPUTexture<sdr_pixel>>& images, const fvec2 uv);
+
 }

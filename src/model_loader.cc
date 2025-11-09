@@ -71,6 +71,7 @@ Model ModelLoader::constructModel() const
 		int metallicRoughness_imageIndex = -1;
 		int normal_imageIndex = -1;
         int transmission_imageIndex = -1;
+        int emissive_imageIndex = -1;
 		if (material.pbrData.baseColorTexture.has_value()) {
             auto textureIndex = material.pbrData.baseColorTexture->textureIndex;
             baseColor_imageIndex = asset_.textures[textureIndex].imageIndex.value_or(0); // narrows size_t to int, but imageIndex should be small enough not to overflow
@@ -87,6 +88,10 @@ Model ModelLoader::constructModel() const
 			auto textureIndex = material.transmission->transmissionTexture->textureIndex;
 			transmission_imageIndex = asset_.textures[textureIndex].imageIndex.value_or(0);
 		}
+		if (material.emissiveTexture.has_value()) {
+			auto textureIndex = material.emissiveTexture->textureIndex;
+			emissive_imageIndex = asset_.textures[textureIndex].imageIndex.value_or(0);
+        }
 		Material mat{
 			.baseColorFactor = std::bit_cast<fvec4>(material.pbrData.baseColorFactor),
 			.metallicFactor = material.pbrData.metallicFactor,
@@ -97,6 +102,9 @@ Model ModelLoader::constructModel() const
 			.ior = material.ior,
 			.transmisionFactor = material.transmission ? material.transmission->transmissionFactor : 0.0f,
 			.transmissionTextureIndex = transmission_imageIndex,
+			.emissiveFactor = fvec3{material.emissiveFactor.x(), material.emissiveFactor.y(), material.emissiveFactor.z()},
+			.emissiveTextureIndex = emissive_imageIndex,
+			.emissiveStrength = material.emissiveStrength,
             .doubleSided = material.doubleSided
 		};
 		model.materials_.push_back(mat);
