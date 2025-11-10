@@ -24,10 +24,16 @@ enum class AccelerationStructureType {
     kNum
 };
 
+enum class DefaultEnvironment {
+    Black,
+    White
+};
+
 struct ConsoleArgs {
     fs::path modelPath;
     fs::path environmentPath;
     bool useDefaultEnv = false;
+    DefaultEnvironment defaultEnv = DefaultEnvironment::White;
 
     RayProgramMode programMode = RayProgramMode::RayCaster;
     AccelerationStructureType accelStructType = AccelerationStructureType::Naive;

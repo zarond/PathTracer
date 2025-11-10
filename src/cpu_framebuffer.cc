@@ -88,7 +88,7 @@ static CPUTexture<sdr_pixel> CPUTexture<sdr_pixel>::create_black_texture() { ret
 template<>
 static CPUTexture<hdr_pixel> CPUTexture<hdr_pixel>::create_white_texture() { return CPUTexture(hdr_pixel{ 1.0f }); }
 template<>
-static CPUTexture<hdr_pixel> CPUTexture<hdr_pixel>::create_black_texture() { return CPUTexture(hdr_pixel{ 1.0f }); }
+static CPUTexture<hdr_pixel> CPUTexture<hdr_pixel>::create_black_texture() { return CPUTexture(hdr_pixel{ 0.0f }); }
 
 
 // CPUFrameBuffer

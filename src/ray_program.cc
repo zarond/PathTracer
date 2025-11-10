@@ -6,6 +6,7 @@ namespace {
     using namespace app;
 
     constexpr float GOLDEN_RATIO = 1.618034f;
+    constexpr float kEpsilon = 1e-5f;
     
     float fibonacci1D(int i)
     {
@@ -28,6 +29,42 @@ namespace {
         float sin_phi = sin(phi);
 
         return fvec3(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta);
+    }
+    fvec3 importanceSampleGGX(fvec2 xi, float roughness)
+    {
+        float a = roughness * roughness;
+        float cos_theta2 = (1.0f - xi.x) / (1.0f + (a * a - 1.0f) * xi.x);
+        float cos_theta = sqrt(cos_theta2);
+        float sin_theta = sqrt(1.0f - cos_theta2);
+        float phi = 2.0f * xi.y * pi<float>();
+
+        float cos_phi = cos(phi);
+        float sin_phi = sin(phi);
+        return fvec3(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta);
+    }
+    fvec3 fresnel_schlick(fvec3 f0, fvec3 f90, float cos_nv) {
+        float x = 1.0f - cos_nv;
+        float x2 = x * x;
+        float x5 = x2 * x2 * x;
+        return mix(f0, f90, x5);
+    }
+    float V_SmithGGXCorrelated(float NoV, float NoL, float a) {
+        // Original formulation of G_SmithGGX Correlated
+        // lambda_v = (-1 + sqrt ( alphaG2 * (1 - NdotL2 ) / NdotL2 + 1)) * 0.5 f;
+        // lambda_l = (-1 + sqrt ( alphaG2 * (1 - NdotV2 ) / NdotV2 + 1)) * 0.5 f;
+        // G_SmithGGXCorrelated = 1 / (1 + lambda_v + lambda_l );
+        // V_SmithGGXCorrelated = G_SmithGGXCorrelated / (4.0 f * NdotL * NdotV );
+        // This is the optimized version
+        float a2 = a * a;
+        float GGXV = NoL * sqrt((-NoV * a2 + NoV) * NoV + a2);
+        float GGXL = NoV * sqrt((-NoL * a2 + NoL) * NoL + a2);
+        return 0.5f / (GGXV + GGXL);
+    }
+    float pow2(float v) {
+        return v * v;
+    }
+    float f0_dielectric(float ior) {
+        return pow2((ior - 1.0f) / (ior + 1.0f));
     }
     fvec3 Tangent2World(fvec3 v, fvec3 T, fvec3 B, fvec3 N) { return T * v.x + B * v.y + N * v.z; }
     fvec3 Tangent2World(fvec3 v, const fmat3x3& TBN) { return TBN * v; }
@@ -176,18 +213,29 @@ namespace app {
         fmat3x3 TBN = construct_TBN(fvec3(point.tangent), bitangent, point.normal);
 
         auto mat_index = mesh_data.materialIndex;
-        auto normal_map_color = sample_normals(modelRef.materials_[mat_index], modelRef.images_, point.uv);
+        const auto& material = modelRef.materials_[mat_index];
+        auto normal_map_color = sample_normals(material, modelRef.images_, point.uv);
         if (normal_map_color.w != 0.0f) {
             fvec3 normal_vector = normal_map_sample_to_world(normal_map_color, TBN);
             TBN = construct_TBN(TBN[0], TBN[1], normal_vector); // re-construct TBN with normal from normal map
         }
 
-        auto emissive = sample_emissive(modelRef.materials_[mat_index], modelRef.images_, point.uv);
+        auto emissive = sample_emissive(material, modelRef.images_, point.uv);
         if (ray_.depth == 0) {
-            //return fvec4(0.0f);
             return ray_.payload * emissive;
         }
-        auto albedo_color = sample_albedo(modelRef.materials_[mat_index], modelRef.images_, point.uv);
+        auto albedo_color = sample_albedo(material, modelRef.images_, point.uv);
+        auto ORM = sample_roughness_metallic(material, modelRef.images_, point.uv);
+        auto diffuse_color = (1.0f - ORM.z) * albedo_color;
+        //float f0_diel = f0_dielectric(material.ior);
+        const float f0_diel = 0.04f;
+        auto f0 = mix(fvec3(f0_diel), fvec3(albedo_color), ORM.z);
+        const auto f90 = fvec3(1.0f);
+        const auto roughness = ORM.y;
+
+        const bool no_diffuse = (diffuse_color.r < 1e-5f) && (diffuse_color.g < 1e-5f) && (diffuse_color.b < 1e-5f);
+        const unsigned int diffuse_rays_n = (!no_diffuse) ? 1 + max_new_rays / 2 : 0;
+        const unsigned int specular_rays_n = 1 + max_new_rays - diffuse_rays_n;
 
         auto ws_pos = ray_.origin + ray_.direction * hit.distance;
 
@@ -195,17 +243,52 @@ namespace app {
 
         auto jitter_value_x = dist(gen);
         auto jitter_value_y = dist(gen);
-        for (int i = 0; i < max_new_rays; ++i) {
-            fvec2 rand = fibonacci2D(i, max_new_rays);
+        for (int i = 0; i < diffuse_rays_n; ++i) {
+            fvec2 rand = fibonacci2D(i, diffuse_rays_n);
             rand.x = std::fmod(rand.x + jitter_value_x, 1.0f); // jitter
             rand.y = std::fmod(rand.y + jitter_value_y, 1.0f); // jitter
-            auto new_direction = ImportanceSampleCosDir(rand);
-            assert(new_direction.z > 0.0f);
-            assert(abs(length(new_direction) - 1.0f) < 1e-5f);
-            new_direction = normalize(Tangent2World(new_direction, TBN));
-            assert(abs(length(new_direction) - 1.0f) < 1e-5f);
+            auto l = ImportanceSampleCosDir(rand);
+            
+            const auto v = -ray_.direction;
+            const auto h = normalize(v + l);
+            float LdH = dot(l, h);
+
+            assert(l.z > 0.0f);
+            assert(abs(length(l) - 1.0f) < 1e-5f);
+            l = normalize(Tangent2World(l, TBN));
+            assert(abs(length(l) - 1.0f) < 1e-5f);
             auto new_pos = ws_pos + point.normal * 1e-5f; // offset to avoid self-intersection
-            ray_with_payload new_ray{ new_pos, new_direction, albedo_color * ray_.payload * fvec4(1.0f / max_new_rays), new_depth, false };
+            
+            auto F = fvec3(1.0f) - fresnel_schlick(f0, f90, LdH);
+            ray_with_payload new_ray{ new_pos, l, fvec4(F, 1.0f) * diffuse_color * ray_.payload * fvec4(1.0f / diffuse_rays_n), new_depth, false };
+            ray_collection.push_back(new_ray);
+        }
+        const auto N = TBN[2];
+        for (int i = 0; i < specular_rays_n; ++i) {
+            fvec2 rand = fibonacci2D(i, specular_rays_n);
+            rand.x = std::fmod(rand.x + jitter_value_x, 1.0f); // jitter
+            rand.y = std::fmod(rand.y + jitter_value_y, 1.0f); // jitter
+            auto d_N = importanceSampleGGX(rand, roughness);
+            assert(d_N.z > 0.0f);
+            assert(abs(length(d_N) - 1.0f) < 1e-5f);
+            d_N = normalize(Tangent2World(d_N, TBN));
+            assert(abs(length(d_N) - 1.0f) < 1e-5f);
+
+            const auto v = -ray_.direction;
+            const auto l = reflect( -v, d_N);
+            const auto h = normalize(v + l);
+            float LdH = clamp(dot(l, h), kEpsilon, 1.0f);
+            float LdN = clamp(dot(N, l), kEpsilon, 1.0f);
+            float VdN = clamp(dot(N, v), kEpsilon, 1.0f);
+            float VdH = clamp(dot(v, h), kEpsilon, 1.0f);
+            float NdH = clamp(dot(N, h), kEpsilon, 1.0f);
+
+            auto new_pos = ws_pos + point.normal * 1e-5f; // offset to avoid self-intersection
+            auto F = fresnel_schlick(f0, f90, LdH);
+            auto G = V_SmithGGXCorrelated(VdN, LdN, roughness);
+            //auto brdf = fvec4(F * VdH / (VdN * NdH), 1.0f); // simplified version without G
+            auto brdf = fvec4(F * (4.0f * G * LdN * VdH / NdH), 1.0f);
+            ray_with_payload new_ray{ new_pos, l, brdf * ray_.payload * fvec4(1.0f / specular_rays_n), new_depth, false };
             ray_collection.push_back(new_ray);
         }
 

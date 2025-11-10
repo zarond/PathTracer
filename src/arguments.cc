@@ -34,10 +34,10 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         .default_value("");
 
     program.add_argument("-e", "--env")
-        .help("HDRI environment map file location.")
+        .help("HDRI environment map file location. Or use \"black\" or \"white\"")
         .required()
         .nargs(1)
-        .default_value("");
+        .default_value("white");
 
     program.add_argument("-p", "--program")
         .help("choose program mode:\n 1: RayCaster\n 2: AmbientOcclusion\n 3: PBR")
@@ -120,7 +120,11 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         std::cout << no_arguments_message << std::endl;
         args.exitImmediately = true;
     }
-    if (args.environmentPath == "") args.useDefaultEnv = true;
+    if (args.environmentPath == "" || args.environmentPath == "black" || args.environmentPath == "white") {
+        args.useDefaultEnv = true;
+        if (args.environmentPath == "black") args.defaultEnv = DefaultEnvironment::Black;
+        else if (args.environmentPath == "white") args.defaultEnv = DefaultEnvironment::White;
+    }
 
     return args;
 }
