@@ -80,6 +80,16 @@ private:
     std::vector<ObjectData> object_data_;
     std::vector<MeshData> mesh_data_;
 
+    struct volume_hit_and_obj_index {
+        ray_volume_hit_info hit_info;
+        uint32_t object_index;
+        bool operator < (const volume_hit_and_obj_index& other) const noexcept { // for min-heap
+            return hit_info.forward_hit_distance() > other.hit_info.forward_hit_distance();
+        }
+    };
+
+    static thread_local std::vector<volume_hit_and_obj_index> volume_intersections;
+
     template<bool any_hit = false>
     static ray_triangle_hit_info mesh_ray_intersection(
         const ray& ray_ws,

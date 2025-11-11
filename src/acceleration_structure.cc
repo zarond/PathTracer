@@ -170,23 +170,17 @@ namespace app {
             mesh_data_.emplace_back(std::move(data), doubleSided);
         }
         auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+        volume_intersections.reserve(object_data_.size());
         std::cout << "NaiveAS constructed in " << diff.count() << " ms." << '\n';
     }
 
-    struct volume_hit_and_obj_index {
-        ray_volume_hit_info hit_info;
-        uint32_t object_index;
-        bool operator < (const volume_hit_and_obj_index& other) const noexcept { // for min-heap
-            return hit_info.forward_hit_distance() > other.hit_info.forward_hit_distance();
-        }
-    };
+    std::vector<NaiveAS::volume_hit_and_obj_index> thread_local NaiveAS::volume_intersections;
 
     ray_triangle_hit_info NaiveAS::intersect_ray(const ray& ray, bool any_hit) const
     {
         ray_triangle_hit_info hit{};
 
-        std::vector<volume_hit_and_obj_index> volume_intersections;
-        volume_intersections.reserve(object_data_.size());
+        volume_intersections.clear();
         
         for (uint32_t i = 0; i < object_data_.size(); ++i) {
             const auto& obj = object_data_[i];

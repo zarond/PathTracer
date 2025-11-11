@@ -92,15 +92,17 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer)
     int height = framebuffer.height();
     auto indices = std::views::iota(0, height);
 
+    size_t reserved_size = 1 + renderSettings_.maxNewRaysPerBounce * renderSettings_.maxRayBounces;
+
     std::for_each(std::execution::par_unseq, indices.begin(), indices.end(),
-    [this, width, height, &framebuffer](int y) {
+    [this, width, height, &framebuffer, reserved_size](int y) {
+        std::vector<ray_with_payload> rays;
+        rays.reserve(reserved_size);
+
         for (int x = 0; x < width; ++x) {
             SamplesAccumulator<fvec3> final_color;
 
             for (int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
-                std::vector<ray_with_payload> rays;
-                size_t reserved_size = 1 + renderSettings_.maxNewRaysPerBounce * renderSettings_.maxRayBounces;
-                rays.reserve(reserved_size);
                 fvec3 sample_col{};
 
                 rays.push_back(generate_camera_ray(x, y, width, height, i));
