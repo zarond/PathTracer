@@ -53,7 +53,7 @@ namespace app {
         return fvec4(0.5f, 0.5f, 1.0f, 0.0f); // w = 0.0f means no normal map
     }
     fvec4 sample_emissive(const Material& material, const std::vector<CPUTexture<sdr_pixel>>& images, const fvec2 uv) {
-        return sample_srgba(fvec4(material.emissiveFactor, 1.0f),
+        return sample_srgba(xyz1(material.emissiveFactor),
             material.emissiveTextureIndex >= 0 ? &images[material.emissiveTextureIndex] : nullptr,
             uv) * material.emissiveStrength;
     }

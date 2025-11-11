@@ -52,7 +52,7 @@ private:
 
     fvec3 accelerationVector_ = fvec3(0.0f);
     fvec3 velocity_ = fvec3(0.0f);
-    fvec3 position_ = fvec3(0.0f, 0.0f, 0.0f);
+    fvec3 position_ = fvec3(0.0f);
 
     fvec3 direction_ = fvec3(0.0f, 0.0f, -1.0f); // center view direction
     fvec3 up_ = fvec3(0.0f, 1.0f, 0.0f); // up view direction

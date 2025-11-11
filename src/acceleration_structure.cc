@@ -80,8 +80,8 @@ namespace app {
         std::for_each(mesh.vertices.begin(), mesh.vertices.end(), 
             [&bbox, &obj](const vertex& vertex) {
                 // Todo: optimize
-                auto pos = fvec4(vertex.position, 1.0f);
-                bbox.expand(fvec3(obj.ModelMatrix * pos));
+                auto pos = xyz1(vertex.position);
+                bbox.expand(xyz(obj.ModelMatrix * pos));
             }
         );
         return bbox;
@@ -110,10 +110,10 @@ namespace app {
 
         for (int i = 0; i < 7; ++i) {
             float o_projection = dot(ray.origin, axises[i]);
-            float d_projection = dot(ray.direction, axises[i]);
+            float inv_d_projection = 1.0f / dot(ray.direction, axises[i]);
             const auto axis_min_max = min_max[i];
-            float t0 = (axis_min_max.x - o_projection) / d_projection;
-            float t1 = (axis_min_max.y - o_projection) / d_projection;
+            float t0 = (axis_min_max.x - o_projection) * inv_d_projection;
+            float t1 = (axis_min_max.y - o_projection) * inv_d_projection;
             if (t0 > t1) std::swap(t0, t1);
             t_min = std::max(t0, t_min);
             t_max = std::min(t1, t_max);
@@ -128,8 +128,8 @@ namespace app {
         std::for_each(mesh.vertices.begin(), mesh.vertices.end(),
             [&dop, &obj](const vertex& vertex) {
                 // Todo: optimize
-                auto pos = fvec4(vertex.position, 1.0f);
-                dop.expand(fvec3(obj.ModelMatrix * pos));
+                auto pos = xyz1(vertex.position);
+                dop.expand(xyz(obj.ModelMatrix * pos));
             }
         );
         return dop;
@@ -232,8 +232,8 @@ namespace app {
         const MeshData& mesh) noexcept
     {
         // Transform ray to object space
-        auto ray_origin_os = fvec3(invModelMatrix * fvec4(ray_ws.origin, 1.0f));
-        auto ray_direction_os = fvec3(invModelMatrix * fvec4(ray_ws.direction, 0.0f));
+        auto ray_origin_os = xyz(invModelMatrix * xyz1(ray_ws.origin));
+        auto ray_direction_os = xyz(invModelMatrix * xyz0(ray_ws.direction));
         
         ray os_ray{
             ray_origin_os,
@@ -269,7 +269,7 @@ namespace app {
         }
         // Transform hit back to world space
         fvec3 best_hit_point = os_ray.origin + os_ray.direction * hit.b_coords.t;
-        fvec3 hit_point_ws = fvec3(ModelMatrix * fvec4(best_hit_point, 1.0f));
+        fvec3 hit_point_ws = xyz(ModelMatrix * xyz1(best_hit_point));
         hit.distance = length(hit_point_ws - ray_ws.origin);
         return hit;
     }

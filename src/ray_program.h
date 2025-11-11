@@ -21,7 +21,7 @@ struct ray {
 };
 
 struct ray_with_payload : ray {
-    fvec4 payload = fvec4(1.0f); // accumulated color or other data
+    fvec3 payload = fvec3(1.0f); // accumulated color
     std::uint8_t depth = 0; // current recursion depth left
     bool any_hit = false;
 };
@@ -65,14 +65,14 @@ struct ray_triangle_hit_info {
 
 class IRayProgram {
 public:
-    virtual fvec4 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const = 0;
+    virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const = 0;
 };
 
 class RayCasterProgram : public IRayProgram {
 public:
     RayCasterProgram(const Model& model, const CPUTexture<hdr_pixel>& env);
 
-    virtual fvec4 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const override;
+    virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const override;
 private:
     const Model& modelRef;
     const CPUTexture<hdr_pixel>& envmapRef;
@@ -82,11 +82,12 @@ class AOProgram : public IRayProgram {
 public:
     AOProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const unsigned int ao_samples);
 
-    virtual fvec4 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const override;
+    virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const override;
 private:
     const Model& modelRef;
     const CPUTexture<hdr_pixel>& envmapRef;
     const unsigned int aoSamples = 32;
+    const float inv_aoSamples;
 
     static thread_local std::minstd_rand gen;
     static thread_local std::uniform_real_distribution<float> dist;
@@ -96,11 +97,18 @@ class PBRProgram : public IRayProgram {
 public:
     PBRProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const unsigned int max_new_rays);
 
-    virtual fvec4 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const override;
+    virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const override;
 private:
     const Model& modelRef;
     const CPUTexture<hdr_pixel>& envmapRef;
-    const unsigned int max_new_rays;
+
+    const unsigned int diffuse_rays_n_;
+    const unsigned int specular_rays_n_;
+    const unsigned int total_rays_n_;
+
+    const float inv_diffuse_rays_n_;
+    const float inv_specular_rays_n_;
+    const float inv_total_rays_n_;
 
     static thread_local std::minstd_rand gen;
     static thread_local std::uniform_real_distribution<float> dist;

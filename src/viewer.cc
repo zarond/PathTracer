@@ -67,9 +67,9 @@ bool Viewer::snap_to_camera()
 
 	std::visit(fastgltf::visitor{
 		[&](const fastgltf::Camera::Perspective& perspective) {
-            position_ = fvec3(camera.ModelMatrix[3]);
-            direction_ = -fvec3(camera.ModelMatrix[2]);
-            up_ = fvec3(camera.ModelMatrix[1]);
+            position_ = xyz(camera.ModelMatrix[3]);
+            direction_ = -xyz(camera.ModelMatrix[2]);
+            up_ = xyz(camera.ModelMatrix[1]);
             
             renderer_.update_camera_transform_state(
                 position_,

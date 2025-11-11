@@ -67,7 +67,7 @@ void Renderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& envma
 ray_with_payload Renderer::generate_camera_ray(int x, int y, int width, int height, int sampleIndex) const {
     fvec2 pixel_coords = fvec2{static_cast<float>(x), static_cast<float>(y)} + subsamplesPositions[sampleIndex];
     auto ndc_coords = ndc_from_pixel(pixel_coords.x, pixel_coords.y, width, height);
-    auto direction = fvec3(NDC2WorldMatrix_ * ndc_coords);
+    auto direction = xyz(NDC2WorldMatrix_ * ndc_coords);
     return ray_with_payload{
         origin_, 
         normalize(direction), 
@@ -101,17 +101,17 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer)
                 std::vector<ray_with_payload> rays;
                 size_t reserved_size = 1 + renderSettings_.maxNewRaysPerBounce * renderSettings_.maxRayBounces;
                 rays.reserve(reserved_size);
-                fvec4 sample_col{};
+                fvec3 sample_col{};
 
                 rays.push_back(generate_camera_ray(x, y, width, height, i));
-                while (rays.size() > 0) { // Todo: limit number of iterations
+                while (rays.size() > 0) {
                     assert(rays.size() <= reserved_size);
                     auto ray = rays.back();
                     rays.pop_back();
                     auto hit = accelStruct->intersect_ray(ray, ray.any_hit);
                     sample_col += rayProgram->on_hit(ray, hit, rays);
                 }
-                final_color.add_sample(fvec3(sample_col));
+                final_color.add_sample(sample_col);
             }
             framebuffer.at(x, y) = hdr_pixel{ final_color.get_mean(), 1.0f };
         }
