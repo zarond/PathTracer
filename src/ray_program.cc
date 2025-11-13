@@ -72,12 +72,6 @@ namespace {
         float k = max(Roughness * Roughness * 0.5, 1e-5);
         return G1(NoL, k) * G1(NoV, k);
     }
-    float pow2(float v) {
-        return v * v;
-    }
-    float f0_dielectric(float ior) {
-        return pow2((ior - 1.0f) / (ior + 1.0f));
-    }
     fvec3 Tangent2World(fvec3 v, fvec3 T, fvec3 B, fvec3 N) { return T * v.x + B * v.y + N * v.z; }
     fvec3 Tangent2World(fvec3 v, const fmat3x3& TBN) { return TBN * v; }
     
@@ -220,11 +214,11 @@ namespace app {
         if (hit.forward_hit() == false) { // on miss
             return ray_.payload * xyz(sample_environment(ray_.direction, envmapRef));
         }
+        const auto& object = modelRef.objects_[hit.objectIndex];
         const auto& mesh_data = get_mesh_data(modelRef, hit);
         const auto& [p1, p2, p3] = get_vertex_data(mesh_data, hit);
         auto point = interpolate_vertex_data(p1, p2, p3, hit);
 
-        const auto& object = modelRef.objects_[hit.objectIndex];
         auto tangent_sign = point.tangent.w;
         point.tangent.w = 0.0f;
         point.tangent = object.ModelMatrix * point.tangent;
@@ -248,9 +242,8 @@ namespace app {
         auto albedo_color = sample_albedo(material, modelRef.images_, point.uv);
         auto ORM = sample_roughness_metallic(material, modelRef.images_, point.uv);
         auto diffuse_color = (1.0f - ORM.z) * xyz(albedo_color);
-        //float f0_diel = f0_dielectric(material.ior);
-        const float f0_diel = 0.04f;
-        auto f0 = mix(fvec3(f0_diel), xyz(albedo_color), ORM.z);
+
+        auto f0 = mix(fvec3(material.dielectric_f0), xyz(albedo_color), ORM.z);
         const auto f90 = fvec3(1.0f);
         const auto roughness = ORM.y;
 
@@ -268,6 +261,7 @@ namespace app {
         if (dot(v, N) < 0.0) { // hack for impossible normal map angle
             v = reflect(v, N);
         }
+        float VdN = clamp(dot(N, v), kEpsilon, 1.0f);
 
         std::uint8_t new_depth = ray_.depth - 1;
 
@@ -304,7 +298,6 @@ namespace app {
             const auto l = reflect( -v, h);
             float LdH = clamp(dot(l, h), 0.0f, 1.0f);
             float LdN = clamp(dot(N, l), 0.0f, 1.0f);
-            float VdN = clamp(dot(N, v), kEpsilon, 1.0f);
             float NdH = clamp(dot(N, h), kEpsilon, 1.0f);
 
             auto F = fresnel_schlick(f0, f90, LdH);
@@ -313,8 +306,9 @@ namespace app {
             //auto brdf = F * (4.0f * G * LdN * LdH / NdH); // for V_SmithGGXCorrelated
             auto G = V_Schlick(LdN, VdN, roughness);
             auto brdf = F * (G * LdN * LdH / NdH); // for V_Schlick
-            brdf = min(brdf, fvec3(kMaxBRDF));
-            ray_with_payload new_ray{ new_pos, l, brdf * ray_.payload * fvec3(inv_specular_rays_n), new_depth, false };
+            brdf = min(brdf, fvec3(kMaxBRDF)); // clamp to avoid fireflies
+            auto new_payload = brdf * ray_.payload * fvec3(inv_specular_rays_n);
+            ray_with_payload new_ray{ new_pos, l, new_payload, new_depth, false };
             ray_collection.push_back(new_ray);
         }
         return ray_.payload * emissive;

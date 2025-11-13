@@ -25,4 +25,6 @@ fvec4 sample_emissive(const Material& material, const std::vector<CPUTexture<sdr
 
 float sample_transmission(const Material& material, const std::vector<CPUTexture<sdr_pixel>>& images, const fvec2 uv);
 
+float f0_dielectric(float ior);
+
 }

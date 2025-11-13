@@ -40,6 +40,7 @@ struct Material {
     int metallicRoughnessTextureIndex = -1;
     int normalTextureIndex = -1;
     float ior = 1.5f;
+    float dielectric_f0 = 0.04f;
     float transmisionFactor = 0.0f;
     int transmissionTextureIndex = -1;
     fvec3 emissiveFactor{ 0.0f, 0.0f, 0.0f};

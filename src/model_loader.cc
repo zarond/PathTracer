@@ -4,6 +4,7 @@
 
 #include "model_loader.h"
 #include "compute_tangents.h"
+#include "brdf.h"
 
 #include <fastgltf/core.hpp>
 #include <fastgltf/types.hpp>
@@ -100,6 +101,7 @@ Model ModelLoader::constructModel() const
 			.metallicRoughnessTextureIndex = metallicRoughness_imageIndex,
 			.normalTextureIndex = normal_imageIndex,
 			.ior = material.ior,
+			.dielectric_f0 = f0_dielectric(material.ior),
 			.transmisionFactor = material.transmission ? material.transmission->transmissionFactor : 0.0f,
 			.transmissionTextureIndex = transmission_imageIndex,
 			.emissiveFactor = fvec3{material.emissiveFactor.x(), material.emissiveFactor.y(), material.emissiveFactor.z()},

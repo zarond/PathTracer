@@ -28,7 +28,9 @@ namespace{
         }
         return Factor;
     }
-
+    float pow2(float v) {
+        return v * v;
+    }
 }
 
 namespace app {
@@ -70,5 +72,8 @@ namespace app {
         fvec2 uv = fvec2( std::atan2(-dir.z, -dir.x), -2.0f * std::asin(dir.y)) * (1.0f / pi<float>());
         uv = uv * 0.5f + fvec2(0.5f);
         return environment_texture.sample_bilinear(uv);
+    }
+    float f0_dielectric(float ior) {
+        return pow2((ior - 1.0f) / (ior + 1.0f));
     }
 }
