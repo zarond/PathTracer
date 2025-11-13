@@ -6,7 +6,8 @@ namespace {
     using namespace app;
 
     constexpr float GOLDEN_RATIO = 1.618034f;
-    constexpr float kEpsilon = 1e-5f;
+    constexpr float kEpsilon = 1e-8f;
+    constexpr float kMaxBRDF = 10.0f;
     
     float fibonacci1D(int i) { return std::fmod((static_cast<float>(i) + 1.0f) * GOLDEN_RATIO, 1.0f);}
     float fibonacci1D(float i) { return std::fmod((i + 1.0f) * GOLDEN_RATIO, 1.0f);}
@@ -47,6 +48,7 @@ namespace {
         float x5 = x2 * x2 * x;
         return mix(f0, f90, x5);
     }
+    // unused in current implementation; visual difference with Blender
     float V_SmithGGXCorrelated(float NoV, float NoL, float a) {
         // Original formulation of G_SmithGGX Correlated
         // lambda_v = (-1 + sqrt ( alphaG2 * (1 - NdotL2 ) / NdotL2 + 1)) * 0.5 f;
@@ -58,6 +60,17 @@ namespace {
         float GGXV = NoL * sqrt((-NoV * a2 + NoV) * NoV + a2);
         float GGXL = NoV * sqrt((-NoL * a2 + NoL) * NoL + a2);
         return 0.5f / (GGXV + GGXL);
+    }
+    float G1(float NdW, float k)
+    {
+        return 1.0 / (NdW * (1.0 - k) + k);
+    }
+    // Schlick - Smith visibility term
+    // [ http://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf ]
+    float V_Schlick(float NoL, float NoV, float Roughness)
+    {
+        float k = max(Roughness * Roughness * 0.5, 1e-5);
+        return G1(NoL, k) * G1(NoV, k);
     }
     float pow2(float v) {
         return v * v;
@@ -167,6 +180,7 @@ namespace app {
         }
         
         auto ws_pos = ray_.origin + ray_.direction * hit.distance;
+        auto new_pos = ws_pos + point.normal * 1e-5f; // offset to avoid self-intersection
 
         std::uint8_t new_depth = ray_.depth - 1;
 
@@ -181,7 +195,6 @@ namespace app {
             assert(abs(length(new_direction) - 1.0f) < 1e-5f);
             new_direction = Tangent2World(new_direction, TBN);
             assert(abs(length(new_direction) - 1.0f) < 1e-5f);
-            auto new_pos = ws_pos + point.normal * 1e-5f; // offset to avoid self-intersection
             ray_with_payload new_ray{ new_pos, new_direction, fvec4(inv_aoSamples), new_depth, true };
             ray_collection.push_back(new_ray);
         }
@@ -248,6 +261,13 @@ namespace app {
         const float inv_specular_rays_n = (!no_diffuse) ? inv_specular_rays_n_ : inv_total_rays_n_;
 
         auto ws_pos = ray_.origin + ray_.direction * hit.distance;
+        auto new_pos = ws_pos + point.normal * 1e-5f; // offset to avoid self-intersection
+
+        const auto N = TBN[2];
+        auto v = -ray_.direction;
+        if (dot(v, N) < 0.0) { // hack for impossible normal map angle
+            v = reflect(v, N);
+        }
 
         std::uint8_t new_depth = ray_.depth - 1;
 
@@ -259,45 +279,41 @@ namespace app {
             rand.y = std::fmod(rand.y + jitter_value_y, 1.0f); // jitter
             auto l = ImportanceSampleCosDir(rand);
             
-            const auto v = -ray_.direction;
             const auto h = normalize(v + l);
-            float LdH = dot(l, h);
+            float LdH = clamp(dot(l, h), 0.0f, 1.0f);
 
             assert(l.z > 0.0f);
             assert(abs(length(l) - 1.0f) < 1e-5f);
             l = Tangent2World(l, TBN);
             assert(abs(length(l) - 1.0f) < 1e-5f);
-            auto new_pos = ws_pos + point.normal * 1e-5f; // offset to avoid self-intersection
             
             auto F = fvec3(1.0f) - fresnel_schlick(f0, f90, LdH);
             ray_with_payload new_ray{ new_pos, l, F * diffuse_color * ray_.payload * fvec3(inv_diffuse_rays_n), new_depth, false };
             ray_collection.push_back(new_ray);
         }
-        const auto N = TBN[2];
         for (int i = 0; i < specular_rays_n; ++i) {
             fvec2 rand = fibonacci2D(i, inv_specular_rays_n);
             rand.x = std::fmod(rand.x + jitter_value_x, 1.0f); // jitter
             rand.y = std::fmod(rand.y + jitter_value_y, 1.0f); // jitter
-            auto d_N = importanceSampleGGX(rand, roughness);
-            assert(d_N.z > 0.0f);
-            assert(abs(length(d_N) - 1.0f) < 1e-5f);
-            d_N = Tangent2World(d_N, TBN);
-            assert(abs(length(d_N) - 1.0f) < 1e-5f);
+            auto h = importanceSampleGGX(rand, roughness);
+            assert(h.z > 0.0f);
+            assert(abs(length(h) - 1.0f) < 1e-5f);
+            h = Tangent2World(h, TBN);
+            assert(abs(length(h) - 1.0f) < 1e-5f);
 
-            const auto v = -ray_.direction;
-            const auto l = reflect( -v, d_N);
-            const auto h = normalize(v + l);
-            float LdH = clamp(dot(l, h), kEpsilon, 1.0f);
-            float LdN = clamp(dot(N, l), kEpsilon, 1.0f);
+            const auto l = reflect( -v, h);
+            float LdH = clamp(dot(l, h), 0.0f, 1.0f);
+            float LdN = clamp(dot(N, l), 0.0f, 1.0f);
             float VdN = clamp(dot(N, v), kEpsilon, 1.0f);
-            float VdH = clamp(dot(v, h), kEpsilon, 1.0f);
             float NdH = clamp(dot(N, h), kEpsilon, 1.0f);
 
-            auto new_pos = ws_pos + point.normal * 1e-5f; // offset to avoid self-intersection
             auto F = fresnel_schlick(f0, f90, LdH);
-            auto G = V_SmithGGXCorrelated(VdN, LdN, roughness);
-            //auto brdf = fvec4(F * VdH / (VdN * NdH), 1.0f); // simplified version without G
-            auto brdf = F * (4.0f * G * LdN * VdH / NdH);
+            //auto brdf = fvec3(F * LdH / (VdN * NdH)); // simplified version without G
+            //auto G = V_SmithGGXCorrelated(VdN, LdN, roughness);
+            //auto brdf = F * (4.0f * G * LdN * LdH / NdH); // for V_SmithGGXCorrelated
+            auto G = V_Schlick(LdN, VdN, roughness);
+            auto brdf = F * (G * LdN * LdH / NdH); // for V_Schlick
+            brdf = min(brdf, fvec3(kMaxBRDF));
             ray_with_payload new_ray{ new_pos, l, brdf * ray_.payload * fvec3(inv_specular_rays_n), new_depth, false };
             ray_collection.push_back(new_ray);
         }
