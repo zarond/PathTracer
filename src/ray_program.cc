@@ -228,6 +228,7 @@ namespace app {
         const auto& [p1, p2, p3] = get_vertex_data(mesh_data, hit);
         auto point = interpolate_vertex_data(p1, p2, p3, hit);
 
+        convert_position_to_world_space(object, point);
         auto bitangent = convert_normals_to_world_space(object, point);
 
         auto mat_index = mesh_data.materialIndex;
@@ -252,15 +253,15 @@ namespace app {
         fmat3x3 TBN = construct_TBN(xyz(point.tangent), bitangent, point.normal);
 
         auto normal_map_color = sample_normals(material, modelRef.images_, point.uv);
-        if (normal_map_color.w != 0.0f) {
+        {
             fvec3 normal_vector = normal_map_sample_to_world(normal_map_color, TBN);
-            if (dot(v, normal_vector) < 0.0) { // solution for impossible normal map angle
-                normal_vector = get_geometric_normal(p1, p2, p3); // or somehow incorporate normal map into geometric normal?
+            if (dot((!exiting_volume)? v : -v, normal_vector) < 0.0) { // impossible normal map angle
+                normal_vector = get_geometric_normal(p1, p2, p3); // todo: somehow incorporate normal map into geometric normal?
+                if (hit.b_coords.backface && material.doubleSided) {
+                    normal_vector *= -1.0f;
+                }
             }
             TBN = construct_TBN(TBN[0], TBN[1], normal_vector); // re-construct TBN with normal from normal map
-        } else if (dot(v, TBN[2]) < 0.0) { // solution for impossible normal map angle
-            fvec3 normal_vector = get_geometric_normal(p1, p2, p3); // or somehow incorporate normal map into geometric normal?
-            TBN = construct_TBN(TBN[0], TBN[1], normal_vector);
         }
 
         auto albedo_color = sample_albedo(material, modelRef.images_, point.uv);
@@ -271,8 +272,6 @@ namespace app {
         auto f0 = mix(fvec3(material.dielectric_f0), xyz(albedo_color), ORM.z);
         const auto f90 = fvec3(1.0f);
         const auto roughness = ORM.y;
-
-        auto ws_pos = ray_.origin + ray_.direction * hit.distance;
 
         std::uint8_t new_depth = ray_.depth - 1;
 
@@ -292,7 +291,7 @@ namespace app {
             float LdH = clamp(dot(l, h), 0.0f, 1.0f);
             
             auto F = fvec3(1.0f) - fresnel_schlick(f0, f90, LdH);
-            auto new_pos = ws_pos + point.normal * 1e-5f; // offset to avoid self-intersection
+            auto new_pos = point.position + point.normal * 1e-5f; // offset to avoid self-intersection
             auto new_payload = F * diffuse_color * (1.0f - transmission) * ray_.payload;
             ray_with_payload new_ray{ new_pos, l, new_payload, new_depth, false };
             ray_collection.push_back(new_ray);
@@ -339,7 +338,7 @@ namespace app {
                 //auto brdf = F * (G * VdH * LdH / divisor) * LdN;
                 auto brdf = (fvec3(1.0f) - F) * (G * VdH * LdN / NdM);
                 brdf = min(brdf, fvec3(kMaxBRDF)); // clamp to avoid fireflies
-                auto new_pos = ws_pos - new_pos_offset_dir * 1e-5f; // offset to avoid self-intersection
+                auto new_pos = point.position - new_pos_offset_dir * 1e-5f; // offset to avoid self-intersection
                 auto new_payload = diffuse_color * transmission * brdf * ray_.payload;
                 ray_with_payload new_ray{ new_pos, l, new_payload, new_depth, false };
                 ray_collection.push_back(new_ray);
@@ -359,7 +358,7 @@ namespace app {
                 auto G = V_Schlick(LdN, VdN, roughness);
                 auto brdf = F * (G * LdN * LdH / NdH); // for V_Schlick
                 brdf = min(brdf, fvec3(kMaxBRDF)); // clamp to avoid fireflies
-                auto new_pos = ws_pos + new_pos_offset_dir * 1e-5f; // offset to avoid self-intersection
+                auto new_pos = point.position + new_pos_offset_dir * 1e-5f; // offset to avoid self-intersection
                 auto new_payload = brdf * ray_.payload;
                 ray_with_payload new_ray{ new_pos, l, new_payload, new_depth, false };
                 ray_collection.push_back(new_ray);
