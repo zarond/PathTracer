@@ -284,7 +284,7 @@ namespace app {
 
             auto l = ImportanceSampleCosDir(rand);
             assert(l.z > 0.0f);
-            l = Tangent2World(l, TBN);
+            l = normalize(Tangent2World(l, TBN)); // normalizing for better accuracy
             assert(abs(length(l) - 1.0f) < 1e-5f);
             
             const auto h = normalize(v + l);
@@ -313,7 +313,7 @@ namespace app {
             }
 
             const float interface_ior = (!exiting_volume) ? 1.0f / material.ior : material.ior;
-            auto l = refract(-v, m, interface_ior);
+            auto l = normalize(refract(-v, m, interface_ior)); // normalizing for better accuracy
 
             const float VdN = clamp(dot(N, v), kEpsilon, 1.0f);
             const auto VdM = clamp(dot(v, m), 0.0f, 1.0f);
@@ -347,7 +347,7 @@ namespace app {
                 auto h = m;
                 assert(abs(length(h) - 1.0f) < 1e-5f);
 
-                l = reflect(-v, h);
+                l = normalize(reflect(-v, h)); // normalizing for better accuracy
                 float LdH = clamp(dot(l, h), 0.0f, 1.0f);
                 float LdN = clamp(dot(N, l), 0.0f, 1.0f);
                 float NdH = clamp(dot(N, h), kEpsilon, 1.0f);
