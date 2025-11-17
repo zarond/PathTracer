@@ -68,7 +68,7 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         .default_value(0);
 
     program.add_argument("-r", "--newrays")
-        .help("max new rays generated per bounce.")
+        .help("max new AO rays (AO mode only).")
         .scan<'i', int>()
         .required()
         .nargs(1)

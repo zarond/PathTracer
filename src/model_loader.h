@@ -46,7 +46,8 @@ struct Material {
     fvec3 emissiveFactor{ 0.0f, 0.0f, 0.0f};
     int emissiveTextureIndex = -1;
     float emissiveStrength = 1.0f;
-    bool doubleSided = false;
+    bool doubleSided = false; // means each side is a surface (thin objects)
+    bool hasVolume = false; // essential for transmission, otherwise treat as thin surface
 };
 
 struct Camera {

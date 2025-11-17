@@ -25,6 +25,8 @@ fvec4 sample_emissive(const Material& material, const std::vector<CPUTexture<sdr
 
 float sample_transmission(const Material& material, const std::vector<CPUTexture<sdr_pixel>>& images, const fvec2 uv);
 
-float f0_dielectric(float ior);
+float f0_dielectric(float transmitted_ior, float incident_ior = 1.0f);
+
+fvec2 fibonacci2D(int i, float inv_nbSamples);
 
 }

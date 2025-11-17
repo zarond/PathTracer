@@ -25,7 +25,7 @@ namespace {
         float det = dot(p1p2, pvec);
         if (backface_culling) {
             // If the determinant is negative, the triangle is back-facing.
-            if (det <= 0.0f) return { 0.0f, 0.0f, false }; // or epsilon?
+            if (det <= 0.0f) return { 0.0f, 0.0f, false, false }; // or epsilon?
         }
         // If det is close to 0, the ray and triangle are parallel.
         //if (fabs(det) < kEpsilon) return { 0.0f, 0.0f, false };
@@ -34,15 +34,15 @@ namespace {
 
         fvec3 tvec = ray_os.origin - p1;
         float u = dot(tvec, pvec) * invDet;
-        if (u < 0.0f || u > 1.0f) return { 0.0f, 0.0f, 0.0f, false };
+        if (u < 0.0f || u > 1.0f) return { 0.0f, 0.0f, 0.0f, false, false };
 
         fvec3 qvec = cross(tvec, p1p2);
         float v = dot(ray_os.direction, qvec) * invDet;
-        if (v < 0.0f || u + v > 1.0f) return { 0.0f, 0.0f, 0.0f, false };
+        if (v < 0.0f || u + v > 1.0f) return { 0.0f, 0.0f, 0.0f, false, false };
 
         float t = dot(p1p3, qvec) * invDet;
 
-        return { 1.0f - u - v, u, t, true };
+        return { 1.0f - u - v, u, t, true, (det < 0.0f) && !backface_culling };
     }
 }
 
@@ -166,7 +166,8 @@ namespace app {
                     data.push_back(mesh.vertices[index].position);
                 }
             );
-            bool doubleSided = model.materials_[mesh.materialIndex].doubleSided;
+            const auto& mat = model.materials_[mesh.materialIndex];
+            bool doubleSided = mat.doubleSided || mat.hasVolume;
             mesh_data_.emplace_back(std::move(data), doubleSided);
         }
         auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);

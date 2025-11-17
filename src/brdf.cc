@@ -4,6 +4,8 @@ namespace{
     using namespace glm;
     using namespace app;
 
+    constexpr float GOLDEN_RATIO = 1.618034f;
+
     fvec4 sample_srgba(fvec4 colorFactor, const CPUTexture<sdr_pixel>* texture, const fvec2 uv)
     {
         if (texture) {
@@ -73,7 +75,17 @@ namespace app {
         uv = uv * 0.5f + fvec2(0.5f);
         return environment_texture.sample_bilinear(uv);
     }
-    float f0_dielectric(float ior) {
-        return pow2((ior - 1.0f) / (ior + 1.0f));
+    float f0_dielectric(float transmitted_ior, float incident_ior) {
+        return pow2((transmitted_ior - incident_ior) / (transmitted_ior + incident_ior));
+    }
+    float fibonacci1D(int i) { return std::fmod((static_cast<float>(i) + 1.0f) * GOLDEN_RATIO, 1.0f); }
+    float fibonacci1D(float i) { return std::fmod((i + 1.0f) * GOLDEN_RATIO, 1.0f); }
+    fvec2 fibonacci2D(int i, float inv_nbSamples)
+    {
+        float i_f = static_cast<float>(i);
+        return fvec2(
+            (i_f + 0.5f) * inv_nbSamples,
+            fibonacci1D(i_f)
+        );
     }
 }

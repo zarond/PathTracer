@@ -85,7 +85,7 @@ Model ModelLoader::constructModel() const
 			auto textureIndex = material.normalTexture->textureIndex;
 			normal_imageIndex = asset_.textures[textureIndex].imageIndex.value_or(0);
 		}
-		if (material.transmission) {
+		if (material.transmission && material.transmission->transmissionTexture.has_value()) {
 			auto textureIndex = material.transmission->transmissionTexture->textureIndex;
 			transmission_imageIndex = asset_.textures[textureIndex].imageIndex.value_or(0);
 		}
@@ -107,7 +107,8 @@ Model ModelLoader::constructModel() const
 			.emissiveFactor = fvec3{material.emissiveFactor.x(), material.emissiveFactor.y(), material.emissiveFactor.z()},
 			.emissiveTextureIndex = emissive_imageIndex,
 			.emissiveStrength = material.emissiveStrength,
-            .doubleSided = material.doubleSided
+            .doubleSided = material.doubleSided,
+            .hasVolume = material.volume ? true : false,
 		};
 		model.materials_.push_back(mat);
 	}

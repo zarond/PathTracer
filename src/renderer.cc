@@ -56,7 +56,7 @@ void Renderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& envma
             rayProgram = std::make_unique<AOProgram>(model, envmap, renderSettings_.maxNewRaysPerBounce);
             break;
         case RayProgramMode::PBR:
-            rayProgram = std::make_unique<PBRProgram>(model, envmap, renderSettings_.maxNewRaysPerBounce);
+            rayProgram = std::make_unique<PBRProgram>(model, envmap);
             break;
         case RayProgramMode::RayCaster:
         default:
@@ -93,6 +93,9 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer)
     auto indices = std::views::iota(0, height);
 
     size_t reserved_size = 1 + renderSettings_.maxNewRaysPerBounce * renderSettings_.maxRayBounces;
+    if (renderSettings_.programMode == RayProgramMode::PBR) {
+        reserved_size = 1 + (3 - 1) * renderSettings_.maxRayBounces;
+    }
 
     std::for_each(std::execution::par_unseq, indices.begin(), indices.end(),
     [this, width, height, &framebuffer, reserved_size](int y) {
@@ -123,9 +126,6 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer)
 
 void Renderer::set_render_settings(const RenderSettings& settings) {
     renderSettings_ = settings;
-    // Todo: optimize
-    int sqrt_of_samples = static_cast<int>(std::round(std::sqrtf(renderSettings_.samplesPerPixel)));
-    renderSettings_.samplesPerPixel = sqrt_of_samples * sqrt_of_samples;
 }
 RenderSettings Renderer::get_render_settings() const { return renderSettings_; }
 
@@ -133,14 +133,23 @@ void Renderer::generate_subsample_positions() {
     if (renderSettings_.samplesPerPixel == subsamplesPositions.size()) {
         return; // already generated
     }
+    subsamplesPositions.resize(renderSettings_.samplesPerPixel);
     // Todo: optimize
-    subsamplesPositions.resize(renderSettings_.samplesPerPixel); //samplesperpixel is a perfect square
-    int sqrt_of_samples = static_cast<int>(std::round(std::sqrtf(renderSettings_.samplesPerPixel)));
-    for (int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
-        subsamplesPositions[i] = fvec2{
-            (static_cast<float>(i / sqrt_of_samples) + 0.5f) / static_cast<float>(sqrt_of_samples),
-            (static_cast<float>(i % sqrt_of_samples) + 0.5f) / static_cast<float>(sqrt_of_samples)
-        };
+    int sqrt_of_samples = static_cast<int>(std::sqrtf(renderSettings_.samplesPerPixel));
+    if (sqrt_of_samples * sqrt_of_samples == renderSettings_.samplesPerPixel) {
+        //samplesperpixel is a perfect square
+        for (int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
+            subsamplesPositions[i] = fvec2{
+                (static_cast<float>(i / sqrt_of_samples) + 0.5f) / static_cast<float>(sqrt_of_samples),
+                (static_cast<float>(i % sqrt_of_samples) + 0.5f) / static_cast<float>(sqrt_of_samples)
+            };
+        }
+    } else {
+        //samplesperpixel is not a perfect square
+        float inv_samples = 1.0f / static_cast<float>(renderSettings_.samplesPerPixel);
+        for (int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
+            subsamplesPositions[i] = fibonacci2D(i, inv_samples);
+        }
     }
 }
 

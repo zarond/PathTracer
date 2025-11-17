@@ -24,6 +24,8 @@ struct ray_with_payload : ray {
     fvec3 payload = fvec3(1.0f); // accumulated color
     std::uint8_t depth = 0; // current recursion depth left
     bool any_hit = false;
+    // unsigned short sample_index = 0; // todo: add for quasi-random sampling
+    // bool inside_volume = false; // todo: ior of current medium instead?
 };
 
 struct barycentric_coords {
@@ -32,6 +34,7 @@ struct barycentric_coords {
     // implicit C = 1.0 - A - B
     float t = std::numeric_limits<float>::infinity();
     bool hit = false;
+    bool backface = false;
 
     float C() const noexcept {
         return 1.0f - A - B;
@@ -95,23 +98,16 @@ private:
 
 class PBRProgram : public IRayProgram {
 public:
-    PBRProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const unsigned int max_new_rays);
+    PBRProgram(const Model& model, const CPUTexture<hdr_pixel>& env);
 
     virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const override;
 private:
     const Model& modelRef;
     const CPUTexture<hdr_pixel>& envmapRef;
 
-    const unsigned int diffuse_rays_n_;
-    const unsigned int specular_rays_n_;
-    const unsigned int total_rays_n_;
-
-    const float inv_diffuse_rays_n_;
-    const float inv_specular_rays_n_;
-    const float inv_total_rays_n_;
-
     static thread_local std::minstd_rand gen;
     static thread_local std::uniform_real_distribution<float> dist;
+    // Todo: add quasi-random mode
 };
 
 }
