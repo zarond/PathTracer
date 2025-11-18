@@ -23,7 +23,7 @@ namespace {
     fvec3 importanceSampleGGX(fvec2 xi, float a)
     {
         // pdf(h) = D(h) * dot(n, h) : before conversion from half-vector to reflection vector
-        // pdf(l) = D(h) * dot(n, h) / (4.0 * dot(v, h)) : after conversion to reflection vector
+        // pdf(l) = D(h) * dot(n, h) / (4.0 * dot(l, h)) : after conversion to reflection vector
         float cos_theta2 = (1.0f - xi.x) / (1.0f + (a * a - 1.0f) * xi.x);
         float cos_theta = sqrt(cos_theta2);
         float sin_theta = sqrt(1.0f - cos_theta2);
@@ -121,6 +121,29 @@ namespace {
         fvec3 n_ts = glm::fma(normal_map_sample, fvec3(2.0f) , fvec3(-1.0f));
         n_ts.y *= -1.0f; // flip Y
         return TBN * n_ts;
+    }
+    fmat3x3 handle_TBN_creation(
+        const fvec4& normal_map_color,
+        const vertex& point, const fvec3& bitangent, const fvec3& v, 
+        const bool double_sided_material, const bool exiting_volume, const bool backface_hit,
+        const vertex& p1, const vertex& p2, const vertex& p3) 
+    {
+        fmat3x3 TBN = construct_TBN(xyz(point.tangent), bitangent, point.normal);
+        {
+            const bool has_normal_map = (normal_map_color.w != 0.0f);
+            fvec3 normal_vector = has_normal_map ? normal_map_sample_to_world(normal_map_color, TBN) : TBN[2];
+            const bool impossible_normal_angle = (dot((!exiting_volume) ? v : -v, normal_vector) < 0.0);
+            if (impossible_normal_angle) {
+                normal_vector = get_geometric_normal(p1, p2, p3); // todo: somehow incorporate normal map into geometric normal?
+                if (backface_hit && double_sided_material) {
+                    normal_vector *= -1.0f;
+                }
+            }
+            if (has_normal_map || impossible_normal_angle) {
+                TBN = construct_TBN(TBN[0], TBN[1], normal_vector); // re-construct TBN with normal from normal map
+            }
+        }
+        return TBN;
     }
     float pow2(float v) {
         return v * v;
@@ -248,19 +271,14 @@ namespace app {
         }
 
         auto v = -ray_.direction;
-        fmat3x3 TBN = construct_TBN(xyz(point.tangent), bitangent, point.normal);
 
         auto normal_map_color = sample_normals(material, modelRef.images_, point.uv);
-        {
-            fvec3 normal_vector = normal_map_sample_to_world(normal_map_color, TBN);
-            if (dot((!exiting_volume)? v : -v, normal_vector) < 0.0) { // impossible normal map angle
-                normal_vector = get_geometric_normal(p1, p2, p3); // todo: somehow incorporate normal map into geometric normal?
-                if (hit.b_coords.backface && material.doubleSided) {
-                    normal_vector *= -1.0f;
-                }
-            }
-            TBN = construct_TBN(TBN[0], TBN[1], normal_vector); // re-construct TBN with normal from normal map
-        }
+
+        fmat3x3 TBN = handle_TBN_creation(
+            normal_map_color,
+            point, bitangent, v,
+            material.doubleSided, exiting_volume, hit.b_coords.backface,
+            p1, p2, p3);
 
         auto albedo_color = sample_albedo(material, modelRef.images_, point.uv);
         auto transmission = sample_transmission(material, modelRef.images_, point.uv);
@@ -330,17 +348,14 @@ namespace app {
                 auto G = V_SmithGGXCorrelated(VdN, LdN, linear_roughness);
                 //auto G = V_Schlick(LdN, VdN, roughness);
 
-                //float LdH = clamp(dot(l, h), 0.0f, 1.0f);
                 float NdM = clamp(dot(N, m), kEpsilon, 1.0f);
                 float VdH = clamp(dot((!exiting_volume) ? v : -v, h), 0.0f, 1.0f);
 
-                //float divisor = pow2(interface_ior * VdH + LdH); // cancels out in monte-carlo
-                //auto brdf = F * (G * VdH * LdH / divisor) * LdN;
                 auto brdf = (fvec3(1.0f) - F) * (G * VdH * LdN / NdM);
                 brdf = min(brdf, fvec3(kMaxBRDF)); // clamp to avoid fireflies
                 auto new_pos = point.position - new_pos_offset_dir * 1e-5f; // offset to avoid self-intersection
                 auto new_payload = diffuse_color * transmission * brdf * ray_.payload;
-                ray_with_payload new_ray{ new_pos, normalize(l), new_payload, new_depth, false };
+                ray_with_payload new_ray{ new_pos, normalize(l), new_payload, new_depth, false }; // normalizing for better accuracy
                 ray_collection.push_back(new_ray);
             }
             { // specular reflection
@@ -352,7 +367,6 @@ namespace app {
                 float LdN = clamp(dot(N, l), 0.0f, 1.0f);
                 float NdH = clamp(dot(N, h), kEpsilon, 1.0f);
 
-                //auto brdf = fvec3(F * LdH / (VdN * NdH)); // simplified version without G
                 auto G = V_SmithGGXCorrelated(VdN, LdN, linear_roughness);
                 //auto G = V_Schlick(LdN, VdN, roughness);
                 auto brdf = F * (G * LdN * LdH / NdH);
