@@ -20,11 +20,10 @@ namespace {
 
         return fvec3(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta);
     }
-    fvec3 importanceSampleGGX(fvec2 xi, float roughness)
+    fvec3 importanceSampleGGX(fvec2 xi, float a)
     {
         // pdf(h) = D(h) * dot(n, h) : before conversion from half-vector to reflection vector
         // pdf(l) = D(h) * dot(n, h) / (4.0 * dot(v, h)) : after conversion to reflection vector
-        float a = roughness * roughness;
         float cos_theta2 = (1.0f - xi.x) / (1.0f + (a * a - 1.0f) * xi.x);
         float cos_theta = sqrt(cos_theta2);
         float sin_theta = sqrt(1.0f - cos_theta2);
@@ -40,8 +39,7 @@ namespace {
         float x5 = x2 * x2 * x;
         return mix(f0, f90, x5);
     }
-    // unused in current implementation; visual difference with Blender
-    float V_SmithGGXCorrelated(float NoV, float NoL, float a) {
+    float V_SmithGGXCorrelated(float NoV, float NoL, float a) { // a is alpha_linear_roughness = perceptual_roughness^2
         // Original formulation of G_SmithGGX Correlated
         // lambda_v = (-1 + sqrt ( alphaG2 * (1 - NdotL2 ) / NdotL2 + 1)) * 0.5 f;
         // lambda_l = (-1 + sqrt ( alphaG2 * (1 - NdotV2 ) / NdotV2 + 1)) * 0.5 f;
@@ -51,7 +49,7 @@ namespace {
         float a2 = a * a;
         float GGXV = NoL * sqrt((-NoV * a2 + NoV) * NoV + a2);
         float GGXL = NoV * sqrt((-NoL * a2 + NoL) * NoL + a2);
-        return 0.5f / (GGXV + GGXL);
+        return 2.0f / (GGXV + GGXL); // should be 0.5f / (GGXV + GGXL);
     }
     float G1(float NdW, float k)
     {
@@ -59,7 +57,7 @@ namespace {
     }
     // Schlick - Smith visibility term
     // [ http://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf ]
-    float V_Schlick(float NoL, float NoV, float Roughness)
+    float V_Schlick(float NoL, float NoV, float Roughness) // Roughness is perceptual roughness
     {
         float k = max(Roughness * Roughness * 0.5, 1e-5);
         return G1(NoL, k) * G1(NoV, k); // should be G1*G1 / 4.0;
@@ -272,6 +270,7 @@ namespace app {
         auto f0 = mix(fvec3(material.dielectric_f0), xyz(albedo_color), ORM.z);
         const auto f90 = fvec3(1.0f);
         const auto roughness = ORM.y;
+        const auto linear_roughness = roughness * roughness;
 
         std::uint8_t new_depth = ray_.depth - 1;
 
@@ -299,7 +298,7 @@ namespace app {
         {
             //same micro-normal for both specular reflection and transmission
             fvec2 rand = fvec2{ random_values[2], random_values[3] };
-            auto m = importanceSampleGGX(rand, roughness);
+            auto m = importanceSampleGGX(rand, linear_roughness);
             assert(m.z > 0.0f);
             m = Tangent2World(m, TBN);
             assert(abs(length(m) - 1.0f) < 1e-5f);
@@ -313,7 +312,7 @@ namespace app {
             }
 
             const float interface_ior = (!exiting_volume) ? 1.0f / material.ior : material.ior;
-            auto l = normalize(refract(-v, m, interface_ior)); // normalizing for better accuracy
+            auto l = refract(-v, m, interface_ior);
 
             const float VdN = clamp(dot(N, v), kEpsilon, 1.0f);
             const auto VdM = clamp(dot(v, m), 0.0f, 1.0f);
@@ -328,7 +327,8 @@ namespace app {
                                                    //minus is because normal points into into the medium with the lower index of refraction (e.g., air). (convention)
                 h = normalize(h);
                 float LdN = clamp(dot(-N, l), 0.0f, 1.0f);
-                auto G = V_Schlick(LdN, VdN, roughness);
+                auto G = V_SmithGGXCorrelated(VdN, LdN, linear_roughness);
+                //auto G = V_Schlick(LdN, VdN, roughness);
 
                 //float LdH = clamp(dot(l, h), 0.0f, 1.0f);
                 float NdM = clamp(dot(N, m), kEpsilon, 1.0f);
@@ -340,7 +340,7 @@ namespace app {
                 brdf = min(brdf, fvec3(kMaxBRDF)); // clamp to avoid fireflies
                 auto new_pos = point.position - new_pos_offset_dir * 1e-5f; // offset to avoid self-intersection
                 auto new_payload = diffuse_color * transmission * brdf * ray_.payload;
-                ray_with_payload new_ray{ new_pos, l, new_payload, new_depth, false };
+                ray_with_payload new_ray{ new_pos, normalize(l), new_payload, new_depth, false };
                 ray_collection.push_back(new_ray);
             }
             { // specular reflection
@@ -353,10 +353,9 @@ namespace app {
                 float NdH = clamp(dot(N, h), kEpsilon, 1.0f);
 
                 //auto brdf = fvec3(F * LdH / (VdN * NdH)); // simplified version without G
-                //auto G = V_SmithGGXCorrelated(VdN, LdN, roughness);
-                //auto brdf = F * (4.0f * G * LdN * LdH / NdH); // for V_SmithGGXCorrelated
-                auto G = V_Schlick(LdN, VdN, roughness);
-                auto brdf = F * (G * LdN * LdH / NdH); // for V_Schlick
+                auto G = V_SmithGGXCorrelated(VdN, LdN, linear_roughness);
+                //auto G = V_Schlick(LdN, VdN, roughness);
+                auto brdf = F * (G * LdN * LdH / NdH);
                 brdf = min(brdf, fvec3(kMaxBRDF)); // clamp to avoid fireflies
                 auto new_pos = point.position + new_pos_offset_dir * 1e-5f; // offset to avoid self-intersection
                 auto new_payload = brdf * ray_.payload;
