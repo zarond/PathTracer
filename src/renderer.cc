@@ -13,9 +13,9 @@ namespace {
 using namespace glm;
 using namespace app;
 
-fvec4 ndc_from_pixel(float x, float y, int width, int height) {
-    float ndc_x = x / width * 2.0f - 1.0f;
-    float ndc_y = - y / height * 2.0f + 1.0f; // Flip Y if needed??
+fvec4 ndc_from_pixel(float x, float y, float inv_width, float inv_height) {
+    float ndc_x = x * inv_width * 2.0f - 1.0f;
+    float ndc_y = - y * inv_height * 2.0f + 1.0f; // Flip Y if needed??
     return fvec4(ndc_x, ndc_y, 0.0f, 1.0f);
 }
 
@@ -64,9 +64,9 @@ void Renderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& envma
     }
 }
 
-ray_with_payload Renderer::generate_camera_ray(int x, int y, int width, int height, int sampleIndex) const {
+ray_with_payload Renderer::generate_camera_ray(int x, int y, float inv_width, float inv_height, int sampleIndex) const {
     fvec2 pixel_coords = fvec2{static_cast<float>(x), static_cast<float>(y)} + subsamplesPositions[sampleIndex];
-    auto ndc_coords = ndc_from_pixel(pixel_coords.x, pixel_coords.y, width, height);
+    auto ndc_coords = ndc_from_pixel(pixel_coords.x, pixel_coords.y, inv_width, inv_height);
     auto direction = xyz(NDC2WorldMatrix_ * ndc_coords);
     return ray_with_payload{
         origin_, 
@@ -90,6 +90,8 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer)
 
     int width = framebuffer.width();
     int height = framebuffer.height();
+    float inv_width = 1.0f / static_cast<float>(width);
+    float inv_height = 1.0f / static_cast<float>(height);
     auto indices = std::views::iota(0, height);
 
     size_t reserved_size = 1 + renderSettings_.maxNewRaysPerBounce * renderSettings_.maxRayBounces;
@@ -98,7 +100,7 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer)
     }
 
     std::for_each(std::execution::par_unseq, indices.begin(), indices.end(),
-    [this, width, height, &framebuffer, reserved_size](int y) {
+    [this, width, height, inv_width, inv_height, &framebuffer, reserved_size](int y) {
         std::vector<ray_with_payload> rays;
         rays.reserve(reserved_size);
 
@@ -108,7 +110,7 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer)
             for (int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
                 fvec3 sample_col{};
 
-                rays.push_back(generate_camera_ray(x, y, width, height, i));
+                rays.push_back(generate_camera_ray(x, y, inv_width, inv_height, i));
                 while (rays.size() > 0) {
                     assert(rays.size() <= reserved_size);
                     auto ray = rays.back();

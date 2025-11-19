@@ -85,7 +85,7 @@ protected:
     fvec3 origin_;
 
 private:
-    ray_with_payload generate_camera_ray(int x, int y, int width, int height, int sampleIndex = 0) const;
+    ray_with_payload generate_camera_ray(int x, int y, float inv_width, float inv_height, int sampleIndex = 0) const;
     void generate_subsample_positions();
 
     std::vector<fvec2> subsamplesPositions;
