@@ -105,10 +105,14 @@ namespace {
         point.normal = xyz(object.NormalMatrix * xyz0(point.normal));
         return cross(point.normal, xyz(point.tangent)) * tangent_sign;
     }
-    inline fvec3 get_geometric_normal(const vertex& p1, const vertex& p2, const vertex& p3) {
+    inline fvec3 get_geometric_normal(const vertex& p1, const vertex& p2, const vertex& p3, 
+        const bool double_sided_material = false, const bool backface_hit = false) {
         auto geometric_normal = normalize(cross(
             p2.position - p1.position,
             p3.position - p1.position));
+        if (double_sided_material && backface_hit) {
+            geometric_normal *= -1.0f;
+        }
         return geometric_normal;
     }
     inline fmat3x3 construct_TBN(const fvec3& tangent, const fvec3& bitangent, const fvec3& normal) {
@@ -123,25 +127,24 @@ namespace {
         return TBN * n_ts;
     }
     fmat3x3 handle_TBN_creation(
+        const Object& object,
         const fvec4& normal_map_color,
         const vertex& point, const fvec3& bitangent, const fvec3& v, 
         const bool double_sided_material, const bool exiting_volume, const bool backface_hit,
         const vertex& p1, const vertex& p2, const vertex& p3) 
     {
+        // todo: potential problem with self-intersection from interpolated normal and geometry normal mismatch in certain cases,
+        // unrelated to impossible normal angle (in relation to v)
         fmat3x3 TBN = construct_TBN(xyz(point.tangent), bitangent, point.normal);
-        {
-            const bool has_normal_map = (normal_map_color.w != 0.0f);
-            fvec3 normal_vector = has_normal_map ? normal_map_sample_to_world(normal_map_color, TBN) : TBN[2];
-            const bool impossible_normal_angle = (dot((!exiting_volume) ? v : -v, normal_vector) < 0.0);
-            if (impossible_normal_angle) {
-                normal_vector = get_geometric_normal(p1, p2, p3); // todo: somehow incorporate normal map into geometric normal?
-                if (backface_hit && double_sided_material) {
-                    normal_vector *= -1.0f;
-                }
-            }
-            if (has_normal_map || impossible_normal_angle) {
-                TBN = construct_TBN(TBN[0], TBN[1], normal_vector); // re-construct TBN with normal from normal map
-            }
+        const bool has_normal_map = (normal_map_color.w != 0.0f);
+        fvec3 normal_vector = has_normal_map ? normal_map_sample_to_world(normal_map_color, TBN) : TBN[2];
+        const bool impossible_normal_angle = (dot((!exiting_volume) ? v : -v, normal_vector) < 0.0);
+        if (impossible_normal_angle) {
+            normal_vector = get_geometric_normal(p1, p2, p3, double_sided_material, backface_hit); // todo: somehow incorporate normal map into geometric normal?
+            normal_vector = xyz(object.NormalMatrix * xyz0(normal_vector));
+        }
+        if (has_normal_map || impossible_normal_angle) {
+            TBN = construct_TBN(TBN[0], TBN[1], normal_vector); // re-construct TBN with normal from normal map
         }
         return TBN;
     }
@@ -275,6 +278,7 @@ namespace app {
         auto normal_map_color = sample_normals(material, modelRef.images_, point.uv);
 
         fmat3x3 TBN = handle_TBN_creation(
+            object,
             normal_map_color,
             point, bitangent, v,
             material.doubleSided, exiting_volume, hit.b_coords.backface,
