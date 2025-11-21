@@ -47,7 +47,7 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         .default_value(1);
 
     program.add_argument("-a", "--as")
-        .help("choose acceleration structure mode:\n 1: Naive")
+        .help("choose acceleration structure mode:\n 1: Naive\n 2: BVH")
         .scan<'i', int>()
         .required()
         .nargs(1)

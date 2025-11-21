@@ -46,6 +46,9 @@ void Renderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& envma
     modelRef = &model;
     envmapRef = &envmap;
     switch (renderSettings_.accelStructType) {
+        case AccelerationStructureType::BVH:
+            accelStruct = std::make_unique<BVH_AS>(model);
+            break;
         case AccelerationStructureType::Naive:
         default:
             accelStruct = std::make_unique<NaiveAS>(model);

@@ -5,6 +5,7 @@
 #include <numbers>
 #include <span>
 #include <vector>
+#include <variant>
 
 #include "ray_program.h"
 #include "model_loader.h"
@@ -97,6 +98,86 @@ private:
         const fmat4x4& invModelMatrix,
         const MeshData& mesh) noexcept;
 
+};
+
+class BVH_AS : public IAccelerationStructure {
+public:
+    explicit BVH_AS(const Model& model);
+    virtual ~BVH_AS() override = default;
+
+    ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const;
+
+private:
+    struct ObjectData {
+        DOP volume;
+        fmat4x4 ModelMatrix;
+        fmat4x4 invModelMatrix;
+        uint32_t objectIndex;
+        uint32_t meshIndex;
+        uint32_t complexity;
+    };
+    struct MeshBVHNode {
+        struct children {
+            uint32_t left_child_index = -1;
+            uint32_t right_child_index = -1;
+        };
+        struct triangle {
+            fvec3 p1;
+            fvec3 p2;
+            fvec3 p3;
+            uint32_t index; // index of the first vertex of the triangle in vector of indices in original mesh
+        };
+        using triangles = std::span<triangle>;
+
+        BBox volume;
+        uint32_t parent_index = -1; // -1 for root?
+        std::variant<children, triangles> payload;
+
+        static BBox triangles_to_bbox(const std::span<MeshBVHNode::triangle> tris);
+    };
+    struct tree_info {
+        int min_depth = std::numeric_limits<int>::max();
+        int max_depth = 0;
+        int mean_depth = 0;
+        int min_tris_in_leaf = std::numeric_limits<int>::max();
+        int max_tris_in_leaf = 0;
+        int mean_tris_in_leaf = 0;
+        int total_leaves = 0;
+    };
+    struct MeshBVHData {
+        explicit MeshBVHData(const Mesh& mesh, bool double_sided, int max_triangles_per_leaf);
+        std::vector<MeshBVHNode> nodes;
+        bool doubleSided = false;
+        int maxTrianglesPerLeaf = 32;
+
+        std::vector<MeshBVHNode::triangle> data_storage;
+
+        uint32_t parse(std::span<MeshBVHNode::triangle> triangles_span, uint32_t parent_id); // returns index of created node
+
+        void collect_tree_info() const;
+        void collect_tree_info_recursive(tree_info& info, uint32_t index, int depth) const;
+    };
+
+    std::vector<ObjectData> object_data_;
+    std::vector<MeshBVHData> mesh_bvh_data_;
+
+    struct volume_hit_and_obj_index {
+        ray_volume_hit_info hit_info;
+        uint32_t object_index;
+        bool operator < (const volume_hit_and_obj_index& other) const noexcept { // for min-heap
+            return hit_info.forward_hit_distance() > other.hit_info.forward_hit_distance();
+        }
+    };
+
+    static thread_local std::vector<volume_hit_and_obj_index> volume_intersections;
+    static thread_local std::vector<uint32_t> bvh_stack;
+
+    template<bool any_hit = false>
+    static ray_triangle_hit_info mesh_ray_intersection(
+        const ray& ray_ws,
+        const fmat4x4& ModelMatrix,
+        const fmat4x4& invModelMatrix,
+        const MeshBVHData& mesh) noexcept;
 };
 
 }

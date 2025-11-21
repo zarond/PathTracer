@@ -20,6 +20,7 @@ enum class RayProgramMode {
 
 enum class AccelerationStructureType {
     Naive,
+    BVH,
 
     kNum
 };
