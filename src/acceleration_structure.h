@@ -20,8 +20,12 @@ struct BBox {
    
     bool is_empty() const noexcept;
     void expand(const fvec3& ws_point) noexcept;
+    void expand(const BBox& bbox) noexcept;
 
     ray_volume_hit_info ray_volume_intersection(const ray& ray) const noexcept;
+    ray_volume_hit_info ray_volume_intersection(const ray& ray, fvec3 ray_direction_inv) const noexcept;
+
+    float surface_area() const noexcept;
 };
 
 BBox object_to_ws_bbox(const Object& obj, const Mesh& mesh);
@@ -56,6 +60,24 @@ public:
     virtual ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const = 0;
 };
 
+// common data for AS types
+struct ObjectData {
+    DOP volume;
+    fmat4x4 ModelMatrix;
+    fmat4x4 invModelMatrix;
+    uint32_t objectIndex;
+    uint32_t meshIndex;
+    uint32_t complexity;
+};
+
+struct volume_hit_and_obj_index {
+    ray_volume_hit_info hit_info;
+    uint32_t object_index;
+    bool operator < (const volume_hit_and_obj_index& other) const noexcept { // for min-heap
+        return hit_info.forward_hit_distance() > other.hit_info.forward_hit_distance();
+    }
+};
+
 class NaiveAS : public IAccelerationStructure {
 public:
     explicit NaiveAS(const Model& model);
@@ -64,14 +86,6 @@ public:
     ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const;
 
 private:
-    struct ObjectData {
-        DOP volume;
-        fmat4x4 ModelMatrix;
-        fmat4x4 invModelMatrix;
-        uint32_t objectIndex;
-        uint32_t meshIndex;
-        uint32_t complexity;
-    };
 
     struct MeshData {
         std::vector<fvec3> vertices; // tuples of 3 vertices positions that form triangles
@@ -80,14 +94,6 @@ private:
 
     std::vector<ObjectData> object_data_;
     std::vector<MeshData> mesh_data_;
-
-    struct volume_hit_and_obj_index {
-        ray_volume_hit_info hit_info;
-        uint32_t object_index;
-        bool operator < (const volume_hit_and_obj_index& other) const noexcept { // for min-heap
-            return hit_info.forward_hit_distance() > other.hit_info.forward_hit_distance();
-        }
-    };
 
     static thread_local std::vector<volume_hit_and_obj_index> volume_intersections;
 
@@ -108,14 +114,6 @@ public:
     ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const;
 
 private:
-    struct ObjectData {
-        DOP volume;
-        fmat4x4 ModelMatrix;
-        fmat4x4 invModelMatrix;
-        uint32_t objectIndex;
-        uint32_t meshIndex;
-        uint32_t complexity;
-    };
     struct MeshBVHNode {
         struct children {
             uint32_t left_child_index = -1;
@@ -130,7 +128,6 @@ private:
         using triangles = std::span<triangle>;
 
         BBox volume;
-        uint32_t parent_index = -1; // -1 for root?
         std::variant<children, triangles> payload;
 
         static BBox triangles_to_bbox(const std::span<MeshBVHNode::triangle> tris);
@@ -148,11 +145,12 @@ private:
         explicit MeshBVHData(const Mesh& mesh, bool double_sided, int max_triangles_per_leaf);
         std::vector<MeshBVHNode> nodes;
         bool doubleSided = false;
-        int maxTrianglesPerLeaf = 32;
+        int maxTrianglesPerLeaf = 8;
 
         std::vector<MeshBVHNode::triangle> data_storage;
 
-        uint32_t parse(std::span<MeshBVHNode::triangle> triangles_span, uint32_t parent_id); // returns index of created node
+        uint32_t parse(std::span<MeshBVHNode::triangle> triangles_span); // returns index of created node
+        std::span<MeshBVHNode::triangle>::iterator split_triangles(std::span<MeshBVHNode::triangle> triangles_span, const BBox& bbox); // find best split estimate for bvh separation and partition data
 
         void collect_tree_info() const;
         void collect_tree_info_recursive(tree_info& info, uint32_t index, int depth) const;
@@ -160,14 +158,6 @@ private:
 
     std::vector<ObjectData> object_data_;
     std::vector<MeshBVHData> mesh_bvh_data_;
-
-    struct volume_hit_and_obj_index {
-        ray_volume_hit_info hit_info;
-        uint32_t object_index;
-        bool operator < (const volume_hit_and_obj_index& other) const noexcept { // for min-heap
-            return hit_info.forward_hit_distance() > other.hit_info.forward_hit_distance();
-        }
-    };
 
     static thread_local std::vector<volume_hit_and_obj_index> volume_intersections;
     static thread_local std::vector<uint32_t> bvh_stack;

@@ -68,6 +68,10 @@ namespace app {
         min = glm::min(min, ws_point);
         max = glm::max(max, ws_point);
     }
+    void BBox::expand(const BBox& bbox) noexcept {
+        min = glm::min(min, bbox.min);
+        max = glm::max(max, bbox.max);
+    }
     // Todo: optimize
     ray_volume_hit_info BBox::ray_volume_intersection(const ray& ray) const noexcept {
         auto ray_direction_inv = 1.0f / ray.direction;
@@ -82,6 +86,25 @@ namespace app {
             if (t_max < t_min) return { false };
         }
         return { true, t_min, t_max };
+    }
+    ray_volume_hit_info BBox::ray_volume_intersection(const ray& ray, fvec3 ray_direction_inv) const noexcept {
+        float t_min = std::numeric_limits<float>::lowest();
+        float t_max = std::numeric_limits<float>::max();
+        for (int i = 0; i < 3; ++i) {
+            float t0 = (min[i] - ray.origin[i]) * ray_direction_inv[i];
+            float t1 = (max[i] - ray.origin[i]) * ray_direction_inv[i];
+            if (t0 > t1) std::swap(t0, t1);
+            t_min = std::max(t0, t_min);
+            t_max = std::min(t1, t_max);
+            if (t_max < t_min) return { false };
+        }
+        return { true, t_min, t_max };
+    }
+
+    float BBox::surface_area() const noexcept
+    {
+        auto dim = max - min;
+        return dim.x * dim.y + dim.x * dim.z + dim.y * dim.z; // leave *2.0f
     }
 
     BBox object_to_ws_bbox(const Object& obj, const Mesh& mesh)
@@ -185,7 +208,7 @@ namespace app {
         std::cout << "NaiveAS constructed in " << diff.count() << " ms." << '\n';
     }
 
-    std::vector<NaiveAS::volume_hit_and_obj_index> thread_local NaiveAS::volume_intersections;
+    std::vector<volume_hit_and_obj_index> thread_local NaiveAS::volume_intersections;
 
     ray_triangle_hit_info NaiveAS::intersect_ray(const ray& ray, bool any_hit) const
     {
@@ -333,17 +356,16 @@ namespace app {
             data_storage.push_back(tri);
         }
 
-        parse(data_storage, -1);
+        parse(data_storage);
     }
 
-    uint32_t BVH_AS::MeshBVHData::parse(std::span<MeshBVHNode::triangle> triangles_span, uint32_t parent_id) {
+    uint32_t BVH_AS::MeshBVHData::parse(std::span<MeshBVHNode::triangle> triangles_span) {
         if (triangles_span.empty()) return -1; // also means that should be leaf node
         
         BBox bbox = MeshBVHNode::triangles_to_bbox(triangles_span);
 
         MeshBVHNode new_node{
             .volume = bbox,
-            .parent_index = parent_id,
         };
 
         uint32_t new_node_index = static_cast<uint32_t>(nodes.size());
@@ -356,6 +378,19 @@ namespace app {
 
         assert(!bbox.is_empty());
 
+        auto central_it = split_triangles(triangles_span, bbox);
+
+        auto left_tris = std::span<MeshBVHNode::triangle>(triangles_span.begin(), central_it);
+        auto right_tris = std::span<MeshBVHNode::triangle>(central_it, triangles_span.end());
+
+        uint32_t left_child_id = parse(left_tris);
+        uint32_t right_child_id = parse(right_tris);
+
+        nodes[new_node_index].payload = MeshBVHNode::children{ left_child_id , right_child_id };
+        return new_node_index;
+    }
+
+    std::span<BVH_AS::MeshBVHNode::triangle>::iterator BVH_AS::MeshBVHData::split_triangles(std::span<MeshBVHNode::triangle> triangles_span, const BBox& bbox) {
         auto bbox_center = mix(bbox.min, bbox.max, 0.5f);
         int longest_axis = get_longest_axis(bbox);
 
@@ -367,10 +402,9 @@ namespace app {
                 return centroid < bbox_center[longest_axis];
             }
         );
-        auto left_tris = std::span<MeshBVHNode::triangle>(triangles_span.begin(), central_it);
-        auto right_tris = std::span<MeshBVHNode::triangle>(central_it, triangles_span.end());
 
-        if (left_tris.empty() || right_tris.empty() || left_tris.size() == 1 || right_tris.size() == 1) {
+        if (central_it == triangles_span.begin() || central_it == triangles_span.end() || 
+            central_it == triangles_span.begin() + 1 || central_it + 1 == triangles_span.end()) {
             std::sort(
                 triangles_span.begin(),
                 triangles_span.end(),
@@ -382,15 +416,8 @@ namespace app {
             );
             size_t mid = triangles_span.size() / 2;
             central_it = triangles_span.begin() + mid;
-            left_tris = std::span<MeshBVHNode::triangle>(triangles_span.begin(), central_it);
-            right_tris = std::span<MeshBVHNode::triangle>(central_it, triangles_span.end());
         }
-
-        uint32_t left_child_id = parse(left_tris, new_node_index);
-        uint32_t right_child_id = parse(right_tris, new_node_index);
-
-        nodes[new_node_index].payload = MeshBVHNode::children{ left_child_id , right_child_id };
-        return new_node_index;
+        return central_it;
     }
 
     void BVH_AS::MeshBVHData::collect_tree_info_recursive(tree_info& info, uint32_t index, int depth) const {
@@ -442,7 +469,7 @@ namespace app {
         return bbox;
     }
 
-    std::vector<BVH_AS::volume_hit_and_obj_index> thread_local BVH_AS::volume_intersections;
+    std::vector<volume_hit_and_obj_index> thread_local BVH_AS::volume_intersections;
     std::vector<uint32_t> thread_local BVH_AS::bvh_stack;
     
     ray_triangle_hit_info BVH_AS::intersect_ray(const ray& ray, bool any_hit) const {
@@ -496,11 +523,12 @@ namespace app {
     {
         // Transform ray to object space
         auto ray_origin_os = xyz(invModelMatrix * xyz1(ray_ws.origin));
-        auto ray_direction_os = xyz(invModelMatrix * xyz0(ray_ws.direction));
+        auto ray_direction_os = normalize(xyz(invModelMatrix * xyz0(ray_ws.direction)));
+        fvec3 inv_dir = 1.0f / ray_direction_os;
 
         ray os_ray{
             ray_origin_os,
-            normalize(ray_direction_os)
+            ray_direction_os
         };
 
         ray_triangle_hit_info hit{};
@@ -539,15 +567,18 @@ namespace app {
                 const auto& r_node = mesh.nodes[children.right_child_index];
                 assert(children.left_child_index != -1 && children.right_child_index != -1);
 
-                ray_volume_hit_info volume_hit_l = l_node.volume.ray_volume_intersection(os_ray);
-                ray_volume_hit_info volume_hit_r = r_node.volume.ray_volume_intersection(os_ray);
+                ray_volume_hit_info volume_hit_l = l_node.volume.ray_volume_intersection(os_ray, inv_dir);
+                ray_volume_hit_info volume_hit_r = r_node.volume.ray_volume_intersection(os_ray, inv_dir);
 
-                if (volume_hit_l.forward_hit_distance() < volume_hit_r.forward_hit_distance()) {
-                    if (volume_hit_r.hit && hit.b_coords.t > volume_hit_r.forward_hit_distance()) bvh_stack.push_back(children.right_child_index);
-                    if (volume_hit_l.hit && hit.b_coords.t > volume_hit_l.forward_hit_distance()) bvh_stack.push_back(children.left_child_index);
+                auto distance_l = volume_hit_l.forward_hit_distance();
+                auto distance_r = volume_hit_r.forward_hit_distance();
+
+                if (distance_l < volume_hit_r.forward_hit_distance()) {
+                    if (volume_hit_r.hit && hit.b_coords.t > distance_r) bvh_stack.push_back(children.right_child_index);
+                    if (volume_hit_l.hit && hit.b_coords.t > distance_l) bvh_stack.push_back(children.left_child_index);
                 } else {
-                    if (volume_hit_l.hit && hit.b_coords.t > volume_hit_l.forward_hit_distance()) bvh_stack.push_back(children.left_child_index);
-                    if (volume_hit_r.hit && hit.b_coords.t > volume_hit_r.forward_hit_distance()) bvh_stack.push_back(children.right_child_index);
+                    if (volume_hit_l.hit && hit.b_coords.t > distance_l) bvh_stack.push_back(children.left_child_index);
+                    if (volume_hit_r.hit && hit.b_coords.t > distance_r) bvh_stack.push_back(children.right_child_index);
                 }
             }
             if constexpr (any_hit) {
