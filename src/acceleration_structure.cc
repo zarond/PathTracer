@@ -54,6 +54,14 @@ namespace {
         }
         return 2;
     }
+    float SurfaceAreaHeuristic(const BBox& bbox, int N) {
+        if (bbox.is_empty()) return std::numeric_limits<float>::infinity();
+        return bbox.surface_area() * N;
+    }
+    float SurfaceAreaHeuristic(const BBox& bbox_l, const BBox& bbox_r, int N_l, int N_r) {
+        if (bbox_l.is_empty() || bbox_r.is_empty()) return std::numeric_limits<float>::infinity();
+        return bbox_l.surface_area() * N_l + bbox_r.surface_area() * N_r;
+    }
 }
 
 namespace app {
@@ -380,6 +388,11 @@ namespace app {
 
         auto central_it = split_triangles(triangles_span, bbox);
 
+        if (central_it == triangles_span.end()) { // no good split found
+            nodes[new_node_index].payload = triangles_span;
+            return new_node_index;
+        }
+
         auto left_tris = std::span<MeshBVHNode::triangle>(triangles_span.begin(), central_it);
         auto right_tris = std::span<MeshBVHNode::triangle>(central_it, triangles_span.end());
 
@@ -391,26 +404,91 @@ namespace app {
     }
 
     std::span<BVH_AS::MeshBVHNode::triangle>::iterator BVH_AS::MeshBVHData::split_triangles(std::span<MeshBVHNode::triangle> triangles_span, const BBox& bbox) {
-        auto bbox_center = mix(bbox.min, bbox.max, 0.5f);
-        int longest_axis = get_longest_axis(bbox);
+        float parent_weight = SurfaceAreaHeuristic(bbox, triangles_span.size());
+
+        float best_cost = parent_weight;
+
+        struct bins {
+            BBox bbox;
+            int n = 0;
+        };
+
+        constexpr int N_bins = 32;
+        auto bbox_dim = (bbox.max - bbox.min);
+        auto bbox_dim_scale = N_bins * 1.0f / bbox_dim;
+
+        int best_axis = get_longest_axis(bbox);
+        float best_center;
+
+        for (int axis = 0; axis < 3; ++axis)
+        {
+            std::array<bins, N_bins> bins_;
+            std::for_each(triangles_span.begin(), triangles_span.end(),
+                [axis, bbox, bbox_dim_scale, &bins_](const MeshBVHNode::triangle& tri) {
+                    float centroid = (tri.p1[axis] + tri.p2[axis] + tri.p3[axis]) / 3.0f;
+                    int bin_id = (centroid - bbox.min[axis]) * bbox_dim_scale[axis];
+                    bin_id = std::clamp(bin_id, 0, N_bins - 1);
+                    ++bins_[bin_id].n;
+                    bins_[bin_id].bbox.expand(tri.p1);
+                    bins_[bin_id].bbox.expand(tri.p2);
+                    bins_[bin_id].bbox.expand(tri.p3);
+                });
+
+            std::array<bins, N_bins - 1> left_sweep;
+            std::array<bins, N_bins - 1> right_sweep;
+
+            left_sweep[0] = bins_[0];
+            for (int i = 1; i < N_bins - 1; ++i) {
+                left_sweep[i] = left_sweep[i - 1];
+                left_sweep[i].bbox.expand(bins_[i].bbox);
+                left_sweep[i].n += bins_[i].n;
+            }
+            right_sweep[N_bins - 2] = bins_[N_bins - 1];
+            for (int i = N_bins - 3; i >= 0; --i) {
+                right_sweep[i] = right_sweep[i + 1];
+                right_sweep[i].bbox.expand(bins_[i].bbox);
+                right_sweep[i].n += bins_[i].n;
+            }
+
+            for (int i = 0; i < N_bins - 1; ++i) {
+                float SAH = SurfaceAreaHeuristic(left_sweep[i].bbox, right_sweep[i].bbox, left_sweep[i].n, right_sweep[i].n);
+                assert(SAH >= 0.0f && !isnan(SAH));
+                if (SAH < best_cost) {
+                    best_center = bbox.min[axis] + (i + 1) * bbox_dim[axis] * (1.0f / N_bins);
+                    best_cost = SAH;
+                    best_axis  = axis;
+                }
+            }
+        }
+
+        if (best_cost == parent_weight) { 
+            best_axis =  get_longest_axis(bbox); 
+            best_center = bbox.min[best_axis] + 0.5f * bbox_dim[best_axis];
+        }
 
         auto central_it = std::partition(
             triangles_span.begin(),
             triangles_span.end(),
-            [longest_axis, bbox, bbox_center](const MeshBVHNode::triangle& tri) {
-                float centroid = (tri.p1[longest_axis] + tri.p2[longest_axis] + tri.p3[longest_axis]) / 3.0f;
-                return centroid < bbox_center[longest_axis];
+            [best_axis, bbox, best_center](const MeshBVHNode::triangle& tri) {
+                float centroid = (tri.p1[best_axis] + tri.p2[best_axis] + tri.p3[best_axis]) / 3.0f;
+                return centroid < best_center;
             }
         );
 
-        if (central_it == triangles_span.begin() || central_it == triangles_span.end() || 
+        if (best_cost != parent_weight) return central_it;
+
+        if (triangles_span.size() <= maxTrianglesPerLeaf) {
+            return triangles_span.end();
+        }
+
+        if (central_it == triangles_span.begin() || central_it == triangles_span.end() ||
             central_it == triangles_span.begin() + 1 || central_it + 1 == triangles_span.end()) {
             std::sort(
                 triangles_span.begin(),
                 triangles_span.end(),
-                [longest_axis](const MeshBVHNode::triangle& a, const MeshBVHNode::triangle& b) {
-                    float centroid_a = (a.p1[longest_axis] + a.p2[longest_axis] + a.p3[longest_axis]);
-                    float centroid_b = (b.p1[longest_axis] + b.p2[longest_axis] + b.p3[longest_axis]);
+                [best_axis](const MeshBVHNode::triangle& a, const MeshBVHNode::triangle& b) {
+                    float centroid_a = (a.p1[best_axis] + a.p2[best_axis] + a.p3[best_axis]);
+                    float centroid_b = (b.p1[best_axis] + b.p2[best_axis] + b.p3[best_axis]);
                     return centroid_a < centroid_b;
                 }
             );
