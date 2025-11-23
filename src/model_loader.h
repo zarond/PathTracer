@@ -48,6 +48,8 @@ struct Material {
     float emissiveStrength = 1.0f;
     bool doubleSided = false; // means each side is a surface (thin objects)
     bool hasVolume = false; // essential for transmission, otherwise treat as thin surface
+    bool alphaBlending = false;
+    float alpha_cutoff = -1.0f;
 };
 
 struct Camera {

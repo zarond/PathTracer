@@ -107,8 +107,10 @@ Model ModelLoader::constructModel() const
 			.emissiveFactor = fvec3{material.emissiveFactor.x(), material.emissiveFactor.y(), material.emissiveFactor.z()},
 			.emissiveTextureIndex = emissive_imageIndex,
 			.emissiveStrength = material.emissiveStrength,
-            .doubleSided = material.doubleSided,
-            .hasVolume = material.volume ? true : false,
+			.doubleSided = material.doubleSided,
+			.hasVolume = material.volume ? true : false,
+			.alphaBlending = (material.alphaMode == fastgltf::AlphaMode::Blend),
+			.alpha_cutoff = (material.alphaMode == fastgltf::AlphaMode::Mask)? material.alphaCutoff : -1.0f
 		};
 		model.materials_.push_back(mat);
 	}

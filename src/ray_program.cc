@@ -258,11 +258,6 @@ namespace app {
         auto mat_index = mesh_data.materialIndex;
         const auto& material = modelRef.materials_[mat_index];
 
-        auto emissive = xyz(sample_emissive(material, modelRef.images_, point.uv));
-        if (ray_.depth == 0) {
-            return ray_.payload * emissive;
-        }
-
         bool exiting_volume = false;
         if (hit.b_coords.backface) {
             // ray hits backside
@@ -273,10 +268,29 @@ namespace app {
             }
         }
 
+        auto albedo_color = sample_albedo(material, modelRef.images_, point.uv);
+        float alpha = albedo_color.w;
+        if (!material.alphaBlending) {
+            alpha = (alpha < material.alpha_cutoff) ? 0.0f : 1.0f;
+        }
+        if (alpha != 1.0f) {
+            ray_with_payload new_ray = ray_;
+            new_ray.origin = point.position + (exiting_volume ? 1.0f : -1.0f) * point.normal * 1e-5f; // offset to avoid self-intersection
+            new_ray.payload *= (1.0f - alpha);
+            ray_collection.push_back(new_ray);
+        }
+        if (alpha == 0.0f) {
+            return fvec3{ 0.0f };
+        }
+
+        auto emissive = xyz(sample_emissive(material, modelRef.images_, point.uv));
+        if (ray_.depth == 0) {
+            return ray_.payload * emissive * alpha;
+        }
+
         auto v = -ray_.direction;
 
         auto normal_map_color = sample_normals(material, modelRef.images_, point.uv);
-
         fmat3x3 TBN = handle_TBN_creation(
             object,
             normal_map_color,
@@ -284,7 +298,6 @@ namespace app {
             material.doubleSided, exiting_volume, hit.b_coords.backface,
             p1, p2, p3);
 
-        auto albedo_color = sample_albedo(material, modelRef.images_, point.uv);
         auto transmission = sample_transmission(material, modelRef.images_, point.uv);
         auto ORM = sample_roughness_metallic(material, modelRef.images_, point.uv);
         auto diffuse_color = (1.0f - ORM.z) * xyz(albedo_color);
@@ -313,7 +326,7 @@ namespace app {
             
             auto F = fvec3(1.0f) - fresnel_schlick(f0, f90, LdH);
             auto new_pos = point.position + point.normal * 1e-5f; // offset to avoid self-intersection
-            auto new_payload = F * diffuse_color * (1.0f - transmission) * ray_.payload;
+            auto new_payload = F * diffuse_color * (1.0f - transmission) * ray_.payload * alpha;
             ray_with_payload new_ray{ new_pos, l, new_payload, new_depth, false };
             ray_collection.push_back(new_ray);
         }
@@ -358,7 +371,7 @@ namespace app {
                 auto brdf = (fvec3(1.0f) - F) * (G * VdH * LdN / NdM);
                 brdf = min(brdf, fvec3(kMaxBRDF)); // clamp to avoid fireflies
                 auto new_pos = point.position - new_pos_offset_dir * 1e-5f; // offset to avoid self-intersection
-                auto new_payload = diffuse_color * transmission * brdf * ray_.payload;
+                auto new_payload = diffuse_color * transmission * brdf * ray_.payload * alpha;
                 ray_with_payload new_ray{ new_pos, normalize(l), new_payload, new_depth, false }; // normalizing for better accuracy
                 ray_collection.push_back(new_ray);
             }
@@ -376,12 +389,12 @@ namespace app {
                 auto brdf = F * (G * LdN * LdH / NdH);
                 brdf = min(brdf, fvec3(kMaxBRDF)); // clamp to avoid fireflies
                 auto new_pos = point.position + new_pos_offset_dir * 1e-5f; // offset to avoid self-intersection
-                auto new_payload = brdf * ray_.payload;
+                auto new_payload = brdf * ray_.payload * alpha;
                 ray_with_payload new_ray{ new_pos, l, new_payload, new_depth, false };
                 ray_collection.push_back(new_ray);
             }
         }
-        return ray_.payload * emissive;
+        return ray_.payload * emissive * alpha;
     }
     
 }
