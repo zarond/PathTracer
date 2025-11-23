@@ -51,7 +51,7 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         .scan<'i', int>()
         .required()
         .nargs(1)
-        .default_value(1);
+        .default_value(2);
 
     program.add_argument("-s", "--samples")
         .help("number of samples per pixel.")
@@ -73,6 +73,13 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         .required()
         .nargs(1)
         .default_value(0);
+
+    program.add_argument("-m")
+        .help("max trianles in a BVH leaf node.")
+        .scan<'i', int>()
+        .required()
+        .nargs(1)
+        .default_value(8);
 
     program.add_argument("--width")
         .help("window width")
@@ -102,10 +109,14 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
     auto samplesPerPixel = program.get<int>("-s");
     auto maxRayBounces = program.get<int>("-b");
     auto maxNewRaysPerBounce = program.get<int>("-r");
+    
+    auto maxTrianglesPerBVHLeaf = program.get<int>("-m");
 
     args.samplesPerPixel = (samplesPerPixel > 0)? samplesPerPixel : 1;
     args.maxRayBounces = (maxRayBounces >= 0) ? maxRayBounces : 0;
     args.maxNewRaysPerBounce = (maxNewRaysPerBounce >= 0) ? maxNewRaysPerBounce : 0;
+
+    args.maxTrianglesPerBVHLeaf = (maxTrianglesPerBVHLeaf > 0) ? maxTrianglesPerBVHLeaf : 1;
 
     auto windowWidth = program.get<int>("--width");
     auto windowHeight = program.get<int>("--height");

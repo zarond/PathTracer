@@ -43,6 +43,8 @@ struct ConsoleArgs {
     unsigned int maxRayBounces = 0;
     unsigned int maxNewRaysPerBounce = 0;
 
+    unsigned int maxTrianglesPerBVHLeaf = 8;
+
     unsigned int windowWidth = 800;
     unsigned int windowHeight = 600;
 

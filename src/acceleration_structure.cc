@@ -310,7 +310,7 @@ namespace app {
         return hit;
     }
 
-    BVH_AS::BVH_AS(const Model& model) {
+    BVH_AS::BVH_AS(const Model& model, int max_triangles_per_leaf) {
         auto start = std::chrono::high_resolution_clock::now();
         object_data_.reserve(model.objects_.size());
         mesh_bvh_data_.reserve(model.meshes_.size());
@@ -336,7 +336,7 @@ namespace app {
         for (const auto& mesh : model.meshes_) {
             const auto& mat = model.materials_[mesh.materialIndex];
             bool doubleSided = mat.doubleSided || mat.hasVolume;
-            mesh_bvh_data_.emplace_back(mesh, doubleSided, 8);
+            mesh_bvh_data_.emplace_back(mesh, doubleSided, max_triangles_per_leaf);
         }
         volume_intersections.reserve(object_data_.size());
         bvh_stack.reserve(64); // preallocate stack memory
@@ -377,7 +377,7 @@ namespace app {
         };
 
         uint32_t new_node_index = static_cast<uint32_t>(nodes.size());
-        nodes.push_back(std::move(new_node));
+        nodes.push_back(new_node);
 
         if (triangles_span.size() <= maxTrianglesPerLeaf) {
             nodes[new_node_index].payload = triangles_span;

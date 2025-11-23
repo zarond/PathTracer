@@ -47,6 +47,7 @@ int main(int argc, char* argv[]) {
             .samplesPerPixel = console_arguments.samplesPerPixel,
             .maxRayBounces = console_arguments.maxRayBounces,
             .maxNewRaysPerBounce = console_arguments.maxNewRaysPerBounce,
+            .maxTrianglesPerBVHLeaf = console_arguments.maxTrianglesPerBVHLeaf,
             .programMode = console_arguments.programMode,
             .accelStructType = console_arguments.accelStructType
     };

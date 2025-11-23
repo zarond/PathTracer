@@ -108,7 +108,7 @@ private:
 
 class BVH_AS : public IAccelerationStructure {
 public:
-    explicit BVH_AS(const Model& model);
+    explicit BVH_AS(const Model& model, int max_triangles_per_leaf);
     virtual ~BVH_AS() override = default;
 
     ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const;
