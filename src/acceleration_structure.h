@@ -149,7 +149,7 @@ private:
 
         std::vector<MeshBVHNode::triangle> data_storage;
 
-        uint32_t parse(std::span<MeshBVHNode::triangle> triangles_span); // returns index of created node
+        void parse(std::span<MeshBVHNode::triangle> triangles_span, uint32_t node_id = 0);
         std::span<MeshBVHNode::triangle>::iterator split_triangles(std::span<MeshBVHNode::triangle> triangles_span, const BBox& bbox); // find best split estimate for bvh separation and partition data
 
         void collect_tree_info() const;

@@ -367,21 +367,22 @@ namespace app {
         parse(data_storage);
     }
 
-    uint32_t BVH_AS::MeshBVHData::parse(std::span<MeshBVHNode::triangle> triangles_span) {
-        if (triangles_span.empty()) return -1; // also means that should be leaf node
-        
+    void BVH_AS::MeshBVHData::parse(std::span<MeshBVHNode::triangle> triangles_span, uint32_t node_id) {        
         BBox bbox = MeshBVHNode::triangles_to_bbox(triangles_span);
 
         MeshBVHNode new_node{
             .volume = bbox,
         };
 
-        uint32_t new_node_index = static_cast<uint32_t>(nodes.size());
-        nodes.push_back(new_node);
-
+        if (node_id == 0) {
+            nodes.push_back(new_node);
+        } else {
+            nodes[node_id] = new_node;
+        }
+        
         if (triangles_span.size() <= maxTrianglesPerLeaf) {
-            nodes[new_node_index].payload = triangles_span;
-            return new_node_index;
+            nodes[node_id].payload = triangles_span;
+            return;
         }
 
         assert(!bbox.is_empty());
@@ -389,18 +390,24 @@ namespace app {
         auto central_it = split_triangles(triangles_span, bbox);
 
         if (central_it == triangles_span.end()) { // no good split found
-            nodes[new_node_index].payload = triangles_span;
-            return new_node_index;
+            nodes[node_id].payload = triangles_span;
+            return;
         }
 
         auto left_tris = std::span<MeshBVHNode::triangle>(triangles_span.begin(), central_it);
         auto right_tris = std::span<MeshBVHNode::triangle>(central_it, triangles_span.end());
 
-        uint32_t left_child_id = parse(left_tris);
-        uint32_t right_child_id = parse(right_tris);
+        uint32_t left_child_id = static_cast<uint32_t>(nodes.size());
+        uint32_t right_child_id = left_child_id + 1;
+        nodes[node_id].payload = MeshBVHNode::children{ left_child_id , right_child_id };
 
-        nodes[new_node_index].payload = MeshBVHNode::children{ left_child_id , right_child_id };
-        return new_node_index;
+        nodes.emplace_back();
+        nodes.emplace_back();
+
+        parse(left_tris, left_child_id);
+        parse(right_tris, right_child_id);
+
+        return;
     }
 
     std::span<BVH_AS::MeshBVHNode::triangle>::iterator BVH_AS::MeshBVHData::split_triangles(std::span<MeshBVHNode::triangle> triangles_span, const BBox& bbox) {
