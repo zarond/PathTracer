@@ -48,6 +48,7 @@ struct Material {
     float emissiveStrength = 1.0f;
     bool doubleSided = false; // means each side is a surface (thin objects)
     bool hasVolume = false; // essential for transmission, otherwise treat as thin surface
+    fvec3 attenuationFactor{ 0.0f, 0.0f, 0.0f };
     bool alphaBlending = false;
     float alpha_cutoff = -1.0f;
 };

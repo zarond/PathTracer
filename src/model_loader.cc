@@ -93,6 +93,16 @@ Model ModelLoader::constructModel() const
 			auto textureIndex = material.emissiveTexture->textureIndex;
 			emissive_imageIndex = asset_.textures[textureIndex].imageIndex.value_or(0);
         }
+		fvec3 attenuationFactor = fvec3(0.0f);
+		if (material.volume) {
+			attenuationFactor = fvec3{material.volume->attenuationColor.x(),
+									  material.volume->attenuationColor.y(),
+									  material.volume->attenuationColor.z() };
+			// Following Gltf standard of KHR_materials_volume:
+			// attenuationFactor = -log(attenuationFactor) / max(1e-5f, material.volume->attenuationDistance);
+			// Following Blender implementation instead, prefer it more for better control for saturated colors and low density mediums:
+			attenuationFactor = (1.0f - attenuationFactor) / max(1e-5f, material.volume->attenuationDistance);
+		}
 		Material mat{
 			.baseColorFactor = std::bit_cast<fvec4>(material.pbrData.baseColorFactor),
 			.metallicFactor = material.pbrData.metallicFactor,
@@ -109,6 +119,7 @@ Model ModelLoader::constructModel() const
 			.emissiveStrength = material.emissiveStrength,
 			.doubleSided = material.doubleSided,
 			.hasVolume = material.volume ? true : false,
+			.attenuationFactor = attenuationFactor,
 			.alphaBlending = (material.alphaMode == fastgltf::AlphaMode::Blend),
 			.alpha_cutoff = (material.alphaMode == fastgltf::AlphaMode::Mask)? material.alphaCutoff : -1.0f
 		};

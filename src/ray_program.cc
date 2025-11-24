@@ -283,9 +283,13 @@ namespace app {
             return fvec3{ 0.0f };
         }
 
+        // todo: now program can't apply absorption if ray was reflected of an object that is inside volume mesh
+        // only applies absorption to part of path that directly exits (hits backface of) volume
+        fvec3 attenuation = exiting_volume ? min(exp(-material.attenuationFactor * hit.distance), 1.0f) : fvec3{ 1.0f }; // Volume absorption
+
         auto emissive = xyz(sample_emissive(material, modelRef.images_, point.uv));
         if (ray_.depth == 0) {
-            return ray_.payload * emissive * alpha;
+            return ray_.payload * emissive * attenuation * alpha;
         }
 
         auto v = -ray_.direction;
@@ -326,7 +330,7 @@ namespace app {
             
             auto F = fvec3(1.0f) - fresnel_schlick(f0, f90, LdH);
             auto new_pos = point.position + point.normal * 1e-5f; // offset to avoid self-intersection
-            auto new_payload = F * diffuse_color * (1.0f - transmission) * ray_.payload * alpha;
+            auto new_payload = F * diffuse_color * (1.0f - transmission) * attenuation * ray_.payload * alpha;
             ray_with_payload new_ray{ new_pos, l, new_payload, new_depth, false };
             ray_collection.push_back(new_ray);
         }
@@ -371,7 +375,7 @@ namespace app {
                 auto brdf = (fvec3(1.0f) - F) * (G * VdH * LdN / NdM);
                 brdf = min(brdf, fvec3(kMaxBRDF)); // clamp to avoid fireflies
                 auto new_pos = point.position - new_pos_offset_dir * 1e-5f; // offset to avoid self-intersection
-                auto new_payload = diffuse_color * transmission * brdf * ray_.payload * alpha;
+                auto new_payload = diffuse_color * transmission * attenuation * brdf * ray_.payload * alpha;
                 ray_with_payload new_ray{ new_pos, normalize(l), new_payload, new_depth, false }; // normalizing for better accuracy
                 ray_collection.push_back(new_ray);
             }
@@ -389,12 +393,12 @@ namespace app {
                 auto brdf = F * (G * LdN * LdH / NdH);
                 brdf = min(brdf, fvec3(kMaxBRDF)); // clamp to avoid fireflies
                 auto new_pos = point.position + new_pos_offset_dir * 1e-5f; // offset to avoid self-intersection
-                auto new_payload = brdf * ray_.payload * alpha;
+                auto new_payload = attenuation * brdf * ray_.payload * alpha;
                 ray_with_payload new_ray{ new_pos, l, new_payload, new_depth, false };
                 ray_collection.push_back(new_ray);
             }
         }
-        return ray_.payload * emissive * alpha;
+        return ray_.payload * emissive * attenuation * alpha;
     }
     
 }
