@@ -16,7 +16,7 @@ struct BBox {
     fvec3 min, max;
 
     BBox() noexcept;
-    constexpr BBox(fvec3 min_, fvec3 max_) noexcept;
+    constexpr BBox(const fvec3& min_, const fvec3& max_) noexcept;
    
     bool is_empty() const noexcept;
     void expand(const fvec3& ws_point) noexcept;
@@ -32,15 +32,20 @@ BBox object_to_ws_bbox(const Object& obj, const Mesh& mesh);
 
 struct DOP {
     DOP() noexcept;
+    DOP(const fvec3& point) noexcept;
 
     bool is_empty() const noexcept;
     void expand(const fvec3& ws_point) noexcept;
+    void expand(const DOP& dop) noexcept;
 
     ray_volume_hit_info ray_volume_intersection(const ray& ray) const noexcept;
+    ray_volume_hit_info ray_volume_intersection(const ray& ray, const std::array<fvec2, 7>& projections) const noexcept;
 
 private:
     std::array<fvec2, 7> min_max;
     constexpr static auto inv_sqrt3 = std::numbers::inv_sqrt3_v<float>;
+
+public:
     static inline std::array<fvec3, 7> axises {
         fvec3{1.0f, 0.0f, 0.0f},
         fvec3{0.0f, 1.0f, 0.0f},

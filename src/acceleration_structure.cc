@@ -1,5 +1,6 @@
 #include <iostream>
 #include <algorithm>
+#include <execution>
 
 #include "acceleration_structure.h"
 
@@ -69,7 +70,7 @@ namespace app {
         : min(std::numeric_limits<float>::max()),
           max(std::numeric_limits<float>::lowest()) {
     }
-    constexpr BBox::BBox(fvec3 min_, fvec3 max_) noexcept : min(min_), max(max_) {}
+    constexpr BBox::BBox(const fvec3& min_, const fvec3& max_) noexcept : min(min_), max(max_) {}
 
     bool BBox::is_empty() const noexcept { return max.x < min.x || max.y < min.y || max.z < min.z; }
     void BBox::expand(const fvec3& ws_point) noexcept {
@@ -80,33 +81,44 @@ namespace app {
         min = glm::min(min, bbox.min);
         max = glm::max(max, bbox.max);
     }
-    // Todo: optimize
+    // mildly-optimised scalar version, without ray reuse
     ray_volume_hit_info BBox::ray_volume_intersection(const ray& ray) const noexcept {
         auto ray_direction_inv = 1.0f / ray.direction;
-        float t_min = std::numeric_limits<float>::lowest();
-        float t_max = std::numeric_limits<float>::max();
-        for (int i = 0; i < 3; ++i) {
-            float t0 = (min[i] - ray.origin[i]) * ray_direction_inv[i];
-            float t1 = (max[i] - ray.origin[i]) * ray_direction_inv[i];
-            if (t0 > t1) std::swap(t0, t1);
-            t_min = std::max(t0, t_min);
-            t_max = std::min(t1, t_max);
-            if (t_max < t_min) return { false };
-        }
+
+        float t_min = (min.x - ray.origin.x) * ray_direction_inv.x;
+        float t_max = (max.x - ray.origin.x) * ray_direction_inv.x;
+        if (t_max < t_min) std::swap(t_min, t_max);
+
+        float t0 = (min.y - ray.origin.y) * ray_direction_inv.y;
+        float t1 = (max.y - ray.origin.y) * ray_direction_inv.y;
+        if (t0 > t1) std::swap(t0, t1);
+        t_min = std::max(t0, t_min);
+        t_max = std::min(t1, t_max);
+        if (t_max < t_min) return { false };
+
+        t0 = (min.z - ray.origin.z) * ray_direction_inv.z;
+        t1 = (max.z - ray.origin.z) * ray_direction_inv.z;
+        if (t0 > t1) std::swap(t0, t1);
+        t_min = std::max(t0, t_min);
+        t_max = std::min(t1, t_max);
+        if (t_max < t_min) return { false };
+
         return { true, t_min, t_max };
     }
+    // optimised simd version, with ray reuse
     ray_volume_hit_info BBox::ray_volume_intersection(const ray& ray, fvec3 ray_direction_inv) const noexcept {
-        float t_min = std::numeric_limits<float>::lowest();
-        float t_max = std::numeric_limits<float>::max();
-        for (int i = 0; i < 3; ++i) {
-            float t0 = (min[i] - ray.origin[i]) * ray_direction_inv[i];
-            float t1 = (max[i] - ray.origin[i]) * ray_direction_inv[i];
-            if (t0 > t1) std::swap(t0, t1);
-            t_min = std::max(t0, t_min);
-            t_max = std::min(t1, t_max);
-            if (t_max < t_min) return { false };
-        }
-        return { true, t_min, t_max };
+        fvec3 t_min = (min - ray.origin) * ray_direction_inv;
+        fvec3 t_max = (max - ray.origin) * ray_direction_inv;
+
+        fvec3 t0 = glm::min(t_min, t_max);
+        fvec3 t1 = glm::max(t_min, t_max);
+
+        t0.x = (t0.x > t0.y) ? t0.x : t0.y;
+        t0.x = (t0.x > t0.z) ? t0.x : t0.z;
+        t1.x = (t1.x < t1.y) ? t1.x : t1.y;
+        t1.x = (t1.x < t1.z) ? t1.x : t1.z;
+        
+        return { (t0.x <= t1.x), t0.x, t1.x };
     }
 
     float BBox::surface_area() const noexcept
@@ -117,19 +129,28 @@ namespace app {
 
     BBox object_to_ws_bbox(const Object& obj, const Mesh& mesh)
     {
-        BBox bbox;
-        std::for_each(mesh.vertices.begin(), mesh.vertices.end(), 
-            [&bbox, &obj](const vertex& vertex) {
-                // Todo: optimize
-                auto pos = xyz1(vertex.position);
-                bbox.expand(xyz(obj.ModelMatrix * pos));
-            }
-        );
-        return bbox;
+        auto combine = [](BBox a, const BBox& b) {
+            a.expand(b);
+            return a;
+        };
+        auto make_bbox = [mat = obj.ModelMatrix](const vertex& v) {
+            auto p = xyz(mat * xyz1(v.position));
+            return BBox{ p, p };
+        };
+        return std::transform_reduce(std::execution::unseq,  mesh.vertices.begin(), mesh.vertices.end(), BBox{}, combine, make_bbox);
+        // unfortunately no performance benefit using transform_reduce compared to simple for_each vertex expand() on my machine
+        // std::execution::par_unseq is slower too
     }
 
     DOP::DOP() noexcept {
         min_max.fill(fvec2{ std::numeric_limits<float>::max(), std::numeric_limits<float>::lowest() });
+    }
+    DOP::DOP(const fvec3& point) noexcept {
+        for (int i = 0; i < 7; ++i)
+        {
+            float projection = dot(point, axises[i]);
+            min_max[i] = { projection , projection };
+        }
     }
 
     bool DOP::is_empty() const noexcept { 
@@ -142,6 +163,14 @@ namespace app {
             auto& axis_min_max = min_max[i];
             axis_min_max.x = std::min(axis_min_max.x, projection);
             axis_min_max.y = std::max(axis_min_max.y, projection);
+        }
+    }
+    void DOP::expand(const DOP& dop) noexcept {
+        for (int i = 0; i < 7; ++i)
+        {
+            auto& axis_min_max = min_max[i];
+            axis_min_max.x = std::min(axis_min_max.x, dop.min_max[i].x);
+            axis_min_max.y = std::max(axis_min_max.y, dop.min_max[i].y);
         }
     }
 
@@ -162,18 +191,35 @@ namespace app {
         }
         return { true, t_min, t_max };
     }
+    // optimised for ray reuse
+    ray_volume_hit_info DOP::ray_volume_intersection(const ray& ray, const std::array<fvec2, 7>& projections) const noexcept {
+        float t_min = std::numeric_limits<float>::lowest();
+        float t_max = std::numeric_limits<float>::max();
+
+        for (int i = 0; i < 7; ++i) {
+            const auto axis_min_max = min_max[i];
+            float t0 = (axis_min_max.x - projections[i].x) * projections[i].y;
+            float t1 = (axis_min_max.y - projections[i].x) * projections[i].y;
+            if (t0 > t1) std::swap(t0, t1);
+            t_min = std::max(t0, t_min);
+            t_max = std::min(t1, t_max);
+            if (t_max < t_min) return { false };
+        }
+        return { true, t_min, t_max };
+    }
 
     DOP object_to_ws_dop(const Object& obj, const Mesh& mesh)
     {
-        DOP dop;
-        std::for_each(mesh.vertices.begin(), mesh.vertices.end(),
-            [&dop, &obj](const vertex& vertex) {
-                // Todo: optimize
-                auto pos = xyz1(vertex.position);
-                dop.expand(xyz(obj.ModelMatrix * pos));
-            }
-        );
-        return dop;
+        auto combine = [](DOP a, const DOP& b) {
+            a.expand(b);
+            return a;
+            };
+        auto make_dop = [mat = obj.ModelMatrix](const vertex& v) {
+            auto p = xyz(mat * xyz1(v.position));
+            return DOP{p};
+            };
+        return std::transform_reduce(std::execution::unseq, mesh.vertices.begin(), mesh.vertices.end(), DOP{}, combine, make_dop);
+        // unfortunately no performance benefit using transform_reduce
     }
 
     NaiveAS::NaiveAS(const Model& model) {
@@ -183,7 +229,7 @@ namespace app {
         for (uint32_t i = 0; i < model.objects_.size(); ++i) {
             const auto& obj = model.objects_[i];
             const auto& mesh = model.meshes_[obj.meshIndex];
-            DOP volume = object_to_ws_dop(obj, mesh); // todo: possibly optimize
+            DOP volume = object_to_ws_dop(obj, mesh);
             object_data_.emplace_back(
                 volume, 
                 obj.ModelMatrix, 
@@ -317,7 +363,7 @@ namespace app {
         for (uint32_t i = 0; i < model.objects_.size(); ++i) {
             const auto& obj = model.objects_[i];
             const auto& mesh = model.meshes_[obj.meshIndex];
-            DOP volume = object_to_ws_dop(obj, mesh); // todo: not optimal
+            DOP volume = object_to_ws_dop(obj, mesh);
             object_data_.emplace_back(
                 volume,
                 obj.ModelMatrix,
@@ -542,16 +588,18 @@ namespace app {
 
     BBox BVH_AS::MeshBVHNode::triangles_to_bbox(const std::span<MeshBVHNode::triangle> tris)
     {
-        BBox bbox;
-        std::for_each(tris.begin(), tris.end(),
-            [&bbox](const MeshBVHNode::triangle& vertex) {
-                // Todo: optimize
-                bbox.expand(vertex.p1);
-                bbox.expand(vertex.p2);
-                bbox.expand(vertex.p3);
-            }
-        );
-        return bbox;
+        auto combine = [](BBox a, const BBox& b) {
+            a.expand(b);
+            return a;
+            };
+        auto make_bbox = [](const MeshBVHNode::triangle& tris) {
+            BBox bbox{ tris.p1, tris.p1 };
+            bbox.expand(tris.p2);
+            bbox.expand(tris.p3);
+            return bbox;
+        };
+        return std::transform_reduce(std::execution::unseq, tris.begin(), tris.end(), BBox{}, combine, make_bbox);
+        // unfortunately no performance benefit using transform_reduce
     }
 
     std::vector<volume_hit_and_obj_index> thread_local BVH_AS::volume_intersections;
@@ -562,9 +610,16 @@ namespace app {
 
         volume_intersections.clear();
 
+        std::array<fvec2, 7> ray_projections;
+        for (int i = 0; i < 7; ++i) {
+            // caching ray params for reuse in DOP intersections
+            ray_projections[i].x = dot(ray.origin, DOP::axises[i]);
+            ray_projections[i].y = 1.0f / dot(ray.direction, DOP::axises[i]);
+        }
+
         for (uint32_t i = 0; i < object_data_.size(); ++i) {
             const auto& obj = object_data_[i];
-            ray_volume_hit_info potential_obj_hit = obj.volume.ray_volume_intersection(ray);
+            ray_volume_hit_info potential_obj_hit = obj.volume.ray_volume_intersection(ray, ray_projections);
             volume_intersections.emplace_back(potential_obj_hit, i);
         }
         if (!any_hit) {
