@@ -74,6 +74,13 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         .nargs(1)
         .default_value(0);
 
+    program.add_argument("--env_rot")
+        .help("additional env map rotation around UP axis in degrees.")
+        .scan<'i', int>()
+        .required()
+        .nargs(1)
+        .default_value(0);
+
     program.add_argument("-m")
         .help("max trianles in a BVH leaf node.")
         .scan<'i', int>()
@@ -115,6 +122,7 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
     args.samplesPerPixel = (samplesPerPixel > 0)? samplesPerPixel : 1;
     args.maxRayBounces = (maxRayBounces >= 0) ? maxRayBounces : 0;
     args.maxNewRaysPerBounce = (maxNewRaysPerBounce >= 0) ? maxNewRaysPerBounce : 0;
+    args.envmapRotation = program.get<int>("--env_rot");
 
     args.maxTrianglesPerBVHLeaf = (maxTrianglesPerBVHLeaf > 0) ? maxTrianglesPerBVHLeaf : 1;
 

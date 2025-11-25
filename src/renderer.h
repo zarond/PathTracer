@@ -5,6 +5,7 @@
 #include "ray_program.h"
 #include "acceleration_structure.h"
 #include "cpu_framebuffer.h"
+#include "render_settings.h"
 #include "arguments.h"
 
 #include <glm/glm.hpp>
@@ -39,18 +40,6 @@ struct SamplesAccumulator {
     T get_stddev(T variance) const {
         return sqrt(variance);
     }
-};
-
-struct RenderSettings {
-    unsigned int samplesPerPixel = 1;
-    unsigned int maxRayBounces = 0;
-    unsigned int maxNewRaysPerBounce = 0;
-    unsigned int maxTrianglesPerBVHLeaf = 8;
-
-    RayProgramMode programMode = RayProgramMode::RayCaster;
-    AccelerationStructureType accelStructType = AccelerationStructureType::Naive;
-
-    bool operator==(const RenderSettings& other) const = default;
 };
 
 class Renderer {

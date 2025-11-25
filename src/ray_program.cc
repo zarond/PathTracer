@@ -154,13 +154,13 @@ namespace {
 }
 
 namespace app {
-    RayCasterProgram::RayCasterProgram(const Model& model, const CPUTexture<hdr_pixel>& env) 
-        : modelRef(model), envmapRef(env) {}
+    RayCasterProgram::RayCasterProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings)
+        : modelRef(model), envmapRef(env), envmap_rot(settings.envmapRotation) {}
 
     fvec3 RayCasterProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_info& hit, std::vector<ray_with_payload>& ray_collection) const
     {
         if (hit.forward_hit() == false) { // on miss
-            return xyz(sample_environment(ray_.direction, envmapRef));
+            return xyz(sample_environment(ray_.direction, envmapRef, envmap_rot));
         }
         const auto& mesh_data = get_mesh_data(modelRef, hit);
         const auto& [p1, p2, p3] = get_vertex_data(mesh_data, hit);
@@ -173,8 +173,8 @@ namespace app {
     }
     // RayCasterProgram
 
-    AOProgram::AOProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const unsigned int ao_samples)
-        : modelRef(model), envmapRef(env), aoSamples(ao_samples), inv_aoSamples(1.0f / aoSamples) {
+    AOProgram::AOProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings)
+        : modelRef(model), aoSamples(settings.maxNewRaysPerBounce), inv_aoSamples(1.0f / aoSamples) {
     }
 
     std::minstd_rand thread_local AOProgram::gen = std::minstd_rand(std::random_device{}());
@@ -236,8 +236,8 @@ namespace app {
     }
     // AOProgram
     
-    PBRProgram::PBRProgram(const Model& model, const CPUTexture<hdr_pixel>& env)
-        : modelRef(model), envmapRef(env) {}
+    PBRProgram::PBRProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings)
+        : modelRef(model), envmapRef(env), envmap_rot(settings.envmapRotation) {}
 
     std::minstd_rand thread_local PBRProgram::gen = std::minstd_rand(std::random_device{}());
     std::uniform_real_distribution<float> thread_local PBRProgram::dist = std::uniform_real_distribution<float>(0.0f, 1.0f);
@@ -245,7 +245,7 @@ namespace app {
     fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_info& hit, std::vector<ray_with_payload>& ray_collection) const
     {
         if (hit.forward_hit() == false) { // on miss
-            return ray_.payload * xyz(sample_environment(ray_.direction, envmapRef));
+            return ray_.payload * xyz(sample_environment(ray_.direction, envmapRef, envmap_rot));
         }
         const auto& object = get_object_data(modelRef, hit);
         const auto& mesh_data = get_mesh_data(modelRef, hit);

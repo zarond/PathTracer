@@ -20,6 +20,7 @@ set(APP_SOURCES
     src/ray_program.cc
     src/acceleration_structure.cc
     src/renderer.cc
+    src/render_settings.cc
     src/ui.cc
     src/brdf.cc
 )

@@ -42,6 +42,7 @@ struct ConsoleArgs {
     unsigned int samplesPerPixel = 1;
     unsigned int maxRayBounces = 0;
     unsigned int maxNewRaysPerBounce = 0;
+    int envmapRotation = 0; // in degrees
 
     unsigned int maxTrianglesPerBVHLeaf = 8;
 

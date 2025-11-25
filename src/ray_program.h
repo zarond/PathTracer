@@ -6,6 +6,7 @@
 
 #include "model_loader.h"
 #include "cpu_framebuffer.h"
+#include "render_settings.h"
 
 #include <glm/glm.hpp>
 
@@ -73,22 +74,22 @@ public:
 
 class RayCasterProgram : public IRayProgram {
 public:
-    RayCasterProgram(const Model& model, const CPUTexture<hdr_pixel>& env);
+    RayCasterProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings);
 
     virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const override;
 private:
     const Model& modelRef;
     const CPUTexture<hdr_pixel>& envmapRef;
+    float envmap_rot;
 };
 
 class AOProgram : public IRayProgram {
 public:
-    AOProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const unsigned int ao_samples);
+    AOProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings);
 
     virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const override;
 private:
     const Model& modelRef;
-    const CPUTexture<hdr_pixel>& envmapRef;
     const unsigned int aoSamples = 32;
     const float inv_aoSamples;
 
@@ -98,12 +99,13 @@ private:
 
 class PBRProgram : public IRayProgram {
 public:
-    PBRProgram(const Model& model, const CPUTexture<hdr_pixel>& env);
+    PBRProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings);
 
     virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const override;
 private:
     const Model& modelRef;
     const CPUTexture<hdr_pixel>& envmapRef;
+    float envmap_rot;
 
     static thread_local std::minstd_rand gen;
     static thread_local std::uniform_real_distribution<float> dist;

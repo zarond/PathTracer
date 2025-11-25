@@ -66,12 +66,11 @@ namespace app {
             material.transmissionTextureIndex >= 0 ? &images[material.transmissionTextureIndex] : nullptr,
             uv);
     }
-    fvec4 sample_environment(const fvec3 dir, const CPUTexture<hdr_pixel>& environment_texture)
+    fvec4 sample_environment(const fvec3 dir, const CPUTexture<hdr_pixel>& environment_texture, float y_rotation)
     {
-        // compared to blender envmap is rotated 180 degrees around Y (blender's Z) axis, but same as SP
-        // Todo: envmap rotation setting?
+        // compared to Blender, envmap is rotated 180 degrees around Y (Blender's Z) axis, but same as SP
         assert(abs(length(dir) - 1.0f) < 1e-5);
-        fvec2 uv = fvec2( std::atan2(-dir.z, -dir.x), -2.0f * std::asin(dir.y)) * (1.0f / pi<float>());
+        fvec2 uv = fvec2( std::atan2(-dir.z, -dir.x) + y_rotation, -2.0f * std::asin(dir.y)) * (1.0f / pi<float>());
         uv = uv * 0.5f + fvec2(0.5f);
         assert(!isnan(uv.x) && !isnan(uv.y));
         return environment_texture.sample_bilinear(uv);

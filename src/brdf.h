@@ -15,7 +15,7 @@ fvec4 sample_albedo(
     const std::vector<CPUTexture<sdr_pixel>>& images,
     const fvec2 uv);
 
-fvec4 sample_environment(const fvec3 dir, const CPUTexture<hdr_pixel>& environment_texture);
+fvec4 sample_environment(const fvec3 dir, const CPUTexture<hdr_pixel>& environment_texture, float y_rotation = 0.0f);
 
 fvec4 sample_roughness_metallic(const Material& material, const std::vector<CPUTexture<sdr_pixel>>& images, const fvec2 uv);
 

@@ -43,14 +43,7 @@ int main(int argc, char* argv[]) {
     auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
     std::cout << "loaded in " << diff.count() << " ms." << '\n';
     
-    auto render_settings = RenderSettings{
-            .samplesPerPixel = console_arguments.samplesPerPixel,
-            .maxRayBounces = console_arguments.maxRayBounces,
-            .maxNewRaysPerBounce = console_arguments.maxNewRaysPerBounce,
-            .maxTrianglesPerBVHLeaf = console_arguments.maxTrianglesPerBVHLeaf,
-            .programMode = console_arguments.programMode,
-            .accelStructType = console_arguments.accelStructType
-    };
+    auto render_settings = RenderSettings{ console_arguments };
 
     // Create viewer
     Viewer viewer(std::move(model), std::move(environment_texture), render_settings);

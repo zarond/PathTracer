@@ -56,14 +56,14 @@ void Renderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& envma
     }
     switch (renderSettings_.programMode) {
         case RayProgramMode::AmbientOcclusion:
-            rayProgram = std::make_unique<AOProgram>(model, envmap, renderSettings_.maxNewRaysPerBounce);
+            rayProgram = std::make_unique<AOProgram>(model, envmap, renderSettings_);
             break;
         case RayProgramMode::PBR:
-            rayProgram = std::make_unique<PBRProgram>(model, envmap);
+            rayProgram = std::make_unique<PBRProgram>(model, envmap, renderSettings_);
             break;
         case RayProgramMode::RayCaster:
         default:
-            rayProgram = std::make_unique<RayCasterProgram>(model, envmap);
+            rayProgram = std::make_unique<RayCasterProgram>(model, envmap, renderSettings_);
     }
 }
 
