@@ -1,6 +1,7 @@
 #include <string>
 #include <filesystem>
 #include <iostream>
+#include <exception>
 
 #include "model_loader.h"
 #include "compute_tangents.h"
@@ -127,7 +128,9 @@ Model ModelLoader::constructModel() const
 	}
 	model.materials_.emplace_back(); // default material at last index
 
-	std::vector<uint32_t> mesh_ids{};
+	// vector of span-like structures { index in model.meshes_, size } to map gltf primitives to our model meshes
+	// one gltf mesh (mesh_ids[i]) can be multiple gltf primitives
+	std::vector<std::pair<uint32_t, uint32_t>> mesh_ids{};
     mesh_ids.reserve(asset_.meshes.size());
 
 	uint32_t count = 0;
@@ -143,7 +146,7 @@ Model ModelLoader::constructModel() const
 			auto* uvIt = primitive.findAttribute("TEXCOORD_0");
 			auto* tangentIt = primitive.findAttribute("TANGENT"); 
 			assert(normalIt != primitive.attributes.end());
-			assert(uvIt != primitive.attributes.end());
+			bool has_uv = (uvIt != primitive.attributes.end());
 
             // Load material index
 			mesh.materialIndex = primitive.materialIndex.value_or(model.materials_.size() - 1); // value or default material
@@ -152,7 +155,7 @@ Model ModelLoader::constructModel() const
 			{
 				auto& indexAccessor = asset_.accessors[primitive.indicesAccessor.value()];
 				if (!indexAccessor.bufferViewIndex.has_value())
-					throw 1; // Todo
+					throw std::runtime_error("Malformed GLTF: No indices.");
 				mesh.indices.resize(indexAccessor.count);
                 fastgltf::copyFromAccessor<std::uint32_t>(asset_, indexAccessor, mesh.indices.data());
 			}
@@ -163,18 +166,17 @@ Model ModelLoader::constructModel() const
 				auto& normalAccessor = asset_.accessors[normalIt->accessorIndex];
 				auto& uvAccessor = asset_.accessors[uvIt->accessorIndex];
 				if (!positionAccessor.bufferViewIndex.has_value())
-					continue;
+					throw std::runtime_error("Malformed GLTF: No positions.");
 				if (!normalAccessor.bufferViewIndex.has_value())
-					continue;
-				if (!uvAccessor.bufferViewIndex.has_value())
-					continue;
+					throw std::runtime_error("Malformed GLTF: No normals.");;
+				if (has_uv && !uvAccessor.bufferViewIndex.has_value())
+					throw std::runtime_error("Malformed GLTF: No uvs (but were promised).");;
                 
 				mesh.vertices.reserve(positionAccessor.count);
-                // Todo: optimize
 				for (size_t i = 0; i < positionAccessor.count; ++i) {
 					auto position = fastgltf::getAccessorElement<fvec3>(asset_, positionAccessor, i);
 					auto normal = fastgltf::getAccessorElement<fvec3>(asset_, normalAccessor, i);
-					auto uv = fastgltf::getAccessorElement<fvec2>(asset_, uvAccessor, i);
+					auto uv = (has_uv) ? fastgltf::getAccessorElement<fvec2>(asset_, uvAccessor, i) : fvec2{0.0f};
 					mesh.vertices.emplace_back(position, normal, fvec4{}, uv);
                 }
 				const auto* tangentAccessor = (tangentIt != primitive.attributes.end()) ? &asset_.accessors[tangentIt->accessorIndex] : nullptr;
@@ -183,28 +185,29 @@ Model ModelLoader::constructModel() const
 						mesh.vertices[idx].tangent = tangent;
 					});
 				}
-				else {
+				else if (has_uv) {
 					tangent_space_helper.compute_tangents(mesh);
+				} else {
+					tangent_space_helper.compute_tangents_no_uv(mesh);
 				}
 			}
 
 			model.meshes_.push_back(std::move(mesh));
-			++count;
 		}
-        mesh_ids.push_back(count); // mesh_ids[index of gltf mesh] is the last index (not including) in model.meshes_ for this gltf mesh, because one gltf mesh can be multiple gltf primitives that map to model meshes;
+		mesh_ids.push_back({ count, gltf_mesh.primitives.size()});
+		count += gltf_mesh.primitives.size();
 	}
-    // Todo: Maybe do all nodes in order, instead of scene nodes only?
 	size_t sceneIndex = asset_.defaultScene.value_or(0);
 	fastgltf::iterateSceneNodes(asset_, sceneIndex, fastgltf::math::fmat4x4(),
 		[&model, &mesh_ids, this](const fastgltf::Node& node, const fastgltf::math::fmat4x4 & matrix) {
 			if (node.meshIndex.has_value()) {
                 auto normalMatrix = transpose(inverse(matrix));
-                size_t mesh_index = *node.meshIndex; // Todo: refactor for more clear code
-				for (size_t i = (mesh_index > 0)? mesh_ids[mesh_index - 1] : 0; i < mesh_ids[mesh_index]; ++i) {
+                size_t mesh_index = *node.meshIndex; 
+				for (uint32_t i = 0; i < mesh_ids[mesh_index].second; ++i) {
 					model.objects_.emplace_back(
 						std::bit_cast<fmat4>(matrix),
 						std::bit_cast<fmat4>(normalMatrix),
-						i);
+						mesh_ids[mesh_index].first + i);
 				}
 			}
 			if (node.cameraIndex.has_value()) {

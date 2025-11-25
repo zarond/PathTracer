@@ -84,7 +84,7 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer)
 {
     assert(modelRef);
     if (modelRef == nullptr || envmapRef == nullptr || accelStruct == nullptr || rayProgram == nullptr) {
-        throw 1; // Todo
+        throw std::runtime_error("One of components is nullptr in Renderer::render_frame()");
     }
 
     generate_subsample_positions();
@@ -139,7 +139,6 @@ void Renderer::generate_subsample_positions() {
         return; // already generated
     }
     subsamplesPositions.resize(renderSettings_.samplesPerPixel);
-    // Todo: optimize
     int sqrt_of_samples = static_cast<int>(std::sqrtf(renderSettings_.samplesPerPixel));
     if (sqrt_of_samples * sqrt_of_samples == renderSettings_.samplesPerPixel) {
         //samplesperpixel is a perfect square
