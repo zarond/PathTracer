@@ -173,6 +173,10 @@ namespace app {
             axis_min_max.y = std::max(axis_min_max.y, dop.min_max[i].y);
         }
     }
+    BBox DOP::to_bbox() {
+        return BBox{ fvec3{ min_max[0].x, min_max[1].x, min_max[2].x },
+                     fvec3{ min_max[0].y, min_max[1].y, min_max[2].y } };
+    }
 
     ray_volume_hit_info DOP::ray_volume_intersection(const ray& ray) const noexcept {
         float t_min = std::numeric_limits<float>::lowest();
@@ -355,6 +359,16 @@ namespace app {
         hit.distance = length(hit_point_ws - ray_ws.origin);
         return hit;
     }
+
+    BBox NaiveAS::get_scene_bounds() const {
+        DOP dop;
+        for (const auto& obj : object_data_) {
+            dop.expand(obj.volume);
+        }
+        return dop.to_bbox();
+    }
+
+    // NaiveAS
 
     BVH_AS::BVH_AS(const Model& model, int max_triangles_per_leaf) {
         auto start = std::chrono::high_resolution_clock::now();
@@ -734,4 +748,14 @@ namespace app {
         hit.distance = length(hit_point_ws - ray_ws.origin);
         return hit;
     }
+
+    BBox BVH_AS::get_scene_bounds() const {
+        DOP dop;
+        for (const auto& obj : object_data_) {
+            dop.expand(obj.volume);
+        }
+        return dop.to_bbox();
+    }
+
+    // BVH_AS
 }

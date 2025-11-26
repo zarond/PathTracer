@@ -37,6 +37,7 @@ struct DOP {
     bool is_empty() const noexcept;
     void expand(const fvec3& ws_point) noexcept;
     void expand(const DOP& dop) noexcept;
+    BBox to_bbox();
 
     ray_volume_hit_info ray_volume_intersection(const ray& ray) const noexcept;
     ray_volume_hit_info ray_volume_intersection(const ray& ray, const std::array<fvec2, 7>& projections) const noexcept;
@@ -63,6 +64,8 @@ class IAccelerationStructure {
 public:
     virtual ~IAccelerationStructure() = default;
     virtual ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const = 0;
+
+    virtual BBox get_scene_bounds() const = 0;
 };
 
 // common data for AS types
@@ -90,6 +93,7 @@ public:
 
     ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const;
 
+    BBox get_scene_bounds() const;
 private:
 
     struct MeshData {
@@ -118,6 +122,7 @@ public:
 
     ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const;
 
+    BBox get_scene_bounds() const;
 private:
     struct MeshBVHNode {
         struct children {

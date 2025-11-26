@@ -33,7 +33,7 @@ void Renderer::update_camera_transform_state(
     viewMatrix_ = glm::lookAt(position, position + direction, up);
     projectionMatrix_ = glm::perspectiveRH(
         perspectiveParams.yfov,
-        perspectiveParams.aspectRatio.value_or(1.77777777777777777f), // Todo ????
+        perspectiveParams.aspectRatio.value_or(1.77777777777777777f),
         perspectiveParams.znear,
         perspectiveParams.zfar.value_or(1000.f));
     auto viewMatrixNoTranslation = viewMatrix_;
@@ -133,6 +133,13 @@ void Renderer::set_render_settings(const RenderSettings& settings) {
     renderSettings_ = settings;
 }
 RenderSettings Renderer::get_render_settings() const { return renderSettings_; }
+
+BBox Renderer::get_scene_bound() const {
+    if (accelStruct) { 
+        return accelStruct->get_scene_bounds();
+    } 
+    return BBox{};
+}
 
 void Renderer::generate_subsample_positions() {
     if (renderSettings_.samplesPerPixel == subsamplesPositions.size()) {

@@ -56,11 +56,14 @@ private:
 
     fvec3 direction_ = fvec3(0.0f, 0.0f, -1.0f); // center view direction
     fvec3 up_ = fvec3(0.0f, 1.0f, 0.0f); // up view direction
+    fastgltf::Camera::Perspective cam_params_;
     dvec2 lastCursorPosition_ = dvec2(0.0f);
 
     float yaw_ = -90.0f;
     float pitch_ = 0.0f;
     bool firstMouse_ = true;
+
+    void set_up_default_camera_transforms();
 };
 
 }

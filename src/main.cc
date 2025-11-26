@@ -7,13 +7,13 @@
 #include "arguments.h"
 #include "viewer.h"
 
-#include <imgui.h>
+//#include <imgui.h>
 
 int main(int argc, char* argv[]) {
     using namespace app;
 
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
+    //IMGUI_CHECKVERSION();
+    //ImGui::CreateContext(); // todo: imgui is unused for now
 
     ConsoleArgs console_arguments = parse_args(argc, argv, fs::current_path());
     if (console_arguments.exitImmediately) {
@@ -48,6 +48,7 @@ int main(int argc, char* argv[]) {
     // Create viewer
     Viewer viewer(std::move(model), std::move(environment_texture), render_settings);
     viewer.resize_window(ivec2(console_arguments.windowWidth, console_arguments.windowHeight));
+    viewer.snap_to_camera();
 
     start = std::chrono::high_resolution_clock::now();
     viewer.render();

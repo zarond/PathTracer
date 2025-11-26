@@ -1,6 +1,6 @@
 #include "render_settings.h"
 
-#include <glm/gtc/constants.hpp>
+#include <glm/glm.hpp>
 
 namespace app {
 
@@ -9,11 +9,9 @@ RenderSettings::RenderSettings(const ConsoleArgs& args) :
     maxRayBounces(args.maxRayBounces),
     maxNewRaysPerBounce(args.maxNewRaysPerBounce),
     maxTrianglesPerBVHLeaf(args.maxTrianglesPerBVHLeaf),
-    envmapRotation(static_cast<float>(args.envmapRotation)),
+    envmapRotation(glm::radians(static_cast<float>(args.envmapRotation))),
     programMode(args.programMode),
     accelStructType(args.accelStructType) 
-{
-    envmapRotation *= glm::pi<float>() / 180.f;
-}
+{}
 
 }
