@@ -54,7 +54,10 @@ int main(int argc, char* argv[]) {
     diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
     std::cout << "rendered in " << diff.count() << " ms." << '\n';
 
-    viewer.take_snapshot("snapshot.hdr");
+    start = std::chrono::high_resolution_clock::now();
+    viewer.take_snapshot(console_arguments.outputPath);
+    diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+    std::cout << "output saved in " << diff.count() << " ms." << '\n';
 
     return 0;
 }

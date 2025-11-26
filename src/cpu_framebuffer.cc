@@ -120,10 +120,29 @@ const hdr_pixel& CPUFrameBuffer::at(int x, int y) const
 
 void CPUFrameBuffer::save_to_file(const std::filesystem::path& filePath) const
 {
-    std::vector<float> rawData(width_ * height_ * 4);
-    static_assert(sizeof(hdr_pixel) == 4 * sizeof(float));
-    std::memcpy(rawData.data(), data_.data(), rawData.size() * sizeof(float));
-    stbi_write_hdr(filePath.string().c_str(), width_, height_, 4, rawData.data());
+    int ret = 0;
+    if (filePath.extension() == ".png") {
+        std::vector<unsigned char> rawData;
+        rawData.reserve(width_ * height_ * 4);
+        std::for_each(data_.begin(), data_.end(), [&rawData](const auto& pixel) {
+            sdr_pixel p = float_pixel_to_srgb8(pixel);
+            rawData.emplace_back(p[0]);
+            rawData.emplace_back(p[1]);
+            rawData.emplace_back(p[2]);
+            rawData.emplace_back(p[3]);
+        });
+        int stride_bytes = width_ * 4;
+        ret = stbi_write_png(filePath.string().c_str(), width_, height_, 4, rawData.data(), stride_bytes);
+    }
+    else {
+        std::vector<float> rawData(width_ * height_ * 4);
+        static_assert(sizeof(hdr_pixel) == 4 * sizeof(float));
+        std::memcpy(rawData.data(), data_.data(), rawData.size() * sizeof(float));
+        ret = stbi_write_hdr(filePath.string().c_str(), width_, height_, 4, rawData.data());
+    }
+    if (ret == 0) {
+        throw std::runtime_error("Failed to save image to " + filePath.string());
+    }
 }
 
 }

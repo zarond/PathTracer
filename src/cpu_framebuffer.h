@@ -54,6 +54,14 @@ inline fvec4 srgb_pixel_to_float(pixel sample) {
         static_cast<float>(sample[3]) / 255.0f);
 }
 
+inline sdr_pixel float_pixel_to_srgb8(hdr_pixel sample) {
+    sample = clamp(sample, 0.0f, 1.0f);
+    return sdr_pixel{   static_cast<uint8_t>(linear_to_srgb(sample.r) * 255 + 0.5f),
+                        static_cast<uint8_t>(linear_to_srgb(sample.g) * 255 + 0.5f),
+                        static_cast<uint8_t>(linear_to_srgb(sample.b) * 255 + 0.5f),
+                        static_cast<uint8_t>(linear_to_srgb(sample.a) * 255 + 0.5f) };
+}
+
 template<PixelType pixel>
 class CPUTexture {
 public:

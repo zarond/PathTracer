@@ -39,6 +39,12 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         .nargs(1)
         .default_value("white");
 
+    program.add_argument("-o", "--output")
+        .help("Output file location. Specify .png to save as SDR image, otherwise saves in HDR format")
+        .required()
+        .nargs(1)
+        .default_value("snapshot.hdr");
+
     program.add_argument("-p", "--program")
         .help("choose program mode:\n 1: RayCaster\n 2: AmbientOcclusion\n 3: PBR")
         .scan<'i', int>()
@@ -106,6 +112,7 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
 
     args.modelPath = program.get<std::string>("-f");
     args.environmentPath = program.get<std::string>("-e");
+    args.outputPath = program.get<std::string>("-o");
 
     auto programMode = program.get<int>("-p") - 1;
     auto accelStructType = program.get<int>("-a") - 1;

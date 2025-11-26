@@ -33,6 +33,7 @@ enum class DefaultEnvironment {
 struct ConsoleArgs {
     fs::path modelPath;
     fs::path environmentPath;
+    fs::path outputPath;
     bool useDefaultEnv = false;
     DefaultEnvironment defaultEnv = DefaultEnvironment::White;
 
