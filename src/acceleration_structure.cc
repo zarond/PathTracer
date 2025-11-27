@@ -285,13 +285,13 @@ namespace app {
         }
         while (!volume_intersections.empty()) {
             const auto& potential_obj_hit = (!any_hit) ? volume_intersections[0] : volume_intersections.back(); // heap top
-            if (potential_obj_hit.hit_info.forward_hit() && potential_obj_hit.hit_info.forward_hit_distance() < hit.distance) {
+            if (potential_obj_hit.hit_info.forward_hit() && potential_obj_hit.hit_info.forward_hit_distance() < hit.t) {
                 // Perform detailed intersection test with the mesh
                 const auto& obj = object_data_[potential_obj_hit.object_index];
                 ray_triangle_hit_info potential_mesh_hit = (any_hit)? 
                     mesh_ray_intersection<true>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_[obj.meshIndex]) :
                     mesh_ray_intersection<false>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_[obj.meshIndex]);
-                if (potential_mesh_hit.forward_hit() && (potential_mesh_hit.distance < hit.distance)) {
+                if (potential_mesh_hit.forward_hit() && (potential_mesh_hit.t < hit.t)) {
                     hit = potential_mesh_hit;
                     hit.objectIndex = obj.objectIndex;
                     hit.meshIndex = obj.meshIndex;
@@ -337,15 +337,15 @@ namespace app {
             if (!tri_hit.hit || tri_hit.t < 0.0f) {
                 continue; // No hit or back from origin
             }
-            if (tri_hit.t >= hit.b_coords.t) {
+            if (tri_hit.t >= hit.t) {
                 continue; // Not the closest hit
             }
-            hit = {
-                .hit = true,
-                .distance = 0.0f,
-                .b_coords = tri_hit,
-                .triangleIndex = static_cast<uint32_t>(std::distance(mesh.vertices.cbegin(), it) - 3)
-            };
+            hit.A = tri_hit.A;
+            hit.B = tri_hit.B;
+            hit.t = tri_hit.t;
+            hit.hit = tri_hit.hit;
+            hit.backface = tri_hit.backface;
+            hit.triangleIndex = static_cast<uint32_t>(std::distance(mesh.vertices.cbegin(), it) - 3);
             if constexpr (any_hit) {
                 break;
             }
@@ -354,9 +354,9 @@ namespace app {
             return hit; // No hit
         }
         // Transform hit back to world space
-        fvec3 best_hit_point = os_ray.origin + os_ray.direction * hit.b_coords.t;
+        fvec3 best_hit_point = os_ray.origin + os_ray.direction * hit.t;
         fvec3 hit_point_ws = xyz(ModelMatrix * xyz1(best_hit_point));
-        hit.distance = length(hit_point_ws - ray_ws.origin);
+        hit.t = length(hit_point_ws - ray_ws.origin);
         return hit;
     }
 
@@ -642,13 +642,13 @@ namespace app {
         }
         while (!volume_intersections.empty()) {
             const auto& potential_obj_hit = (!any_hit) ? volume_intersections[0] : volume_intersections.back(); // heap top
-            if (potential_obj_hit.hit_info.forward_hit() && potential_obj_hit.hit_info.forward_hit_distance() < hit.distance) {
+            if (potential_obj_hit.hit_info.forward_hit() && potential_obj_hit.hit_info.forward_hit_distance() < hit.t) {
                 // Perform detailed intersection test with the mesh
                 const auto& obj = object_data_[potential_obj_hit.object_index];
                 ray_triangle_hit_info potential_mesh_hit = (any_hit) ?
                     mesh_ray_intersection<true>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_bvh_data_[obj.meshIndex]) :
                     mesh_ray_intersection<false>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_bvh_data_[obj.meshIndex]);
-                if (potential_mesh_hit.forward_hit() && (potential_mesh_hit.distance < hit.distance)) {
+                if (potential_mesh_hit.forward_hit() && (potential_mesh_hit.t < hit.t)) {
                     hit = potential_mesh_hit;
                     hit.objectIndex = obj.objectIndex;
                     hit.meshIndex = obj.meshIndex;
@@ -702,15 +702,15 @@ namespace app {
                     if (!tri_hit.hit || tri_hit.t < 0.0f) {
                         continue; // No hit or back from origin
                     }
-                    if (tri_hit.t >= hit.b_coords.t) {
+                    if (tri_hit.t >= hit.t) {
                         continue; // Not the closest hit
                     }
-                    hit = {
-                        .hit = true,
-                        .distance = 0.0f,
-                        .b_coords = tri_hit,
-                        .triangleIndex = it->index
-                    };
+                    hit.A = tri_hit.A;
+                    hit.B = tri_hit.B;
+                    hit.t = tri_hit.t;
+                    hit.hit = tri_hit.hit;
+                    hit.backface = tri_hit.backface;
+                    hit.triangleIndex = it->index;
                     if constexpr (any_hit) {
                         break;
                     }
@@ -728,11 +728,11 @@ namespace app {
                 auto distance_r = volume_hit_r.forward_hit_distance();
 
                 if (distance_l < volume_hit_r.forward_hit_distance()) {
-                    if (volume_hit_r.hit && hit.b_coords.t > distance_r) bvh_stack.push_back(children.right_child_index);
-                    if (volume_hit_l.hit && hit.b_coords.t > distance_l) bvh_stack.push_back(children.left_child_index);
+                    if (volume_hit_r.hit && hit.t > distance_r) bvh_stack.push_back(children.right_child_index);
+                    if (volume_hit_l.hit && hit.t > distance_l) bvh_stack.push_back(children.left_child_index);
                 } else {
-                    if (volume_hit_l.hit && hit.b_coords.t > distance_l) bvh_stack.push_back(children.left_child_index);
-                    if (volume_hit_r.hit && hit.b_coords.t > distance_r) bvh_stack.push_back(children.right_child_index);
+                    if (volume_hit_l.hit && hit.t > distance_l) bvh_stack.push_back(children.left_child_index);
+                    if (volume_hit_r.hit && hit.t > distance_r) bvh_stack.push_back(children.right_child_index);
                 }
             }
             if constexpr (any_hit) {
@@ -743,9 +743,9 @@ namespace app {
             return hit; // No hit
         }
         // Transform hit back to world space
-        fvec3 best_hit_point = os_ray.origin + os_ray.direction * hit.b_coords.t;
+        fvec3 best_hit_point = os_ray.origin + os_ray.direction * hit.t;
         fvec3 hit_point_ws = xyz(ModelMatrix * xyz1(best_hit_point));
-        hit.distance = length(hit_point_ws - ray_ws.origin);
+        hit.t = length(hit_point_ws - ray_ws.origin);
         return hit;
     }
 

@@ -78,19 +78,11 @@ namespace {
         return std::tuple{ mesh_data.vertices[p1], mesh_data.vertices[p2], mesh_data.vertices[p3] };
     }
     inline vertex interpolate_vertex_data(const vertex& p1, const vertex& p2, const vertex& p3, const ray_triangle_hit_info& hit) {
-        auto C = hit.b_coords.C();
-        auto os_position = p1.position * hit.b_coords.A +
-            p2.position * hit.b_coords.B +
-            p3.position * C;
-        auto os_normal = p1.normal * hit.b_coords.A +
-            p2.normal * hit.b_coords.B +
-            p3.normal * C;
-        auto os_tangent = p1.tangent * hit.b_coords.A +
-            p2.tangent * hit.b_coords.B +
-            p3.tangent * C;
-        auto uv = p1.uv * hit.b_coords.A +
-            p2.uv * hit.b_coords.B +
-            p3.uv * C;
+        auto C = hit.C();
+        auto os_position = p1.position * hit.A + p2.position * hit.B + p3.position * C;
+        auto os_normal = p1.normal * hit.A + p2.normal * hit.B + p3.normal * C;
+        auto os_tangent = p1.tangent * hit.A + p2.tangent * hit.B +  p3.tangent * C;
+        auto uv = p1.uv * hit.A + p2.uv * hit.B + p3.uv * C;
         return vertex{ os_position, os_normal, os_tangent, uv };
     }
     inline void convert_position_to_world_space(const Object& object, vertex& point) {
@@ -164,7 +156,7 @@ namespace app {
         }
         const auto& mesh_data = get_mesh_data(modelRef, hit);
         const auto& [p1, p2, p3] = get_vertex_data(mesh_data, hit);
-        auto uv = p1.uv * hit.b_coords.A + p2.uv * hit.b_coords.B + p3.uv * hit.b_coords.C();
+        auto uv = p1.uv * hit.A + p2.uv * hit.B + p3.uv * hit.C();
 
         auto mat_index = mesh_data.materialIndex;
         const auto& material = modelRef.materials_[mat_index];
@@ -198,7 +190,7 @@ namespace app {
         auto mat_index = mesh_data.materialIndex;
         const auto& material = modelRef.materials_[mat_index];
 
-        if (hit.b_coords.backface) {
+        if (hit.backface) {
             // ray hits backside
             if (material.doubleSided) {
                 point.normal *= -1.0f;
@@ -213,7 +205,7 @@ namespace app {
             TBN = construct_TBN(TBN[0], TBN[1], normal_vector); // re-construct TBN with normal from normal map
         }
         
-        auto ws_pos = ray_.origin + ray_.direction * hit.distance;
+        auto ws_pos = ray_.origin + ray_.direction * hit.t;
         auto new_pos = ws_pos + point.normal * 1e-5f; // offset to avoid self-intersection
 
         std::uint8_t new_depth = ray_.depth - 1;
@@ -259,7 +251,7 @@ namespace app {
         const auto& material = modelRef.materials_[mat_index];
 
         bool exiting_volume = false;
-        if (hit.b_coords.backface) {
+        if (hit.backface) {
             // ray hits backside
             if (material.doubleSided) {
                 point.normal *= -1.0f;
@@ -285,7 +277,7 @@ namespace app {
 
         // todo: now program can't apply absorption if ray was reflected of an object that is inside volume mesh
         // only applies absorption to part of path that directly exits (hits backface of) volume
-        fvec3 attenuation = exiting_volume ? min(exp(-material.attenuationFactor * hit.distance), 1.0f) : fvec3{ 1.0f }; // Volume absorption
+        fvec3 attenuation = exiting_volume ? min(exp(-material.attenuationFactor * hit.t), 1.0f) : fvec3{ 1.0f }; // Volume absorption
 
         auto emissive = xyz(sample_emissive(material, modelRef.images_, point.uv));
         if (ray_.depth == 0) {
@@ -299,7 +291,7 @@ namespace app {
             object,
             normal_map_color,
             point, bitangent, v,
-            material.doubleSided, exiting_volume, hit.b_coords.backface,
+            material.doubleSided, exiting_volume, hit.backface,
             p1, p2, p3);
 
         auto transmission = sample_transmission(material, modelRef.images_, point.uv);
