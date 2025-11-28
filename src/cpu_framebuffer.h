@@ -44,7 +44,7 @@ inline fvec4 pixel_to_float(pixel sample) {
         static_cast<float>(sample[1]) / 255.0f,
         static_cast<float>(sample[2]) / 255.0f,
         static_cast<float>(sample[3]) / 255.0f);
-};
+}
 template<PixelType pixel>
 inline fvec4 srgb_pixel_to_float(pixel sample) {
     return fvec4(
@@ -64,6 +64,7 @@ inline sdr_pixel float_pixel_to_srgb8(hdr_pixel sample) {
 
 template<PixelType pixel>
 class CPUTexture {
+
 public:
     // Idea: use mdspan
     CPUTexture() = default;
@@ -85,8 +86,7 @@ public:
         pixel sample = data_[y * width_ + x];
         if (srgb_tex) {
             return srgb_pixel_to_float(sample);
-        }
-        else {
+        } else {
             return pixel_to_float(sample);
         }
     }
@@ -114,8 +114,7 @@ public:
             col10 = srgb_tex ? srgb_pixel_to_float(c10) : pixel_to_float(c10);
             col01 = srgb_tex ? srgb_pixel_to_float(c01) : pixel_to_float(c01);
             col11 = srgb_tex ? srgb_pixel_to_float(c11) : pixel_to_float(c11);
-        }
-        else if constexpr (std::is_same_v<pixel, hdr_pixel>) {
+        } else if constexpr (std::is_same_v<pixel, hdr_pixel>) {
             col00 = c00;
             col10 = c10;
             col01 = c01;
@@ -138,16 +137,18 @@ protected:
 };
 
 class CPUFrameBuffer: private CPUTexture<hdr_pixel> {
+
 private:
     using CPUTexture::width_;
     using CPUTexture::height_;
     using CPUTexture::channels_;
     using CPUTexture::data_;
+
 public:
     CPUFrameBuffer();
     CPUFrameBuffer(int width, int height);
     
-    void clear(const hdr_pixel clearColor = hdr_pixel{0.0,0.0,0.0,1.0});
+    void clear(const hdr_pixel clearColor = hdr_pixel{0.0f, 0.0f, 0.0f, 1.0f});
     hdr_pixel& at(int x, int y);
     const hdr_pixel& at(int x, int y) const;
     
@@ -159,3 +160,4 @@ public:
 };
 
 }
+

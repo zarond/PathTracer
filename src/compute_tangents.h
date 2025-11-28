@@ -6,13 +6,14 @@
 namespace app {
 
 class TangentSpaceHelper {
+
 public:
     TangentSpaceHelper();
     void compute_tangents(Mesh& mesh);
     void compute_tangents_no_uv(Mesh& mesh);
 
 private:
-    SMikkTSpaceInterface iface_ = {}; 
+    SMikkTSpaceInterface iface_ = {};
     SMikkTSpaceContext context_ = {};
 };
 

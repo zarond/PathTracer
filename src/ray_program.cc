@@ -1,3 +1,7 @@
+#include <tuple>
+#include <vector>
+#include <algorithm>
+
 #include "ray_program.h"
 #include "brdf.h"
 

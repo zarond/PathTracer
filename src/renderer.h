@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <vector>
 
 #include "ray_program.h"
 #include "acceleration_structure.h"

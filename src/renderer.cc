@@ -5,6 +5,7 @@
 #include <ranges>
 #include <algorithm>
 #include <execution>
+#include <vector>
 
 #include <glm/glm.hpp>
 #include <glm/ext.hpp>
@@ -125,7 +126,6 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer)
             framebuffer.at(x, y) = hdr_pixel{ final_color.get_mean(), 1.0f };
         }
     });
-
 }
 
 void Renderer::set_render_settings(const RenderSettings& settings) {

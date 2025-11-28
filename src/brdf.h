@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include "cpu_framebuffer.h"
 #include "model_loader.h"
 

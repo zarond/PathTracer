@@ -1,0 +1,22 @@
+---
+Language:        ObjC
+BasedOnStyle: LLVM
+ColumnLimit: 120
+IndentWidth: 4
+DerivePointerAlignment: false
+AlignAfterOpenBracket: DontAlign
+PointerAlignment: Left
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+ObjCBlockIndentWidth: 4
+ObjCSpaceAfterProperty: true
+IndentCaseLabels: true
+---
+Language: Cpp
+BasedOnStyle: Google
+ColumnLimit: 120
+FixNamespaceComments: true
+IndentWidth: 4
+DerivePointerAlignment: false
+AlignAfterOpenBracket: DontAlign
+PointerAlignment: Left
+ConstructorInitializerAllOnOneLineOrOnePerLine: true

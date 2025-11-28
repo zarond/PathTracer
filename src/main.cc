@@ -33,16 +33,16 @@ int main(int argc, char* argv[]) {
     }
     CPUTexture<hdr_pixel> environment_texture;
     if (console_arguments.useDefaultEnv) {
-        environment_texture = (console_arguments.defaultEnv == DefaultEnvironment::White) ? 
+        environment_texture = (console_arguments.defaultEnv == DefaultEnvironment::White) ?
             CPUTexture<hdr_pixel>::create_white_texture() :
             CPUTexture<hdr_pixel>::create_black_texture();
     } else {
         environment_texture = CPUTexture<hdr_pixel>(console_arguments.environmentPath);
     }
-    
+
     auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
     std::cout << "loaded in " << diff.count() << " ms." << '\n';
-    
+
     auto render_settings = RenderSettings{ console_arguments };
 
     // Create viewer

@@ -1,5 +1,7 @@
 #include <stdexcept>
 #include <variant>
+#include <utility>
+#include <algorithm>
 
 #include "viewer.h"
 #include "cpu_framebuffer.h"
@@ -72,19 +74,19 @@ bool Viewer::snap_to_camera()
 
     if (activeCameraIndex_.has_value()) {
         const auto& camera = model_.cameras_[*activeCameraIndex_];
-	    std::visit(fastgltf::visitor{
-		    [&](const fastgltf::Camera::Perspective& perspective) {
+        std::visit(fastgltf::visitor{
+            [&](const fastgltf::Camera::Perspective& perspective) {
                 position_ = xyz(camera.ModelMatrix[3]);
                 direction_ = -xyz(camera.ModelMatrix[2]);
                 up_ = xyz(camera.ModelMatrix[1]);
                 cam_params_ = perspective;
            
                 success = true;
-		    },
-		    [&](const fastgltf::Camera::Orthographic& orthographic) {
+            },
+            [&](const fastgltf::Camera::Orthographic& orthographic) {
                 // Todo: implement orthographic camera snapping
-		    },
-	    }, 
+            },
+        }, 
         camera.camera_params);
     }
 

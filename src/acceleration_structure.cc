@@ -1,6 +1,7 @@
 #include <iostream>
 #include <algorithm>
 #include <execution>
+#include <utility>
 
 #include "acceleration_structure.h"
 
@@ -12,10 +13,10 @@ namespace {
 
     constexpr float kEpsilon = 1e-5f;
 
-    inline barycentric_coords intersect_ray_triangle( // output vec is barycentric coords A, B, hit. (C = 1.0 - A - B)
-        const ray ray_os, 
-        const fvec3 p1, 
-        const fvec3 p2, 
+    inline barycentric_coords intersect_ray_triangle(
+        const ray ray_os,
+        const fvec3 p1,
+        const fvec3 p2,
         const fvec3 p3,
         const bool backface_culling = true) {
 // MOLLER_TRUMBORE algorithm
@@ -28,7 +29,7 @@ namespace {
             if (det <= 0.0f) return { 0.0f, 0.0f, false, false }; // or epsilon?
         }
         // If det is close to 0, the ray and triangle are parallel.
-        //if (fabs(det) < kEpsilon) return { 0.0f, 0.0f, false };
+        // if (fabs(det) < kEpsilon) return { 0.0f, 0.0f, false };
 
         float invDet = 1.0f / det;
 
@@ -49,8 +50,7 @@ namespace {
         fvec3 extents = bbox.max - bbox.min;
         if (extents.x >= extents.y && extents.x >= extents.z) {
             return 0;
-        }
-        else if (extents.y >= extents.x && extents.y >= extents.z) {
+        } else if (extents.y >= extents.x && extents.y >= extents.z) {
             return 1;
         }
         return 2;
@@ -60,9 +60,11 @@ namespace {
         return bbox.surface_area() * N;
     }
     float SurfaceAreaHeuristic(const BBox& bbox_l, const BBox& bbox_r, int N_l, int N_r) {
-        if (bbox_l.is_empty() || bbox_r.is_empty()) return std::numeric_limits<float>::infinity();
+        if (bbox_l.is_empty() || bbox_r.is_empty()) 
+            return std::numeric_limits<float>::infinity();
         return bbox_l.surface_area() * N_l + bbox_r.surface_area() * N_r;
     }
+    // namespace
 }
 
 namespace app {
@@ -117,7 +119,7 @@ namespace app {
         t0.x = (t0.x > t0.z) ? t0.x : t0.z;
         t1.x = (t1.x < t1.y) ? t1.x : t1.y;
         t1.x = (t1.x < t1.z) ? t1.x : t1.z;
-        
+
         return { (t0.x <= t1.x), t0.x, t1.x };
     }
 
@@ -244,7 +246,7 @@ namespace app {
             );
         }
         // sort by complexity (number of triangles) to try easier objects first (starting from the back of array) in case of any_hit
-        const auto complexity_cmp = [](const ObjectData& obj_a, const ObjectData& obj_b) {;
+        const auto complexity_cmp = [](const ObjectData& obj_a, const ObjectData& obj_b) {
             return obj_a.complexity > obj_b.complexity; // more complex first
             };
         std::sort(object_data_.begin(), object_data_.end(), complexity_cmp);
@@ -656,8 +658,7 @@ namespace app {
                         break;
                     }
                 }
-            }
-            else if (!any_hit) {
+            } else if (!any_hit) {
                 break;
             }
             if (!any_hit) {

@@ -1,6 +1,8 @@
+#include <vector>
+
 #include "brdf.h"
 
-namespace{
+namespace {
     using namespace glm;
     using namespace app;
 

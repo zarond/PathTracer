@@ -11,7 +11,7 @@ RenderSettings::RenderSettings(const ConsoleArgs& args) :
     maxTrianglesPerBVHLeaf(args.maxTrianglesPerBVHLeaf),
     envmapRotation(glm::radians(static_cast<float>(args.envmapRotation))),
     programMode(args.programMode),
-    accelStructType(args.accelStructType) 
+    accelStructType(args.accelStructType)
 {}
 
 }

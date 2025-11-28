@@ -82,9 +82,9 @@ CPUTexture<hdr_pixel>::CPUTexture(const std::filesystem::path& filePath) {
 }
 
 template<>
-static CPUTexture<sdr_pixel> CPUTexture<sdr_pixel>::create_white_texture() { return CPUTexture(sdr_pixel{ 255,255,255,255 }); }
+static CPUTexture<sdr_pixel> CPUTexture<sdr_pixel>::create_white_texture() { return CPUTexture(sdr_pixel{ 255, 255, 255, 255 }); }
 template<>
-static CPUTexture<sdr_pixel> CPUTexture<sdr_pixel>::create_black_texture() { return CPUTexture(sdr_pixel{ 0,0,0,255 }); }
+static CPUTexture<sdr_pixel> CPUTexture<sdr_pixel>::create_black_texture() { return CPUTexture(sdr_pixel{ 0, 0, 0, 255 }); }
 template<>
 static CPUTexture<hdr_pixel> CPUTexture<hdr_pixel>::create_white_texture() { return CPUTexture(hdr_pixel{ 1.0f }); }
 template<>

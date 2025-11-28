@@ -3,6 +3,8 @@
 #include <type_traits>
 #include <concepts>
 #include <random>
+#include <limits>
+#include <vector>
 
 #include "model_loader.h"
 #include "cpu_framebuffer.h"
@@ -71,11 +73,13 @@ public:
 };
 
 class RayCasterProgram : public IRayProgram {
+
 public:
     RayCasterProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings);
     virtual ~RayCasterProgram() = default;
 
     virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const override;
+
 private:
     const Model& modelRef;
     const CPUTexture<hdr_pixel>& envmapRef;

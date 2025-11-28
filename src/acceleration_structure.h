@@ -17,7 +17,7 @@ struct BBox {
 
     BBox() noexcept;
     constexpr BBox(const fvec3& min_, const fvec3& max_) noexcept;
-   
+
     bool is_empty() const noexcept;
     void expand(const fvec3& ws_point) noexcept;
     void expand(const BBox& bbox) noexcept;
@@ -94,8 +94,8 @@ public:
     ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const;
 
     BBox get_scene_bounds() const;
-private:
 
+private:
     struct MeshData {
         std::vector<fvec3> vertices; // tuples of 3 vertices positions that form triangles
         bool doubleSided = false;
@@ -112,7 +112,6 @@ private:
         const fmat4x4& ModelMatrix,
         const fmat4x4& invModelMatrix,
         const MeshData& mesh) noexcept;
-
 };
 
 class BVH_AS : public IAccelerationStructure {

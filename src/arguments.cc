@@ -1,3 +1,5 @@
+#include <string>
+
 #include "arguments.h"
 
 #include "argparse/argparse.hpp"
@@ -14,6 +16,7 @@ T int_to_enum(int v) {
 }
 
 }
+// namespace
 
 namespace app {
 
