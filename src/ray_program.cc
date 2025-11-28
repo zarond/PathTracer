@@ -53,13 +53,13 @@ namespace {
     }
     float G1(float NdW, float k)
     {
-        return 1.0 / (NdW * (1.0 - k) + k);
+        return 1.0f / (NdW * (1.0f - k) + k);
     }
     // Schlick - Smith visibility term
     // [ http://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf ]
     float V_Schlick(float NoL, float NoV, float Roughness) // Roughness is perceptual roughness
     {
-        float k = max(Roughness * Roughness * 0.5, 1e-5);
+        float k = max(Roughness * Roughness * 0.5f, 1e-5f);
         return G1(NoL, k) * G1(NoV, k); // should be G1*G1 / 4.0;
     }
     fvec3 Tangent2World(fvec3 v, fvec3 T, fvec3 B, fvec3 N) { return T * v.x + B * v.y + N * v.z; }
@@ -165,7 +165,7 @@ namespace app {
     }
     // RayCasterProgram
 
-    AOProgram::AOProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings)
+    AOProgram::AOProgram(const Model& model, const RenderSettings& settings)
         : modelRef(model), aoSamples(settings.maxNewRaysPerBounce), inv_aoSamples(1.0f / aoSamples) {
     }
 
@@ -212,7 +212,7 @@ namespace app {
 
         auto jitter_value_x = dist(gen);
         auto jitter_value_y = dist(gen);
-        for (int i = 0; i < aoSamples; ++i) {
+        for (unsigned int i = 0; i < aoSamples; ++i) {
             fvec2 rand = fibonacci2D(i, inv_aoSamples); // quasi-random sampling
             rand.x = std::fmod(rand.x + jitter_value_x, 1.0f); // jitter
             rand.y = std::fmod(rand.y + jitter_value_y, 1.0f); // jitter
@@ -220,7 +220,7 @@ namespace app {
             assert(new_direction.z > 0.0f);
             new_direction = Tangent2World(new_direction, TBN);
             assert(abs(length(new_direction) - 1.0f) < 1e-5f);
-            ray_with_payload new_ray{ new_pos, new_direction, fvec4(inv_aoSamples), new_depth, true };
+            ray_with_payload new_ray{ {new_pos, new_direction}, fvec4(inv_aoSamples), new_depth, true };
             ray_collection.push_back(new_ray);
         }
         
@@ -323,7 +323,7 @@ namespace app {
             auto F = fvec3(1.0f) - fresnel_schlick(f0, f90, LdH);
             auto new_pos = point.position + point.normal * 1e-5f; // offset to avoid self-intersection
             auto new_payload = F * diffuse_color * (1.0f - transmission) * attenuation * ray_.payload * alpha;
-            ray_with_payload new_ray{ new_pos, l, new_payload, new_depth, false };
+            ray_with_payload new_ray{ {new_pos, l}, new_payload, new_depth, false };
             ray_collection.push_back(new_ray);
         }
         {
@@ -368,7 +368,7 @@ namespace app {
                 brdf = min(brdf, fvec3(kMaxBRDF)); // clamp to avoid fireflies
                 auto new_pos = point.position - new_pos_offset_dir * 1e-5f; // offset to avoid self-intersection
                 auto new_payload = diffuse_color * transmission * attenuation * brdf * ray_.payload * alpha;
-                ray_with_payload new_ray{ new_pos, normalize(l), new_payload, new_depth, false }; // normalizing for better accuracy
+                ray_with_payload new_ray{ {new_pos, normalize(l)}, new_payload, new_depth, false }; // normalizing for better accuracy
                 ray_collection.push_back(new_ray);
             }
             { // specular reflection
@@ -386,7 +386,7 @@ namespace app {
                 brdf = min(brdf, fvec3(kMaxBRDF)); // clamp to avoid fireflies
                 auto new_pos = point.position + new_pos_offset_dir * 1e-5f; // offset to avoid self-intersection
                 auto new_payload = attenuation * brdf * ray_.payload * alpha;
-                ray_with_payload new_ray{ new_pos, l, new_payload, new_depth, false };
+                ray_with_payload new_ray{ {new_pos, l}, new_payload, new_depth, false };
                 ray_collection.push_back(new_ray);
             }
         }

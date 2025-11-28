@@ -34,6 +34,8 @@ struct Object { // individual flat nodes with a single mesh
 
 struct Material {
     fvec4 baseColorFactor{1.0f, 1.0f, 1.0f, 1.0f};
+    fvec3 emissiveFactor{ 0.0f, 0.0f, 0.0f};
+    fvec3 attenuationFactor{ 0.0f, 0.0f, 0.0f };
     float metallicFactor = 1.0f;
     float roughnessFactor = 1.0f;
     int baseColorTextureIndex = -1; // -1 is no texture
@@ -43,12 +45,10 @@ struct Material {
     float dielectric_f0 = 0.04f;
     float transmisionFactor = 0.0f;
     int transmissionTextureIndex = -1;
-    fvec3 emissiveFactor{ 0.0f, 0.0f, 0.0f};
     int emissiveTextureIndex = -1;
     float emissiveStrength = 1.0f;
     bool doubleSided = false; // means each side is a surface (thin objects)
     bool hasVolume = false; // essential for transmission, otherwise treat as thin surface
-    fvec3 attenuationFactor{ 0.0f, 0.0f, 0.0f };
     bool alphaBlending = false;
     float alpha_cutoff = -1.0f;
 };

@@ -56,7 +56,7 @@ void Renderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& envma
     }
     switch (renderSettings_.programMode) {
         case RayProgramMode::AmbientOcclusion:
-            rayProgram = std::make_unique<AOProgram>(model, envmap, renderSettings_);
+            rayProgram = std::make_unique<AOProgram>(model, renderSettings_);
             break;
         case RayProgramMode::PBR:
             rayProgram = std::make_unique<PBRProgram>(model, envmap, renderSettings_);
@@ -72,8 +72,7 @@ ray_with_payload Renderer::generate_camera_ray(int x, int y, float inv_width, fl
     auto ndc_coords = ndc_from_pixel(pixel_coords.x, pixel_coords.y, inv_width, inv_height);
     auto direction = xyz(NDC2WorldMatrix_ * ndc_coords);
     return ray_with_payload{
-        origin_, 
-        normalize(direction), 
+        { origin_, normalize(direction)},
         fvec4(1.0f), 
         static_cast<std::uint8_t>(renderSettings_.maxRayBounces),
         false
@@ -103,14 +102,14 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer)
     }
 
     std::for_each(std::execution::par_unseq, indices.begin(), indices.end(),
-    [this, width, height, inv_width, inv_height, &framebuffer, reserved_size](int y) {
+    [this, width, inv_width, inv_height, &framebuffer, reserved_size](int y) {
         std::vector<ray_with_payload> rays;
         rays.reserve(reserved_size);
 
         for (int x = 0; x < width; ++x) {
             SamplesAccumulator<fvec3> final_color;
 
-            for (int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
+            for (unsigned int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
                 fvec3 sample_col{};
 
                 rays.push_back(generate_camera_ray(x, y, inv_width, inv_height, i));
@@ -149,7 +148,7 @@ void Renderer::generate_subsample_positions() {
     int sqrt_of_samples = static_cast<int>(std::sqrtf(renderSettings_.samplesPerPixel));
     if (sqrt_of_samples * sqrt_of_samples == renderSettings_.samplesPerPixel) {
         //samplesperpixel is a perfect square
-        for (int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
+        for (unsigned int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
             subsamplesPositions[i] = fvec2{
                 (static_cast<float>(i / sqrt_of_samples) + 0.5f) / static_cast<float>(sqrt_of_samples),
                 (static_cast<float>(i % sqrt_of_samples) + 0.5f) / static_cast<float>(sqrt_of_samples)
@@ -158,7 +157,7 @@ void Renderer::generate_subsample_positions() {
     } else {
         //samplesperpixel is not a perfect square
         float inv_samples = 1.0f / static_cast<float>(renderSettings_.samplesPerPixel);
-        for (int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
+        for (unsigned int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
             subsamplesPositions[i] = fibonacci2D(i, inv_samples);
         }
     }

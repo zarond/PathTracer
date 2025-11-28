@@ -185,7 +185,7 @@ namespace app {
         for (int i = 0; i < 7; ++i) {
             float o_projection = dot(ray.origin, axises[i]);
             float inv_d_projection = 1.0f / dot(ray.direction, axises[i]);
-            const auto axis_min_max = min_max[i];
+            const auto& axis_min_max = min_max[i];
             float t0 = (axis_min_max.x - o_projection) * inv_d_projection;
             float t1 = (axis_min_max.y - o_projection) * inv_d_projection;
             if (t0 > t1) std::swap(t0, t1);
@@ -196,12 +196,12 @@ namespace app {
         return { true, t_min, t_max };
     }
     // optimised for ray reuse
-    ray_volume_hit_info DOP::ray_volume_intersection(const ray& ray, const std::array<fvec2, 7>& projections) const noexcept {
+    ray_volume_hit_info DOP::ray_volume_intersection(const std::array<fvec2, 7>& projections) const noexcept {
         float t_min = std::numeric_limits<float>::lowest();
         float t_max = std::numeric_limits<float>::max();
 
         for (int i = 0; i < 7; ++i) {
-            const auto axis_min_max = min_max[i];
+            const auto& axis_min_max = min_max[i];
             float t0 = (axis_min_max.x - projections[i].x) * projections[i].y;
             float t1 = (axis_min_max.y - projections[i].x) * projections[i].y;
             if (t0 > t1) std::swap(t0, t1);
@@ -408,7 +408,7 @@ namespace app {
         }
     }
 
-    BVH_AS::MeshBVHData::MeshBVHData(const Mesh& mesh, bool double_sided, int max_triangles_per_leaf) 
+    BVH_AS::MeshBVHData::MeshBVHData(const Mesh& mesh, bool double_sided, unsigned int max_triangles_per_leaf) 
         : doubleSided(double_sided), maxTrianglesPerLeaf(max_triangles_per_leaf)
     {
         nodes.reserve(2 * mesh.indices.size() / (3 * maxTrianglesPerLeaf)); // upper bound
@@ -491,7 +491,7 @@ namespace app {
         {
             std::array<bins, N_bins> bins_;
             std::for_each(triangles_span.begin(), triangles_span.end(),
-                [axis, bbox, bbox_dim_scale, &bins_](const MeshBVHNode::triangle& tri) {
+                [bbox, bbox_dim_scale, &bins_, axis](const MeshBVHNode::triangle& tri) {
                     float centroid = (tri.p1[axis] + tri.p2[axis] + tri.p3[axis]) / 3.0f;
                     int bin_id = (centroid - bbox.min[axis]) * bbox_dim_scale[axis];
                     bin_id = std::clamp(bin_id, 0, N_bins - 1);
@@ -536,7 +536,7 @@ namespace app {
         auto central_it = std::partition(
             triangles_span.begin(),
             triangles_span.end(),
-            [best_axis, bbox, best_center](const MeshBVHNode::triangle& tri) {
+            [best_center, best_axis](const MeshBVHNode::triangle& tri) {
                 float centroid = (tri.p1[best_axis] + tri.p2[best_axis] + tri.p3[best_axis]) / 3.0f;
                 return centroid < best_center;
             }
@@ -627,13 +627,13 @@ namespace app {
         std::array<fvec2, 7> ray_projections;
         for (int i = 0; i < 7; ++i) {
             // caching ray params for reuse in DOP intersections
-            ray_projections[i].x = dot(ray.origin, DOP::axises[i]);
-            ray_projections[i].y = 1.0f / dot(ray.direction, DOP::axises[i]);
+            ray_projections[i] = fvec2{ dot(ray.origin, DOP::axises[i]),
+                                 1.0f / dot(ray.direction, DOP::axises[i]) };
         }
 
         for (uint32_t i = 0; i < object_data_.size(); ++i) {
             const auto& obj = object_data_[i];
-            ray_volume_hit_info potential_obj_hit = obj.volume.ray_volume_intersection(ray, ray_projections);
+            ray_volume_hit_info potential_obj_hit = obj.volume.ray_volume_intersection(ray_projections);
             volume_intersections.emplace_back(potential_obj_hit, i);
         }
         if (!any_hit) {

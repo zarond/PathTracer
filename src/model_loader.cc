@@ -106,6 +106,8 @@ Model ModelLoader::constructModel() const
 		}
 		Material mat{
 			.baseColorFactor = std::bit_cast<fvec4>(material.pbrData.baseColorFactor),
+			.emissiveFactor = fvec3{material.emissiveFactor.x(), material.emissiveFactor.y(), material.emissiveFactor.z()},
+			.attenuationFactor = attenuationFactor,
 			.metallicFactor = material.pbrData.metallicFactor,
 			.roughnessFactor = material.pbrData.roughnessFactor,
 			.baseColorTextureIndex = baseColor_imageIndex,
@@ -115,12 +117,10 @@ Model ModelLoader::constructModel() const
 			.dielectric_f0 = f0_dielectric(material.ior),
 			.transmisionFactor = material.transmission ? material.transmission->transmissionFactor : 0.0f,
 			.transmissionTextureIndex = transmission_imageIndex,
-			.emissiveFactor = fvec3{material.emissiveFactor.x(), material.emissiveFactor.y(), material.emissiveFactor.z()},
 			.emissiveTextureIndex = emissive_imageIndex,
 			.emissiveStrength = material.emissiveStrength,
 			.doubleSided = material.doubleSided,
 			.hasVolume = material.volume ? true : false,
-			.attenuationFactor = attenuationFactor,
 			.alphaBlending = (material.alphaMode == fastgltf::AlphaMode::Blend),
 			.alpha_cutoff = (material.alphaMode == fastgltf::AlphaMode::Mask)? material.alphaCutoff : -1.0f
 		};

@@ -40,7 +40,7 @@ struct DOP {
     BBox to_bbox();
 
     ray_volume_hit_info ray_volume_intersection(const ray& ray) const noexcept;
-    ray_volume_hit_info ray_volume_intersection(const ray& ray, const std::array<fvec2, 7>& projections) const noexcept;
+    ray_volume_hit_info ray_volume_intersection(const std::array<fvec2, 7>& projections) const noexcept;
 
 private:
     std::array<fvec2, 7> min_max;
@@ -152,10 +152,10 @@ private:
         int total_leaves = 0;
     };
     struct MeshBVHData {
-        explicit MeshBVHData(const Mesh& mesh, bool double_sided, int max_triangles_per_leaf);
+        explicit MeshBVHData(const Mesh& mesh, bool double_sided, unsigned int max_triangles_per_leaf);
         std::vector<MeshBVHNode> nodes;
         bool doubleSided = false;
-        int maxTrianglesPerLeaf = 8;
+        unsigned int maxTrianglesPerLeaf = 8;
 
         std::vector<MeshBVHNode::triangle> data_storage;
 

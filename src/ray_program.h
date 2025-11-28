@@ -66,12 +66,14 @@ struct ray_triangle_hit_info : public barycentric_coords {
 
 class IRayProgram {
 public:
+    virtual ~IRayProgram() = default;
     virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const = 0;
 };
 
 class RayCasterProgram : public IRayProgram {
 public:
     RayCasterProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings);
+    virtual ~RayCasterProgram() = default;
 
     virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const override;
 private:
@@ -82,7 +84,8 @@ private:
 
 class AOProgram : public IRayProgram {
 public:
-    AOProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings);
+    AOProgram(const Model& model, const RenderSettings& settings);
+    virtual ~AOProgram() = default;
 
     virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const override;
 private:
@@ -97,6 +100,7 @@ private:
 class PBRProgram : public IRayProgram {
 public:
     PBRProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings);
+    virtual ~PBRProgram() = default;
 
     virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo, std::vector<ray_with_payload>& ray_collection) const override;
 private:
