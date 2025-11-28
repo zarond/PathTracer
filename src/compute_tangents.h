@@ -1,20 +1,19 @@
 #pragma once
 
-#include "model_loader.h"
 #include "mikktspace.h"
+#include "model_loader.h"
 
 namespace app {
 
 class TangentSpaceHelper {
-
-public:
+  public:
     TangentSpaceHelper();
     void compute_tangents(Mesh& mesh);
     void compute_tangents_no_uv(Mesh& mesh);
 
-private:
+  private:
     SMikkTSpaceInterface iface_ = {};
     SMikkTSpaceContext context_ = {};
 };
 
-}
+}  // namespace app

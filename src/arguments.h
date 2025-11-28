@@ -5,7 +5,7 @@
 #include <variant>
 
 namespace app {
-    namespace fs = std::filesystem;
+namespace fs = std::filesystem;
 
 enum class RayProgramMode {
     RayCaster,
@@ -22,10 +22,7 @@ enum class AccelerationStructureType {
     kNum
 };
 
-enum class DefaultEnvironment {
-    Black,
-    White
-};
+enum class DefaultEnvironment { Black, White };
 
 struct ConsoleArgs {
     fs::path modelPath;
@@ -52,4 +49,4 @@ struct ConsoleArgs {
 
 ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd);
 
-}
+}  // namespace app

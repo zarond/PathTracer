@@ -4,14 +4,13 @@
 
 namespace app {
 
-RenderSettings::RenderSettings(const ConsoleArgs& args) :
-    samplesPerPixel(args.samplesPerPixel),
-    maxRayBounces(args.maxRayBounces),
-    maxNewRaysPerBounce(args.maxNewRaysPerBounce),
-    maxTrianglesPerBVHLeaf(args.maxTrianglesPerBVHLeaf),
-    envmapRotation(glm::radians(static_cast<float>(args.envmapRotation))),
-    programMode(args.programMode),
-    accelStructType(args.accelStructType)
-{}
+RenderSettings::RenderSettings(const ConsoleArgs& args)
+    : samplesPerPixel(args.samplesPerPixel),
+      maxRayBounces(args.maxRayBounces),
+      maxNewRaysPerBounce(args.maxNewRaysPerBounce),
+      maxTrianglesPerBVHLeaf(args.maxTrianglesPerBVHLeaf),
+      envmapRotation(glm::radians(static_cast<float>(args.envmapRotation))),
+      programMode(args.programMode),
+      accelStructType(args.accelStructType) {}
 
-}
+}  // namespace app

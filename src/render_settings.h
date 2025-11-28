@@ -9,7 +9,7 @@ struct RenderSettings {
     unsigned int maxRayBounces = 0;
     unsigned int maxNewRaysPerBounce = 0;
     unsigned int maxTrianglesPerBVHLeaf = 8;
-    float envmapRotation = 0; // in radians
+    float envmapRotation = 0;  // in radians
 
     RenderSettings() = default;
     explicit RenderSettings(const ConsoleArgs& args);
@@ -20,4 +20,4 @@ struct RenderSettings {
     bool operator==(const RenderSettings& other) const = default;
 };
 
-}
+}  // namespace app

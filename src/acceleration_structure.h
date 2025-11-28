@@ -1,14 +1,14 @@
 #pragma once
 
 #include <limits>
-#include <numeric>
 #include <numbers>
+#include <numeric>
 #include <span>
-#include <vector>
 #include <variant>
+#include <vector>
 
-#include "ray_program.h"
 #include "model_loader.h"
+#include "ray_program.h"
 
 namespace app {
 
@@ -42,12 +42,12 @@ struct DOP {
     ray_volume_hit_info ray_volume_intersection(const ray& ray) const noexcept;
     ray_volume_hit_info ray_volume_intersection(const std::array<fvec2, 7>& projections) const noexcept;
 
-private:
+  private:
     std::array<fvec2, 7> min_max;
     constexpr static auto inv_sqrt3 = std::numbers::inv_sqrt3_v<float>;
 
-public:
-    static inline std::array<fvec3, 7> axises {
+  public:
+    static inline std::array<fvec3, 7> axises{
         fvec3{1.0f, 0.0f, 0.0f},
         fvec3{0.0f, 1.0f, 0.0f},
         fvec3{0.0f, 0.0f, 1.0f},
@@ -61,7 +61,7 @@ public:
 DOP object_to_ws_dop(const Object& obj, const Mesh& mesh);
 
 class IAccelerationStructure {
-public:
+  public:
     virtual ~IAccelerationStructure() = default;
     virtual ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const = 0;
 
@@ -81,13 +81,13 @@ struct ObjectData {
 struct volume_hit_and_obj_index {
     ray_volume_hit_info hit_info;
     uint32_t object_index;
-    bool operator < (const volume_hit_and_obj_index& other) const noexcept { // for min-heap
+    bool operator<(const volume_hit_and_obj_index& other) const noexcept {  // for min-heap
         return hit_info.forward_hit_distance() > other.hit_info.forward_hit_distance();
     }
 };
 
 class NaiveAS : public IAccelerationStructure {
-public:
+  public:
     explicit NaiveAS(const Model& model);
     virtual ~NaiveAS() override = default;
 
@@ -95,9 +95,9 @@ public:
 
     BBox get_scene_bounds() const;
 
-private:
+  private:
     struct MeshData {
-        std::vector<fvec3> vertices; // tuples of 3 vertices positions that form triangles
+        std::vector<fvec3> vertices;  // tuples of 3 vertices positions that form triangles
         bool doubleSided = false;
     };
 
@@ -106,23 +106,21 @@ private:
 
     static thread_local std::vector<volume_hit_and_obj_index> volume_intersections;
 
-    template<bool any_hit = false>
+    template <bool any_hit = false>
     static ray_triangle_hit_info mesh_ray_intersection(
-        const ray& ray_ws,
-        const fmat4x4& ModelMatrix,
-        const fmat4x4& invModelMatrix,
-        const MeshData& mesh) noexcept;
+        const ray& ray_ws, const fmat4x4& ModelMatrix, const fmat4x4& invModelMatrix, const MeshData& mesh) noexcept;
 };
 
 class BVH_AS : public IAccelerationStructure {
-public:
+  public:
     explicit BVH_AS(const Model& model, int max_triangles_per_leaf);
     virtual ~BVH_AS() override = default;
 
     ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const;
 
     BBox get_scene_bounds() const;
-private:
+
+  private:
     struct MeshBVHNode {
         struct children {
             uint32_t left_child_index = -1;
@@ -132,7 +130,7 @@ private:
             fvec3 p1;
             fvec3 p2;
             fvec3 p3;
-            uint32_t index; // index of the first vertex of the triangle in vector of indices in original mesh
+            uint32_t index;  // index of the first vertex of the triangle in vector of indices in original mesh
         };
         using triangles = std::span<triangle>;
 
@@ -159,7 +157,8 @@ private:
         std::vector<MeshBVHNode::triangle> data_storage;
 
         void parse(std::span<MeshBVHNode::triangle> triangles_span, uint32_t node_id = 0);
-        std::span<MeshBVHNode::triangle>::iterator split_triangles(std::span<MeshBVHNode::triangle> triangles_span, const BBox& bbox); // find best split estimate for bvh separation and partition data
+        std::span<MeshBVHNode::triangle>::iterator split_triangles(std::span<MeshBVHNode::triangle> triangles_span,
+            const BBox& bbox);  // find best split estimate for bvh separation and partition data
 
         void collect_tree_info() const;
         void collect_tree_info_recursive(tree_info& info, uint32_t index, int depth) const;
@@ -171,12 +170,9 @@ private:
     static thread_local std::vector<volume_hit_and_obj_index> volume_intersections;
     static thread_local std::vector<uint32_t> bvh_stack;
 
-    template<bool any_hit = false>
+    template <bool any_hit = false>
     static ray_triangle_hit_info mesh_ray_intersection(
-        const ray& ray_ws,
-        const fmat4x4& ModelMatrix,
-        const fmat4x4& invModelMatrix,
-        const MeshBVHData& mesh) noexcept;
+        const ray& ray_ws, const fmat4x4& ModelMatrix, const fmat4x4& invModelMatrix, const MeshBVHData& mesh) noexcept;
 };
 
-}
+}  // namespace app

@@ -1,19 +1,18 @@
-#include <iostream>
-#include <string>
 #include <chrono>
+#include <iostream>
 
-#include "model_loader.h"
-#include "cpu_framebuffer.h"
 #include "arguments.h"
+#include "cpu_framebuffer.h"
+#include "model_loader.h"
 #include "viewer.h"
 
-//#include <imgui.h>
+// #include <imgui.h>
 
 int main(int argc, char* argv[]) {
     using namespace app;
 
-    //IMGUI_CHECKVERSION();
-    //ImGui::CreateContext(); // todo: imgui is unused for now
+    // IMGUI_CHECKVERSION();
+    // ImGui::CreateContext(); // todo: imgui is unused for now
 
     ConsoleArgs console_arguments = parse_args(argc, argv, fs::current_path());
     if (console_arguments.exitImmediately) {
@@ -33,17 +32,18 @@ int main(int argc, char* argv[]) {
     }
     CPUTexture<hdr_pixel> environment_texture;
     if (console_arguments.useDefaultEnv) {
-        environment_texture = (console_arguments.defaultEnv == DefaultEnvironment::White) ?
-            CPUTexture<hdr_pixel>::create_white_texture() :
-            CPUTexture<hdr_pixel>::create_black_texture();
+        environment_texture = (console_arguments.defaultEnv == DefaultEnvironment::White)
+                                  ? CPUTexture<hdr_pixel>::create_white_texture()
+                                  : CPUTexture<hdr_pixel>::create_black_texture();
     } else {
         environment_texture = CPUTexture<hdr_pixel>(console_arguments.environmentPath);
     }
 
-    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+    auto diff =
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
     std::cout << "loaded in " << diff.count() << " ms." << '\n';
 
-    auto render_settings = RenderSettings{ console_arguments };
+    auto render_settings = RenderSettings{console_arguments};
 
     // Create viewer
     Viewer viewer(std::move(model), std::move(environment_texture), render_settings);

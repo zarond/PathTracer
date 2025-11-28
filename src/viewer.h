@@ -1,22 +1,21 @@
 #pragma once
 
-#include <optional>
-#include <memory>
 #include <chrono>
-
-#include "model_loader.h"
-#include "cpu_framebuffer.h"
-#include "renderer.h"
-
 #include <glm/glm.hpp>
+#include <memory>
+#include <optional>
+
+#include "cpu_framebuffer.h"
+#include "model_loader.h"
+#include "renderer.h"
 
 namespace app {
 
 using namespace glm;
 
 class Viewer {
-public:
-    explicit Viewer(Model&& model, CPUTexture<hdr_pixel> && environmentTexture, const RenderSettings& settings);
+  public:
+    explicit Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture, const RenderSettings& settings);
 
     Viewer(const Viewer&) = delete;
     Viewer& operator=(const Viewer&) = delete;
@@ -25,7 +24,7 @@ public:
     ivec2 get_window_dimensions() const;
 
     void render();
-    
+
     void set_active_camera(std::optional<uint32_t> cameraIndex);
     std::optional<uint32_t> get_active_camera() const;
 
@@ -36,10 +35,10 @@ public:
     void set_render_settings(const RenderSettings& settings);
     RenderSettings get_render_settings() const;
 
-private:
+  private:
     Model model_;
     CPUTexture<hdr_pixel> environmentTexture_;
-    
+
     std::optional<uint32_t> activeCameraIndex_ = std::nullopt;
 
     Renderer renderer_;
@@ -54,8 +53,8 @@ private:
     fvec3 velocity_ = fvec3(0.0f);
     fvec3 position_ = fvec3(0.0f);
 
-    fvec3 direction_ = fvec3(0.0f, 0.0f, -1.0f); // center view direction
-    fvec3 up_ = fvec3(0.0f, 1.0f, 0.0f); // up view direction
+    fvec3 direction_ = fvec3(0.0f, 0.0f, -1.0f);  // center view direction
+    fvec3 up_ = fvec3(0.0f, 1.0f, 0.0f);          // up view direction
     fastgltf::Camera::Perspective cam_params_;
     dvec2 lastCursorPosition_ = dvec2(0.0f);
 
@@ -66,4 +65,4 @@ private:
     void set_up_default_camera_transforms();
 };
 
-}
+}  // namespace app

@@ -1,32 +1,27 @@
 #pragma once
 
-#include <filesystem>
-#include <vector>
 #include <array>
 #include <cmath>
-
 #include <fastgltf/types.hpp>
+#include <filesystem>
 #include <glm/glm.hpp>
+#include <vector>
 
 namespace app {
 
 using namespace glm;
 
-inline float linear_to_srgb(float channel)
-{
+inline float linear_to_srgb(float channel) {
     if (channel <= 0.0031308f) {
         return 12.92f * channel;
-    }
-    else {
+    } else {
         return 1.055f * std::pow(channel, 1.0f / 2.4f) - 0.055f;
     }
 }
-inline float srgb_to_linear(float channel)
-{
+inline float srgb_to_linear(float channel) {
     if (channel <= 0.04045f) {
         return channel / 12.92f;
-    }
-    else {
+    } else {
         return std::pow((channel + 0.055f) / 1.055f, 2.4f);
     }
 }
@@ -34,48 +29,49 @@ inline float srgb_to_linear(float channel)
 using sdr_pixel = std::array<std::uint8_t, 4>;
 using hdr_pixel = fvec4;
 
-template<typename T>
+template <typename T>
 concept PixelType = std::is_same_v<T, sdr_pixel> || std::is_same_v<T, hdr_pixel>;
 
-template<PixelType pixel>
+template <PixelType pixel>
 inline fvec4 pixel_to_float(pixel sample) {
     return fvec4(
-        static_cast<float>(sample[0]) / 255.0f,
+        static_cast<float>(sample[0]) / 255.0f, 
         static_cast<float>(sample[1]) / 255.0f,
-        static_cast<float>(sample[2]) / 255.0f,
+        static_cast<float>(sample[2]) / 255.0f, 
         static_cast<float>(sample[3]) / 255.0f);
 }
-template<PixelType pixel>
+template <PixelType pixel>
 inline fvec4 srgb_pixel_to_float(pixel sample) {
     return fvec4(
         srgb_to_linear(static_cast<float>(sample[0]) / 255.0f),
-        srgb_to_linear(static_cast<float>(sample[1]) / 255.0f),
+        srgb_to_linear(static_cast<float>(sample[1]) / 255.0f), 
         srgb_to_linear(static_cast<float>(sample[2]) / 255.0f),
         static_cast<float>(sample[3]) / 255.0f);
 }
 
 inline sdr_pixel float_pixel_to_srgb8(hdr_pixel sample) {
     sample = clamp(sample, 0.0f, 1.0f);
-    return sdr_pixel{   static_cast<uint8_t>(linear_to_srgb(sample.r) * 255 + 0.5f),
-                        static_cast<uint8_t>(linear_to_srgb(sample.g) * 255 + 0.5f),
-                        static_cast<uint8_t>(linear_to_srgb(sample.b) * 255 + 0.5f),
-                        static_cast<uint8_t>(linear_to_srgb(sample.a) * 255 + 0.5f) };
+    return sdr_pixel{
+        static_cast<uint8_t>(linear_to_srgb(sample.r) * 255 + 0.5f),
+        static_cast<uint8_t>(linear_to_srgb(sample.g) * 255 + 0.5f),
+        static_cast<uint8_t>(linear_to_srgb(sample.b) * 255 + 0.5f),
+        static_cast<uint8_t>(linear_to_srgb(sample.a) * 255 + 0.5f)};
 }
 
-template<PixelType pixel>
+template <PixelType pixel>
 class CPUTexture {
-
-public:
+  public:
     // Idea: use mdspan
     CPUTexture() = default;
-    explicit CPUTexture(const fastgltf::Image& image, const fastgltf::Asset& asset_); // used to load sdr texture images
-    explicit CPUTexture(const std::filesystem::path& path); // used to load hdr environment images
+    explicit CPUTexture(
+        const fastgltf::Image& image, const fastgltf::Asset& asset_);  // used to load sdr texture images
+    explicit CPUTexture(const std::filesystem::path& path);            // used to load hdr environment images
     CPUTexture(pixel initial_col) : width_(1), height_(1), channels_(4), data_(1, initial_col) {}
-    
+
     int width() const { return width_; }
     int height() const { return height_; }
 
-    fvec4 sample_nearest(fvec2 uv, bool srgb_tex = false) const { // Idea: sampler to individual class
+    fvec4 sample_nearest(fvec2 uv, bool srgb_tex = false) const {  // Idea: sampler to individual class
         auto xf = std::fmod(uv.x, 1.0f);
         auto yf = std::fmod(uv.y, 1.0f);
         if (xf < 0.0f) xf += 1.0f;
@@ -129,35 +125,33 @@ public:
     static CPUTexture create_white_texture();
     static CPUTexture create_black_texture();
 
-protected:
+  protected:
     std::vector<pixel> data_;
     int width_ = 1;
     int height_ = 1;
-    int channels_ = 4; // Number of channels in the image originally (e.g., 3 for RGB, 4 for RGBA); we always store as RGBA
+    int channels_ = 4;  // Number of channels in the image originally (e.g., 3 for RGB, 4 for RGBA); we always store as RGBA
 };
 
-class CPUFrameBuffer: private CPUTexture<hdr_pixel> {
-
-private:
-    using CPUTexture::width_;
-    using CPUTexture::height_;
+class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
+  private:
     using CPUTexture::channels_;
     using CPUTexture::data_;
+    using CPUTexture::height_;
+    using CPUTexture::width_;
 
-public:
+  public:
     CPUFrameBuffer();
     CPUFrameBuffer(int width, int height);
-    
+
     void clear(const hdr_pixel clearColor = hdr_pixel{0.0f, 0.0f, 0.0f, 1.0f});
     hdr_pixel& at(int x, int y);
     const hdr_pixel& at(int x, int y) const;
-    
-    using CPUTexture::width;
+
     using CPUTexture::height;
     using CPUTexture::sample_nearest;
+    using CPUTexture::width;
 
     void save_to_file(const std::filesystem::path& filePath) const;
 };
 
-}
-
+}  // namespace app

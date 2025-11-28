@@ -1,5 +1,3 @@
 #include "ui.h"
 
-namespace app {
-
-}
+namespace app {}
