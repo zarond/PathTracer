@@ -11,7 +11,7 @@ using namespace glm;
 
 #define CULLING
 
-constexpr float kEpsilon = 1e-5f;
+constexpr float kEpsilon = 1e-7f;
 
 inline barycentric_coords intersect_ray_triangle(
     const ray ray_os, 
@@ -25,22 +25,23 @@ inline barycentric_coords intersect_ray_triangle(
     fvec3 p1p3 = p3 - p1;
     fvec3 pvec = cross(ray_os.direction, p1p3);
     float det = dot(p1p2, pvec);
+    if (det == 0.0f) return barycentric_coords{};
     if (backface_culling) {
         // If the determinant is negative, the triangle is back-facing.
-        if (det <= 0.0f) return {0.0f, 0.0f, false, false};  // or epsilon?
+        if (det < 0.0f) return barycentric_coords{};
     }
     // If det is close to 0, the ray and triangle are parallel.
-    // if (fabs(det) < kEpsilon) return { 0.0f, 0.0f, false };
+    // if (fabs(det) < kEpsilon) return barycentric_coords{}; //unused, because gives artifacts on small triangles
 
     float invDet = 1.0f / det;
 
     fvec3 tvec = ray_os.origin - p1;
     float u = dot(tvec, pvec) * invDet;
-    if (u < 0.0f || u > 1.0f) return {0.0f, 0.0f, 0.0f, false, false};
+    if (u < 0.0f || u > 1.0f) return barycentric_coords{};
 
     fvec3 qvec = cross(tvec, p1p2);
     float v = dot(ray_os.direction, qvec) * invDet;
-    if (v < 0.0f || u + v > 1.0f) return {0.0f, 0.0f, 0.0f, false, false};
+    if (v < 0.0f || u + v > 1.0f) return barycentric_coords{};
 
     float t = dot(p1p3, qvec) * invDet;
 
@@ -250,15 +251,13 @@ NaiveAS::NaiveAS(const Model& model) {
         mesh_data_.emplace_back(std::move(data), doubleSided);
     }
     auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
-    volume_intersections.reserve(object_data_.size());
     std::cout << "NaiveAS constructed in " << diff.count() << " ms." << '\n';
 }
 
-std::vector<volume_hit_and_obj_index> thread_local NaiveAS::volume_intersections;
-
-ray_triangle_hit_info NaiveAS::intersect_ray(const ray& ray, bool any_hit) const {
+ray_triangle_hit_info NaiveAS::intersect_ray(const ray& ray, bool any_hit) const noexcept {
     ray_triangle_hit_info hit{};
 
+    static thread_local std::vector<volume_hit_and_obj_index> volume_intersections;
     volume_intersections.clear();
 
     for (uint32_t i = 0; i < object_data_.size(); ++i) {
@@ -340,7 +339,7 @@ static ray_triangle_hit_info NaiveAS::mesh_ray_intersection(
     return hit;
 }
 
-BBox NaiveAS::get_scene_bounds() const {
+BBox NaiveAS::get_scene_bounds() const noexcept {
     DOP dop;
     for (const auto& obj : object_data_) {
         dop.expand(obj.volume);
@@ -382,8 +381,6 @@ BVH_AS::BVH_AS(const Model& model, int max_triangles_per_leaf) {
             doubleSided, 
             max_triangles_per_leaf);
     }
-    volume_intersections.reserve(object_data_.size());
-    bvh_stack.reserve(64);  // preallocate stack memory
     auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
     std::cout << "BVH_AS constructed in " << diff.count() << " ms." << '\n';
 
@@ -450,7 +447,7 @@ void BVH_AS::MeshBVHData::parse(std::span<MeshBVHNode::triangle> triangles_span,
 }
 
 std::span<BVH_AS::MeshBVHNode::triangle>::iterator BVH_AS::MeshBVHData::split_triangles(
-    std::span<MeshBVHNode::triangle> triangles_span, const BBox& bbox) {
+    std::span<MeshBVHNode::triangle> triangles_span, const BBox& bbox) noexcept {
     float parent_weight = SurfaceAreaHeuristic(bbox, triangles_span.size());
 
     float best_cost = parent_weight;
@@ -538,7 +535,7 @@ std::span<BVH_AS::MeshBVHNode::triangle>::iterator BVH_AS::MeshBVHData::split_tr
     return central_it;
 }
 
-void BVH_AS::MeshBVHData::collect_tree_info_recursive(tree_info& info, uint32_t index, int depth) const {
+void BVH_AS::MeshBVHData::collect_tree_info_recursive(tree_info& info, uint32_t index, int depth) const noexcept {
     const auto& node = nodes[index];
     if (std::holds_alternative<MeshBVHNode::children>(node.payload)) {
         MeshBVHNode::children ch = std::get<MeshBVHNode::children>(node.payload);
@@ -558,7 +555,7 @@ void BVH_AS::MeshBVHData::collect_tree_info_recursive(tree_info& info, uint32_t 
     }
 }
 
-void BVH_AS::MeshBVHData::collect_tree_info() const {
+void BVH_AS::MeshBVHData::collect_tree_info() const noexcept {
     tree_info info;
     collect_tree_info_recursive(info, 0, 0);
     float mean_depth = static_cast<float>(info.mean_depth) / info.total_leaves;
@@ -572,7 +569,7 @@ void BVH_AS::MeshBVHData::collect_tree_info() const {
     std::cout << std::endl;
 }
 
-BBox BVH_AS::MeshBVHNode::triangles_to_bbox(const std::span<MeshBVHNode::triangle> tris) {
+BBox BVH_AS::MeshBVHNode::triangles_to_bbox(const std::span<MeshBVHNode::triangle> tris) noexcept {
     auto combine = [](BBox a, const BBox& b) {
         a.expand(b);
         return a;
@@ -587,12 +584,10 @@ BBox BVH_AS::MeshBVHNode::triangles_to_bbox(const std::span<MeshBVHNode::triangl
     // unfortunately no performance benefit using transform_reduce
 }
 
-std::vector<volume_hit_and_obj_index> thread_local BVH_AS::volume_intersections;
-std::vector<uint32_t> thread_local BVH_AS::bvh_stack;
-
-ray_triangle_hit_info BVH_AS::intersect_ray(const ray& ray, bool any_hit) const {
+ray_triangle_hit_info BVH_AS::intersect_ray(const ray& ray, bool any_hit) const noexcept {
     ray_triangle_hit_info hit{};
 
+    static thread_local std::vector<volume_hit_and_obj_index> volume_intersections;
     volume_intersections.clear();
 
     std::array<fvec2, 7> ray_projections;
@@ -648,6 +643,8 @@ static ray_triangle_hit_info BVH_AS::mesh_ray_intersection(
     ray os_ray{ray_origin_os, ray_direction_os};
 
     ray_triangle_hit_info hit{};
+
+    static thread_local std::vector<uint32_t> bvh_stack;
 
     bvh_stack.clear();
     bvh_stack.push_back(0);  // root node index
@@ -710,7 +707,7 @@ static ray_triangle_hit_info BVH_AS::mesh_ray_intersection(
     return hit;
 }
 
-BBox BVH_AS::get_scene_bounds() const {
+BBox BVH_AS::get_scene_bounds() const noexcept {
     DOP dop;
     for (const auto& obj : object_data_) {
         dop.expand(obj.volume);

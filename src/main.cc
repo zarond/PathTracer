@@ -39,8 +39,7 @@ int main(int argc, char* argv[]) {
         environment_texture = CPUTexture<hdr_pixel>(console_arguments.environmentPath);
     }
 
-    auto diff =
-        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
     std::cout << "loaded in " << diff.count() << " ms." << '\n';
 
     auto render_settings = RenderSettings{console_arguments};

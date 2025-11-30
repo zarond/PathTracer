@@ -21,7 +21,7 @@ struct SamplesAccumulator {
     SamplesAccumulator() : mean(0), M2(0), count(0) {}
 
     // Welford's Online Algorithm
-    void add_sample(const T& sample) {
+    void add_sample(const T& sample) noexcept {
         count += 1.0f;
         T delta = sample - mean;
         mean += delta / count;
@@ -64,7 +64,7 @@ class Renderer {
     fvec3 origin_ = fvec3{0.0f};
 
   private:
-    ray_with_payload generate_camera_ray(int x, int y, float inv_width, float inv_height, int sampleIndex = 0) const;
+    ray_with_payload generate_camera_ray(int x, int y, float inv_width, float inv_height, int sampleIndex = 0) const noexcept;
     void generate_subsample_positions();
 
     std::vector<fvec2> subsamplesPositions;

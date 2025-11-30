@@ -63,7 +63,7 @@ void Renderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& envma
     }
 }
 
-ray_with_payload Renderer::generate_camera_ray(int x, int y, float inv_width, float inv_height, int sampleIndex) const {
+ray_with_payload Renderer::generate_camera_ray(int x, int y, float inv_width, float inv_height, int sampleIndex) const noexcept {
     fvec2 pixel_coords = fvec2{static_cast<float>(x), static_cast<float>(y)} + subsamplesPositions[sampleIndex];
     auto ndc_coords = ndc_from_pixel(pixel_coords.x, pixel_coords.y, inv_width, inv_height);
     auto direction = xyz(NDC2WorldMatrix_ * ndc_coords);
@@ -97,7 +97,8 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer) {
 
     std::for_each(std::execution::par_unseq, indices.begin(), indices.end(),
         [this, width, inv_width, inv_height, &framebuffer, reserved_size](int y) {
-            std::vector<ray_with_payload> rays;
+            static thread_local std::vector<ray_with_payload> rays;
+            rays.clear();
             rays.reserve(reserved_size);
 
             for (int x = 0; x < width; ++x) {

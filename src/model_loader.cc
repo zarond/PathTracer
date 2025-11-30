@@ -102,7 +102,8 @@ Model ModelLoader::constructModel() const {
             // density mediums:
             attenuationFactor = (1.0f - attenuationFactor) / max(1e-5f, material.volume->attenuationDistance);
         }
-        Material mat{.baseColorFactor = std::bit_cast<fvec4>(material.pbrData.baseColorFactor),
+        Material mat{
+            .baseColorFactor = std::bit_cast<fvec4>(material.pbrData.baseColorFactor),
             .emissiveFactor = fvec3{material.emissiveFactor.x(), material.emissiveFactor.y(), material.emissiveFactor.z()},
             .attenuationFactor = attenuationFactor,
             .metallicFactor = material.pbrData.metallicFactor,

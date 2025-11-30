@@ -1,5 +1,5 @@
 ---
-Language:        ObjC
+Language: ObjC
 BasedOnStyle: LLVM
 ColumnLimit: 130
 IndentWidth: 4
@@ -13,7 +13,7 @@ IndentCaseLabels: true
 ---
 Language: Cpp
 BasedOnStyle: Google
-ColumnLimit: 120
+ColumnLimit: 130
 FixNamespaceComments: true
 IndentWidth: 4
 DerivePointerAlignment: false

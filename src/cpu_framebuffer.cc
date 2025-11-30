@@ -44,12 +44,18 @@ CPUTexture<sdr_pixel>::CPUTexture(const fastgltf::Image& image, const fastgltf::
 
                 const std::string path(filePath.uri.path().begin(), filePath.uri.path().end());  // Thanks C++.
                 unsigned char* data = stbi_load(path.c_str(), &width_, &height_, &channels_, 4);
+                if (data == nullptr) {
+                    throw std::runtime_error("Unable to load image: " + path);
+                }
                 data_ = from_raw_data(data, width_, height_, channels_);
                 stbi_image_free(data);
             },
             [&](const fastgltf::sources::Array& vector) {
                 unsigned char* data = stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(vector.bytes.data()),
                     static_cast<int>(vector.bytes.size()), &width_, &height_, &channels_, 4);
+                if (data == nullptr) {
+                    throw std::runtime_error("Unable to load image from memory");
+                }
                 data_ = from_raw_data(data, width_, height_, channels_);
                 stbi_image_free(data);
             },
@@ -61,6 +67,9 @@ CPUTexture<sdr_pixel>::CPUTexture(const fastgltf::Image& image, const fastgltf::
                         unsigned char* data = stbi_load_from_memory(
                             reinterpret_cast<const stbi_uc*>(vector.bytes.data() + bufferView.byteOffset),
                             static_cast<int>(bufferView.byteLength), &width_, &height_, &channels_, 4);
+                        if (data == nullptr) {
+                            throw std::runtime_error("Unable to load image from memory");
+                        }
                         data_ = from_raw_data(data, width_, height_, channels_);
                         stbi_image_free(data);
                     },
@@ -78,6 +87,9 @@ CPUTexture<hdr_pixel>::CPUTexture(const std::filesystem::path& filePath) {
     const std::string path(filePath.string());
 
     float* data = stbi_loadf(path.c_str(), &width_, &height_, &channels_, 4);
+    if (data == nullptr) {
+        throw std::runtime_error("Unable to load image: " + path);
+    }
     data_ = from_raw_data(data, width_, height_, channels_);
     stbi_image_free(data);
 
@@ -85,13 +97,13 @@ CPUTexture<hdr_pixel>::CPUTexture(const std::filesystem::path& filePath) {
 }
 
 template <>
-static CPUTexture<sdr_pixel> CPUTexture<sdr_pixel>::create_white_texture() { return CPUTexture(sdr_pixel{255, 255, 255, 255});}
+CPUTexture<sdr_pixel> CPUTexture<sdr_pixel>::create_white_texture() { return CPUTexture(sdr_pixel{255, 255, 255, 255});}
 template <>
-static CPUTexture<sdr_pixel> CPUTexture<sdr_pixel>::create_black_texture() { return CPUTexture(sdr_pixel{0, 0, 0, 255});}
+CPUTexture<sdr_pixel> CPUTexture<sdr_pixel>::create_black_texture() { return CPUTexture(sdr_pixel{0, 0, 0, 255});}
 template <>
-static CPUTexture<hdr_pixel> CPUTexture<hdr_pixel>::create_white_texture() { return CPUTexture(hdr_pixel{1.0f});}
+CPUTexture<hdr_pixel> CPUTexture<hdr_pixel>::create_white_texture() { return CPUTexture(hdr_pixel{1.0f});}
 template <>
-static CPUTexture<hdr_pixel> CPUTexture<hdr_pixel>::create_black_texture() { return CPUTexture(hdr_pixel{0.0f});}
+CPUTexture<hdr_pixel> CPUTexture<hdr_pixel>::create_black_texture() { return CPUTexture(hdr_pixel{0.0f});}
 
 // CPUFrameBuffer
 

@@ -59,7 +59,7 @@ class IRayProgram {
   public:
     virtual ~IRayProgram() = default;
     virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo,
-        std::vector<ray_with_payload>& ray_collection) const = 0;
+        std::vector<ray_with_payload>& ray_collection) const noexcept = 0;
 };
 
 class RayCasterProgram : public IRayProgram {
@@ -68,7 +68,7 @@ class RayCasterProgram : public IRayProgram {
     virtual ~RayCasterProgram() = default;
 
     virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo,
-        std::vector<ray_with_payload>& ray_collection) const override;
+        std::vector<ray_with_payload>& ray_collection) const noexcept override;
 
   private:
     const Model& modelRef;
@@ -82,7 +82,7 @@ class AOProgram : public IRayProgram {
     virtual ~AOProgram() = default;
 
     virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo,
-        std::vector<ray_with_payload>& ray_collection) const override;
+        std::vector<ray_with_payload>& ray_collection) const noexcept override;
 
   private:
     const Model& modelRef;
@@ -99,7 +99,7 @@ class PBRProgram : public IRayProgram {
     virtual ~PBRProgram() = default;
 
     virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo,
-        std::vector<ray_with_payload>& ray_collection) const override;
+        std::vector<ray_with_payload>& ray_collection) const noexcept override;
 
   private:
     const Model& modelRef;

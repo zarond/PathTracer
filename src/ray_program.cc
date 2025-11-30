@@ -148,7 +148,7 @@ RayCasterProgram::RayCasterProgram(const Model& model, const CPUTexture<hdr_pixe
     : modelRef(model), envmapRef(env), envmap_rot(settings.envmapRotation) {}
 
 fvec3 RayCasterProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_info& hit,
-    std::vector<ray_with_payload>& ray_collection) const {
+    std::vector<ray_with_payload>& ray_collection) const noexcept {
     if (hit.forward_hit() == false) {  // on miss
         return xyz(sample_environment(ray_.direction, envmapRef, envmap_rot));
     }
@@ -170,7 +170,7 @@ std::minstd_rand thread_local AOProgram::gen = std::minstd_rand(std::random_devi
 std::uniform_real_distribution<float> thread_local AOProgram::dist = std::uniform_real_distribution<float>(0.0f, 1.0f);
 
 fvec3 AOProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_info& hit,
-    std::vector<ray_with_payload>& ray_collection) const {
+    std::vector<ray_with_payload>& ray_collection) const noexcept {
     if (hit.forward_hit() == false) {  // on miss
         return ray_.payload;
     }
@@ -232,7 +232,7 @@ std::minstd_rand thread_local PBRProgram::gen = std::minstd_rand(std::random_dev
 std::uniform_real_distribution<float> thread_local PBRProgram::dist = std::uniform_real_distribution<float>(0.0f, 1.0f);
 
 fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_info& hit,
-    std::vector<ray_with_payload>& ray_collection) const {
+    std::vector<ray_with_payload>& ray_collection) const noexcept {
     if (hit.forward_hit() == false) {  // on miss
         return ray_.payload * xyz(sample_environment(ray_.direction, envmapRef, envmap_rot));
     }

@@ -63,9 +63,9 @@ DOP object_to_ws_dop(const Object& obj, const Mesh& mesh);
 class IAccelerationStructure {
   public:
     virtual ~IAccelerationStructure() = default;
-    virtual ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const = 0;
+    virtual ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const noexcept = 0;
 
-    virtual BBox get_scene_bounds() const = 0;
+    virtual BBox get_scene_bounds() const noexcept = 0;
 };
 
 // common data for AS types
@@ -91,9 +91,9 @@ class NaiveAS : public IAccelerationStructure {
     explicit NaiveAS(const Model& model);
     virtual ~NaiveAS() override = default;
 
-    ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const;
+    ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const noexcept;
 
-    BBox get_scene_bounds() const;
+    BBox get_scene_bounds() const noexcept;
 
   private:
     struct MeshData {
@@ -103,8 +103,6 @@ class NaiveAS : public IAccelerationStructure {
 
     std::vector<ObjectData> object_data_;
     std::vector<MeshData> mesh_data_;
-
-    static thread_local std::vector<volume_hit_and_obj_index> volume_intersections;
 
     template <bool any_hit = false>
     static ray_triangle_hit_info mesh_ray_intersection(
@@ -116,9 +114,9 @@ class BVH_AS : public IAccelerationStructure {
     explicit BVH_AS(const Model& model, int max_triangles_per_leaf);
     virtual ~BVH_AS() override = default;
 
-    ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const;
+    ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const noexcept;
 
-    BBox get_scene_bounds() const;
+    BBox get_scene_bounds() const noexcept;
 
   private:
     struct MeshBVHNode {
@@ -137,7 +135,7 @@ class BVH_AS : public IAccelerationStructure {
         BBox volume;
         std::variant<children, triangles> payload;
 
-        static BBox triangles_to_bbox(const std::span<MeshBVHNode::triangle> tris);
+        static BBox triangles_to_bbox(const std::span<MeshBVHNode::triangle> tris) noexcept;
     };
     struct tree_info {
         int min_depth = std::numeric_limits<int>::max();
@@ -158,17 +156,14 @@ class BVH_AS : public IAccelerationStructure {
 
         void parse(std::span<MeshBVHNode::triangle> triangles_span, uint32_t node_id = 0);
         std::span<MeshBVHNode::triangle>::iterator split_triangles(std::span<MeshBVHNode::triangle> triangles_span,
-            const BBox& bbox);  // find best split estimate for bvh separation and partition data
+            const BBox& bbox) noexcept;  // find best split estimate for bvh separation and partition data
 
-        void collect_tree_info() const;
-        void collect_tree_info_recursive(tree_info& info, uint32_t index, int depth) const;
+        void collect_tree_info() const noexcept;
+        void collect_tree_info_recursive(tree_info& info, uint32_t index, int depth) const noexcept;
     };
 
     std::vector<ObjectData> object_data_;
     std::vector<MeshBVHData> mesh_bvh_data_;
-
-    static thread_local std::vector<volume_hit_and_obj_index> volume_intersections;
-    static thread_local std::vector<uint32_t> bvh_stack;
 
     template <bool any_hit = false>
     static ray_triangle_hit_info mesh_ray_intersection(
