@@ -52,7 +52,7 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         .scan<'i', int>()
         .required()
         .nargs(1)
-        .default_value(1);
+        .default_value(3);
 
     program.add_argument("-a", "--as")
         .help("choose acceleration structure mode:\n 1: Naive\n 2: BVH")
@@ -73,7 +73,7 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         .scan<'i', int>()
         .required()
         .nargs(1)
-        .default_value(0);
+        .default_value(4);
 
     program.add_argument("-r", "--newrays")
         .help("max new AO rays (AO mode only).")

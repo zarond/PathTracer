@@ -1,0 +1,2 @@
+HDRI is downloaded from https://polyhaven.com with CCO licence, I am not the author
+Model of Stanford dragon is downloaded from https://graphics.stanford.edu/data/3Dscanrep/
