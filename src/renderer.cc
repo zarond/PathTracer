@@ -137,7 +137,7 @@ void Renderer::generate_subsample_positions() {
         return;  // already generated
     }
     subsamplesPositions.resize(renderSettings_.samplesPerPixel);
-    int sqrt_of_samples = static_cast<int>(std::sqrtf(renderSettings_.samplesPerPixel));
+    int sqrt_of_samples = static_cast<int>(sqrtf(renderSettings_.samplesPerPixel));
     if (sqrt_of_samples * sqrt_of_samples == renderSettings_.samplesPerPixel) {
         // samplesperpixel is a perfect square
         for (unsigned int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
