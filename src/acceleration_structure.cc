@@ -297,7 +297,7 @@ ray_triangle_hit_info NaiveAS::intersect_ray(const ray& ray, bool any_hit) const
 }
 
 template <bool any_hit>
-static ray_triangle_hit_info NaiveAS::mesh_ray_intersection(
+ray_triangle_hit_info NaiveAS::mesh_ray_intersection(
     const ray& ray_ws, const fmat4x4& ModelMatrix, const fmat4x4& invModelMatrix, const MeshData& mesh) noexcept {
     // Transform ray to object space
     auto ray_origin_os = xyz(invModelMatrix * xyz1(ray_ws.origin));
@@ -633,7 +633,7 @@ ray_triangle_hit_info BVH_AS::intersect_ray(const ray& ray, bool any_hit) const 
 }
 
 template <bool any_hit>
-static ray_triangle_hit_info BVH_AS::mesh_ray_intersection(
+ray_triangle_hit_info BVH_AS::mesh_ray_intersection(
     const ray& ray_ws, const fmat4x4& ModelMatrix, const fmat4x4& invModelMatrix, const MeshBVHData& mesh) noexcept {
     // Transform ray to object space
     auto ray_origin_os = xyz(invModelMatrix * xyz1(ray_ws.origin));

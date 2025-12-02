@@ -121,8 +121,8 @@ class BVH_AS : public IAccelerationStructure {
   private:
     struct MeshBVHNode {
         struct children {
-            uint32_t left_child_index = -1;
-            uint32_t right_child_index = -1;
+            uint32_t left_child_index;
+            uint32_t right_child_index;
         };
         struct triangle {
             fvec3 p1;
