@@ -1,4 +1,5 @@
 #include "compute_tangents.h"
+#include <algorithm>
 
 #include "mikktspace.h"
 
