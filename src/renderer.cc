@@ -79,6 +79,7 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer) {
     if (modelRef == nullptr || envmapRef == nullptr || accelStruct == nullptr || rayProgram == nullptr) {
         throw std::runtime_error("One of components is nullptr in Renderer::render_frame()");
     }
+    progress = 0.0f;
 
     generate_subsample_positions();
 
@@ -97,6 +98,7 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer) {
 
     std::for_each(std::execution::par_unseq, indices.begin(), indices.end(),
         [this, width, inv_width, inv_height, &framebuffer, reserved_size](int y) {
+            progress = max(progress, y * inv_height);
             static thread_local std::vector<ray_with_payload> rays;
             rays.clear();
             rays.reserve(reserved_size);
@@ -120,6 +122,7 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer) {
                 framebuffer.at(x, y) = hdr_pixel{final_color.get_mean(), 1.0f};
             }
         });
+    progress = 1.0f;
 }
 
 void Renderer::set_render_settings(const RenderSettings& settings) { renderSettings_ = settings; }
@@ -131,6 +134,8 @@ BBox Renderer::get_scene_bound() const {
     }
     return BBox{};
 }
+
+float Renderer::get_progress() const { return progress; }
 
 void Renderer::generate_subsample_positions() {
     if (renderSettings_.samplesPerPixel == subsamplesPositions.size()) {

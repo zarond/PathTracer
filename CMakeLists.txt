@@ -23,6 +23,8 @@ set(APP_SOURCES
     src/render_settings.cc
     src/ui.cc
     src/brdf.cc
+    src/d3d_debug_layer.cc
+    src/d3d_context.cc
 )
 
 add_executable(${PROJECT_NAME} ${APP_SOURCES})
@@ -34,6 +36,10 @@ add_executable(${PROJECT_NAME} ${APP_SOURCES})
 set_target_properties(${PROJECT_NAME} PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
+#target_compile_definitions(${PROJECT_NAME} PRIVATE 
+#    UNICODE
+#    _UNICODE
+#)
 
 # libs for application
 add_library(imgui STATIC 
@@ -41,6 +47,8 @@ add_library(imgui STATIC
     ${LIBS_DIR}/imgui/imgui_draw.cpp
     ${LIBS_DIR}/imgui/imgui_tables.cpp
     ${LIBS_DIR}/imgui/imgui_widgets.cpp
+    ${LIBS_DIR}/imgui/backends/imgui_impl_win32.cpp
+    ${LIBS_DIR}/imgui/backends/imgui_impl_dx12.cpp
 )
 target_include_directories(imgui PUBLIC ${LIBS_DIR}/imgui)
 
@@ -70,7 +78,13 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     fastgltf::fastgltf
     mikktspace
     glm::glm
+    d3d12
+    dxgi
 )
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    target_link_libraries(${PROJECT_NAME} PRIVATE dxguid)
+endif()
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     GLM_FORCE_MESSAGES

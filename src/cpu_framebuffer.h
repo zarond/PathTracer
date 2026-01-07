@@ -7,6 +7,9 @@
 #include <glm/glm.hpp>
 #include <vector>
 
+#define NOMINMAX
+#include <d3d12.h>
+
 namespace app {
 
 using namespace glm;
@@ -152,6 +155,18 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
     using CPUTexture::width;
 
     void save_to_file(const std::filesystem::path& filePath) const;
+
+    void upload_to_gpu();
+    void release_gpu_resource();
+    D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu_handle;
+    D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle;
+    void transition_back_for_copy();
+  private:
+    ID3D12Resource* pTexture = nullptr;
+    ID3D12Resource* uploadBuffer = nullptr;
+    UINT uploadPitch;
+    UINT uploadSize;
+    void* mapped = nullptr;
 };
 
 }  // namespace app

@@ -49,6 +49,8 @@ class Renderer {
     RenderSettings get_render_settings() const;
     BBox get_scene_bound() const;
 
+    float get_progress() const;
+
     ~Renderer() = default;
 
   protected:
@@ -62,6 +64,8 @@ class Renderer {
     fmat4x4 projectionMatrix_ = fmat4x4(1.0f);
     fmat4x4 NDC2WorldMatrix_ = fmat4x4(1.0f);
     fvec3 origin_ = fvec3{0.0f};
+
+    float progress = 0.0f;
 
   private:
     ray_with_payload generate_camera_ray(int x, int y, float inv_width, float inv_height, int sampleIndex = 0) const noexcept;

@@ -35,6 +35,9 @@ class Viewer {
     void set_render_settings(const RenderSettings& settings);
     RenderSettings get_render_settings() const;
 
+    float get_render_progress() const;
+    CPUFrameBuffer& get_framebuffer();
+
   private:
     Model model_;
     CPUTexture<hdr_pixel> environmentTexture_;

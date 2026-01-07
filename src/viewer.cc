@@ -88,6 +88,10 @@ void Viewer::set_render_settings(const RenderSettings& settings) {
 }
 RenderSettings Viewer::get_render_settings() const { return renderer_.get_render_settings(); }
 
+float Viewer::get_render_progress() const { return renderer_.get_progress(); }
+
+CPUFrameBuffer& Viewer::get_framebuffer() { return framebuffer_; }
+
 void Viewer::set_up_default_camera_transforms() {
     direction_ = fvec3(0.0f, 0.0f, -1.0f);
     up_ = fvec3(0.0f, 1.0f, 0.0f);  // up view direction
