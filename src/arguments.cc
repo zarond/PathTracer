@@ -23,7 +23,7 @@ T int_to_enum(int v) {
 namespace app {
 
 ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
-    ConsoleArgs args;
+    ConsoleArgs args{};
 
     argparse::ArgumentParser program("PathTracer", "1.0", argparse::default_arguments::help, false);
 
@@ -32,6 +32,8 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         "Uses first camera in .gltf file to render image and save it as \"snapshot.hdr\" \n"
         "Choose between different rendering modes and ray intersection acceleration modes");
     program.add_epilog("It's an educational project, so it supports only a limited set of gltf features.");
+
+    program.add_argument("-no-gui", "--no-gui").help("run without GUI.").flag();
 
     program.add_argument("-f", "--file").help("gltf model file location.").required().nargs(1).default_value("");
 
@@ -131,16 +133,24 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
     args.windowWidth = (windowWidth > 0) ? windowWidth : 1;
     args.windowHeight = (windowHeight > 0) ? windowHeight : 1;
 
-    if (program.is_used("-h")) {
-        args.exitImmediately = true;
-    } else if (args.modelPath == "") {
-        std::cout << no_arguments_message << std::endl;
-        args.exitImmediately = true;
-    }
     if (args.environmentPath == "" || args.environmentPath == "black" || args.environmentPath == "white") {
         args.useDefaultEnv = true;
         if (args.environmentPath == "black") args.defaultEnv = DefaultEnvironment::Black;
         else if (args.environmentPath == "white") args.defaultEnv = DefaultEnvironment::White;
+        args.environmentPath = "";
+    }
+
+    args.noGui = program.get<bool>("-no-gui");
+
+    if (args.noGui) {
+        if (program.is_used("-h")) {
+            args.exitImmediately = true;
+        } else if (args.modelPath == "") {
+            std::cout << no_arguments_message << std::endl;
+            args.exitImmediately = true;
+        }
+    } else if (args.modelPath == "") {
+        std::cout << no_arguments_message << std::endl;
     }
 
     return args;

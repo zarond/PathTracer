@@ -75,7 +75,6 @@ struct D3DContext {
     ComPtr<ID3D12Resource> g_mainRenderTargetResource[APP_NUM_BACK_BUFFERS] = {};
     D3D12_CPU_DESCRIPTOR_HANDLE g_mainRenderTargetDescriptor[APP_NUM_BACK_BUFFERS] = {};
 
-    // Forward declarations of helper functions
     bool CreateDeviceD3D(HWND hWnd);
     void CleanupDeviceD3D();
     void WaitForPendingOperations();
@@ -86,6 +85,8 @@ struct D3DContext {
     void CreateRenderTarget();
     void CleanupRenderTarget();
     FrameContext* WaitForNextFrameContext();
+
+    void resize_swapchain(UINT Width, UINT Height);
 
     // Singleton pattern
   public:

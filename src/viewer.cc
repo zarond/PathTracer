@@ -37,6 +37,12 @@ ivec2 Viewer::get_window_dimensions() const { return windowDimensions_; }
 
 void Viewer::render() { renderer_.render_frame(framebuffer_); }
 
+void Viewer::cancel_rendering() { renderer_.cancel_rendering(); }
+
+Renderer::RenderingState Viewer::get_rendering_state() const { return renderer_.get_rendering_state(); }
+
+void Viewer::async_start_render() { renderer_.set_render_starting_state(); }
+
 void Viewer::set_active_camera(std::optional<uint32_t> cameraIndex) {
     if (cameraIndex.has_value()) {
         if (*cameraIndex >= model_.cameras_.size()) {
@@ -81,14 +87,33 @@ bool Viewer::snap_to_camera() {
 void Viewer::set_render_settings(const RenderSettings& settings) {
     const auto currentSettings = renderer_.get_render_settings();
     renderer_.set_render_settings(settings);
-    // Todo: reload scene only if settings have changed that require it
-    if (currentSettings != settings) {
-        renderer_.load_scene(model_, environmentTexture_);
+    if (currentSettings.accelStructType != settings.accelStructType ||
+        currentSettings.maxTrianglesPerBVHLeaf != settings.maxTrianglesPerBVHLeaf) {
+        renderer_.reload_acceleration_structure();
+    }
+    if (currentSettings.programMode != settings.programMode || 
+        currentSettings.envmapRotation != settings.envmapRotation ||
+        currentSettings.maxNewRaysPerBounce != settings.maxNewRaysPerBounce) {
+        renderer_.reload_ray_program();
     }
 }
 RenderSettings Viewer::get_render_settings() const { return renderer_.get_render_settings(); }
 
 float Viewer::get_render_progress() const { return renderer_.get_progress(); }
+
+void Viewer::load_envmap(CPUTexture<hdr_pixel>&& environmentTexture) { 
+    environmentTexture_ = std::move(environmentTexture);
+    renderer_.load_envmap(environmentTexture_);
+}
+
+void Viewer::load_model(Model&& model) { 
+    model_ = std::move(model);
+    activeCameraIndex_ = std::nullopt;
+    if (model_.cameras_.size() > 0) {
+        activeCameraIndex_ = 0;
+    }
+    renderer_.load_model(model_);
+}
 
 CPUFrameBuffer& Viewer::get_framebuffer() { return framebuffer_; }
 
@@ -101,9 +126,10 @@ void Viewer::set_up_default_camera_transforms() {
         .zfar = 1000.0f,
         .znear = 0.1f};
     auto bounds = renderer_.get_scene_bound();
-    auto dims = (bounds.max - bounds.min);
-    auto max_dim = max(dims.x, max(dims.y, dims.z));
-    auto center = bounds.min + dims * 0.5f;
+    bool not_empty = !bounds.is_empty();
+    auto dims = (not_empty) ? (bounds.max - bounds.min) : fvec3{0.0f};
+    auto max_dim = (not_empty) ? max(dims.x, max(dims.y, dims.z)) : 1.0f;
+    auto center = (not_empty) ? bounds.min + dims * 0.5f : fvec3{0.0f};
     fvec3 offset = fvec3(0.0f, 0.0f, 1.0f) * max_dim * 1.5f;
     position_ = center + offset;
 }

@@ -45,6 +45,7 @@ struct ConsoleArgs {
     unsigned int windowHeight = 600;
 
     bool exitImmediately = false;
+    bool noGui = false;
 };
 
 ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd);

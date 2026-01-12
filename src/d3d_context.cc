@@ -100,8 +100,8 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
     // Setup swap chain
     DXGI_SWAP_CHAIN_DESC1 sd = {};
     {
-        sd.Width = 1280;
-        sd.Height = 720;
+        sd.Width = 0;
+        sd.Height = 0;
         sd.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
         sd.Stereo = FALSE;
         sd.SampleDesc.Count = 1;
@@ -263,6 +263,15 @@ FrameContext* D3DContext::WaitForNextFrameContext() {
     } else
         ::WaitForSingleObject(g_hSwapChainWaitableObject, INFINITE);
     return frame_context;
+}
+
+void D3DContext::resize_swapchain(UINT Width, UINT Height) {
+    CleanupRenderTarget();
+    DXGI_SWAP_CHAIN_DESC1 desc = {};
+    g_pSwapChain->GetDesc1(&desc);
+    HRESULT result = g_pSwapChain->ResizeBuffers(APP_NUM_BACK_BUFFERS, Width, Height, desc.Format, desc.Flags);
+    assert(SUCCEEDED(result) && "Failed to resize swapchain.");
+    CreateRenderTarget();
 }
 
 }

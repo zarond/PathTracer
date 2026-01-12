@@ -41,25 +41,43 @@ void Renderer::update_camera_transform_state(
 void Renderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap) {
     modelRef = &model;
     envmapRef = &envmap;
-    switch (renderSettings_.accelStructType) {
-        case AccelerationStructureType::BVH:
-            accelStruct = std::make_unique<BVH_AS>(model, renderSettings_.maxTrianglesPerBVHLeaf);
-            break;
-        case AccelerationStructureType::Naive:
-        default:
-            accelStruct = std::make_unique<NaiveAS>(model);
-            break;
-    }
+    reload_acceleration_structure();
+    reload_ray_program();
+}
+
+void Renderer::load_envmap(const CPUTexture<hdr_pixel>& envmap) {
+    envmapRef = &envmap;
+    reload_ray_program();
+}
+
+void Renderer::load_model(const Model& model) {
+    modelRef = &model;
+    reload_acceleration_structure();
+    reload_ray_program();
+}
+
+void Renderer::reload_ray_program() {
     switch (renderSettings_.programMode) {
         case RayProgramMode::AmbientOcclusion:
-            rayProgram = std::make_unique<AOProgram>(model, renderSettings_);
+            rayProgram = std::make_unique<AOProgram>(*modelRef, renderSettings_);
             break;
         case RayProgramMode::PBR:
-            rayProgram = std::make_unique<PBRProgram>(model, envmap, renderSettings_);
+            rayProgram = std::make_unique<PBRProgram>(*modelRef, *envmapRef, renderSettings_);
             break;
         case RayProgramMode::RayCaster:
         default:
-            rayProgram = std::make_unique<RayCasterProgram>(model, envmap, renderSettings_);
+            rayProgram = std::make_unique<RayCasterProgram>(*modelRef, *envmapRef, renderSettings_);
+    }
+}
+void Renderer::reload_acceleration_structure() {
+    switch (renderSettings_.accelStructType) {
+        case AccelerationStructureType::BVH:
+            accelStruct = std::make_unique<BVH_AS>(*modelRef, renderSettings_.maxTrianglesPerBVHLeaf);
+            break;
+        case AccelerationStructureType::Naive:
+        default:
+            accelStruct = std::make_unique<NaiveAS>(*modelRef);
+            break;
     }
 }
 
@@ -80,6 +98,7 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer) {
         throw std::runtime_error("One of components is nullptr in Renderer::render_frame()");
     }
     progress = 0.0f;
+    render_state = RenderingState::Rendering;
 
     generate_subsample_positions();
 
@@ -98,12 +117,14 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer) {
 
     std::for_each(std::execution::par_unseq, indices.begin(), indices.end(),
         [this, width, inv_width, inv_height, &framebuffer, reserved_size](int y) {
-            progress = max(progress, y * inv_height);
             static thread_local std::vector<ray_with_payload> rays;
             rays.clear();
             rays.reserve(reserved_size);
 
             for (int x = 0; x < width; ++x) {
+                if (render_state == RenderingState::Cancelling) {
+                    return;
+                }
                 SamplesAccumulator<fvec3> final_color;
 
                 for (unsigned int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
@@ -121,8 +142,13 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer) {
                 }
                 framebuffer.at(x, y) = hdr_pixel{final_color.get_mean(), 1.0f};
             }
+            progress = max(progress, y * inv_height);
         });
-    progress = 1.0f;
+
+    if (render_state == RenderingState::Rendering) {
+        progress = 1.0f;
+    }
+    render_state = RenderingState::Idle;
 }
 
 void Renderer::set_render_settings(const RenderSettings& settings) { renderSettings_ = settings; }
@@ -136,6 +162,17 @@ BBox Renderer::get_scene_bound() const {
 }
 
 float Renderer::get_progress() const { return progress; }
+
+void Renderer::cancel_rendering() {
+    if (render_state == Idle) {
+        return;
+    }
+    render_state = Cancelling;
+}
+
+Renderer::RenderingState Renderer::get_rendering_state() const { return render_state; }
+
+void Renderer::set_render_starting_state() { render_state = ReadyToStart; }
 
 void Renderer::generate_subsample_positions() {
     if (renderSettings_.samplesPerPixel == subsamplesPositions.size()) {

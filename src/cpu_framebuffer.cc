@@ -109,17 +109,16 @@ CPUTexture<hdr_pixel> CPUTexture<hdr_pixel>::create_black_texture() { return CPU
 
 // CPUFrameBuffer
 
-CPUFrameBuffer::CPUFrameBuffer() : CPUTexture<hdr_pixel>() {
-    D3DContext::Get().g_pd3dSrvDescHeapAlloc.Alloc(&srv_cpu_handle, &srv_gpu_handle);
-}
+CPUFrameBuffer::CPUFrameBuffer() : CPUTexture<hdr_pixel>() {}
 
 CPUFrameBuffer::CPUFrameBuffer(int width, int height) {
     width_ = width;
     height_ = height;
     channels_ = 4;
     data_.resize(width_ * height_, hdr_pixel{});
-    D3DContext::Get().g_pd3dSrvDescHeapAlloc.Alloc(&srv_cpu_handle, &srv_gpu_handle);
 }
+
+CPUFrameBuffer::~CPUFrameBuffer() { release_gpu_resource(); }
 
 void CPUFrameBuffer::clear(const hdr_pixel clearColor) { data_.assign(width_ * height_, clearColor); }
 
@@ -194,6 +193,8 @@ void CPUFrameBuffer::upload_to_gpu(){
     bool is_created = false;
 
     if (pTexture == nullptr) {
+        D3DContext::Get().g_pd3dSrvDescHeapAlloc.Alloc(&srv_cpu_handle, &srv_gpu_handle);
+
         d3d_ctx.g_pd3dDevice->CreateCommittedResource(
             &def_props, D3D12_HEAP_FLAG_NONE, &tex_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&pTexture));
         is_created = true;
@@ -298,6 +299,8 @@ void CPUFrameBuffer::upload_to_gpu(){
 }
 
 void CPUFrameBuffer::transition_back_for_copy() {
+    if (!pTexture) return;
+
     D3DContext& d3d_ctx = D3DContext::Get();
 
     const D3D12_RESOURCE_BARRIER toCopyDest = {
@@ -315,8 +318,8 @@ void CPUFrameBuffer::transition_back_for_copy() {
 }
 
 void CPUFrameBuffer::release_gpu_resource() {
-    D3DContext::Get().g_pd3dSrvDescHeapAlloc.Free(srv_cpu_handle, srv_gpu_handle);
     if (pTexture) {
+        D3DContext::Get().g_pd3dSrvDescHeapAlloc.Free(srv_cpu_handle, srv_gpu_handle);
         pTexture->Release();
         pTexture = nullptr;
     }

@@ -1,3 +1,5 @@
+#include <span>
+
 #include "ui.h"
 #include "d3d_context.h"
 
@@ -24,12 +26,12 @@ bool DXWindow::Init() {
     wcex.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(IDC_ARROW));
     wcex.hbrBackground = nullptr;
     wcex.lpszMenuName = nullptr;
-    wcex.lpszClassName = L"ImGui Example";
+    wcex.lpszClassName = L"PathTracer";
     wcex.hIconSm = LoadIconW(nullptr, MAKEINTRESOURCEW(IDI_APPLICATION));
     wndClass = RegisterClassExW(&wcex);
     if (wndClass == 0) return false;
     // create window
-    hwnd = ::CreateWindowExW(WS_EX_OVERLAPPEDWINDOW | WS_EX_APPWINDOW, (LPCWSTR)wndClass, L"Dear ImGui DirectX12 Example",
+    hwnd = ::CreateWindowExW(WS_EX_OVERLAPPEDWINDOW | WS_EX_APPWINDOW, (LPCWSTR)wndClass, L"PathTracer project by @zarond",
         WS_OVERLAPPEDWINDOW | WS_VISIBLE, 100, 100, 1280, 720, nullptr, nullptr, wcex.hInstance, nullptr);
     if (hwnd == nullptr) return false;
     // showwindow?
@@ -104,13 +106,7 @@ LRESULT WINAPI DXWindow::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
             {
                 D3DContext& d3d_ctx = D3DContext::Get();
                 if (d3d_ctx.g_pd3dDevice != nullptr && wParam != SIZE_MINIMIZED) {
-                    d3d_ctx.CleanupRenderTarget();
-                    DXGI_SWAP_CHAIN_DESC1 desc = {};
-                    d3d_ctx.g_pSwapChain->GetDesc1(&desc);
-                    HRESULT result = d3d_ctx.g_pSwapChain->ResizeBuffers(
-                        APP_NUM_BACK_BUFFERS, (UINT)LOWORD(lParam), (UINT)HIWORD(lParam), desc.Format, desc.Flags);
-                    assert(SUCCEEDED(result) && "Failed to resize swapchain.");
-                    d3d_ctx.CreateRenderTarget();
+                    d3d_ctx.resize_swapchain(LOWORD(lParam), HIWORD(lParam));
                 }
             }
             return 0;
@@ -128,4 +124,56 @@ LRESULT WINAPI DXWindow::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
     }
     return ::DefWindowProcW(hWnd, msg, wParam, lParam);
 }
+
+std::string OpenFileDialog() {     // todo: modernize with IFileDialog
+    const int max_path = 1024;     // MAX_PATH;
+    char fileName[max_path] = "";  // todo: long file paths
+
+    OPENFILENAMEA ofn{};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = DXWindow::Get().hwnd;
+    ofn.lpstrFilter = 
+        "All Files\0*.*\0"
+        "Gltf Files (*.gltf;*.glb)\0*.gltf;*.glb\0"
+        "HDR Files (*.hdr)\0*.hdr\0";
+    ofn.lpstrFile = fileName;
+    ofn.nMaxFile = max_path;
+    ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+
+    if (GetOpenFileNameA(&ofn)) return fileName;
+
+    return "";
+}
+
+std::string SaveFileDialog() {     // todo: modernize with IFileDialog
+    const int max_path = 1024;     // MAX_PATH;
+    char fileName[max_path] = "";  // todo: long file paths
+
+    OPENFILENAMEA ofn{};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = DXWindow::Get().hwnd;
+    ofn.lpstrFilter =
+        "All Files\0*.*\0"
+        "PNG File (*.png)\0*.png\0"
+        "HDR File (*.hdr)\0*.hdr\0";
+    ofn.lpstrFile = fileName;
+    ofn.nMaxFile = max_path;
+    ofn.lpstrDefExt = "png";
+    ofn.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT;
+
+    if (GetSaveFileNameA(&ofn)) return fileName;
+
+    return "";
+}
+
+bool SliderUInt(const char* label, unsigned int* v, unsigned int v_min, unsigned int v_max, const char* format, ImGuiSliderFlags flags) {
+    return ImGui::SliderScalar(label, ImGuiDataType_U32, v, &v_min, &v_max, format, flags);
+}
+
+bool InputUInt(const char* label, unsigned int* v, unsigned int step, unsigned int step_fast, ImGuiInputTextFlags flags) {
+    const char* format = (flags & ImGuiInputTextFlags_CharsHexadecimal) ? "%08X" : "%d";
+    return ImGui::InputScalar(label, ImGuiDataType_U32, (void*)v, (void*)(step > 0 ? &step : NULL),
+        (void*)(step_fast > 0 ? &step_fast : NULL), format, flags);
+}
+
 }

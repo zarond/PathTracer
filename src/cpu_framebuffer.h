@@ -145,6 +145,7 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
   public:
     CPUFrameBuffer();
     CPUFrameBuffer(int width, int height);
+    ~CPUFrameBuffer();
 
     void clear(const hdr_pixel clearColor = hdr_pixel{0.0f, 0.0f, 0.0f, 1.0f});
     hdr_pixel& at(int x, int y);
@@ -157,7 +158,7 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
     void save_to_file(const std::filesystem::path& filePath) const;
 
     void upload_to_gpu();
-    void release_gpu_resource();
+    void release_gpu_resource(); // todo: add nearest sampling
     D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu_handle;
     D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle;
     void transition_back_for_copy();

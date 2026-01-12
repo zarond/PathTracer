@@ -24,6 +24,9 @@ class Viewer {
     ivec2 get_window_dimensions() const;
 
     void render();
+    void async_start_render();
+    void cancel_rendering();
+    Renderer::RenderingState get_rendering_state() const;
 
     void set_active_camera(std::optional<uint32_t> cameraIndex);
     std::optional<uint32_t> get_active_camera() const;
@@ -37,6 +40,9 @@ class Viewer {
 
     float get_render_progress() const;
     CPUFrameBuffer& get_framebuffer();
+
+    void load_envmap(CPUTexture<hdr_pixel>&& environmentTexture);
+    void load_model(Model&& model);
 
   private:
     Model model_;

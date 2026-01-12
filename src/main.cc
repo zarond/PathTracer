@@ -19,6 +19,83 @@
 
 int main(int argc, char* argv[]) {
     using namespace app;
+
+    ConsoleArgs console_arguments = parse_args(argc, argv, fs::current_path());
+    if (console_arguments.exitImmediately) {
+        return 1;
+    }
+
+    auto start = std::chrono::high_resolution_clock::now();
+    Model model;
+    {
+        ModelLoader loader{};
+        auto success = loader.loadFromFile(console_arguments.modelPath);
+        if (success ) {
+            model = loader.constructModel();
+        } else {
+            std::cerr << "Failed to load model from " << console_arguments.modelPath << '\n';
+            if (console_arguments.noGui) {
+                return 1;
+            }
+        }
+    }
+    CPUTexture<hdr_pixel> environment_texture;
+    if (console_arguments.useDefaultEnv) {
+        environment_texture = (console_arguments.defaultEnv == DefaultEnvironment::White)
+                                  ? CPUTexture<hdr_pixel>::create_white_texture()
+                                  : CPUTexture<hdr_pixel>::create_black_texture();
+    } else {
+        environment_texture = CPUTexture<hdr_pixel>(console_arguments.environmentPath);
+    }
+
+    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+    std::cout << "loaded in " << diff.count() << " ms." << '\n';
+
+    auto render_settings = RenderSettings{console_arguments};
+
+    // Create viewer
+    Viewer viewer(std::move(model), std::move(environment_texture), render_settings);
+    viewer.resize_window(ivec2(console_arguments.windowWidth, console_arguments.windowHeight));
+    viewer.snap_to_camera();
+
+    auto render_lambda = [&viewer]() {
+        auto start = std::chrono::high_resolution_clock::now();
+        viewer.render();
+        auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+        std::cout << "rendered in " << diff.count() << " ms." << '\n';
+    };
+
+    auto save_render_image_lambda = [&viewer](fs::path image_path) {
+        auto start = std::chrono::high_resolution_clock::now();
+        viewer.take_snapshot(image_path);
+        auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+        std::cout << "output saved in " << diff.count() << " ms." << '\n';
+    };
+
+    if (console_arguments.noGui) {
+        render_lambda();
+        save_render_image_lambda(console_arguments.outputPath);
+        return 0;
+    }
+    //------------------------------------------------------------------
+    // GUI version logic starts from here
+    //------------------------------------------------------------------
+    bool finish_worker_thread = false;
+    auto render_worker_lambda = [&render_lambda, &viewer, &finish_worker_thread]() {
+        while (!finish_worker_thread) {
+            if (viewer.get_rendering_state() == Renderer::ReadyToStart) {
+                render_lambda();
+            } else {
+                // todo: use condition variable to avoid busy waiting
+                // todo: use atomic bools
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        }
+    };
+
+    std::thread worker_thread(render_worker_lambda);
+    viewer.async_start_render();
+
     DXDebugLayer::Get().Init();
 
     // Make process DPI aware and obtain main monitor scale
@@ -81,54 +158,11 @@ int main(int argc, char* argv[]) {
     };
     ImGui_ImplDX12_Init(&init_info);
 
-    ConsoleArgs console_arguments = parse_args(argc, argv, fs::current_path());
-    if (console_arguments.exitImmediately) {
-        return 1;
-    }
-
-    auto start = std::chrono::high_resolution_clock::now();
-    Model model;
-    {
-        ModelLoader loader{};
-        auto success = loader.loadFromFile(console_arguments.modelPath);
-        if (!success) {
-            std::cerr << "Failed to load model from " << console_arguments.modelPath << '\n';
-            return 1;
-        }
-        model = loader.constructModel();
-    }
-    CPUTexture<hdr_pixel> environment_texture;
-    if (console_arguments.useDefaultEnv) {
-        environment_texture = (console_arguments.defaultEnv == DefaultEnvironment::White)
-                                  ? CPUTexture<hdr_pixel>::create_white_texture()
-                                  : CPUTexture<hdr_pixel>::create_black_texture();
-    } else {
-        environment_texture = CPUTexture<hdr_pixel>(console_arguments.environmentPath);
-    }
-
-    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
-    std::cout << "loaded in " << diff.count() << " ms." << '\n';
-
-    auto render_settings = RenderSettings{console_arguments};
-
-    // Create viewer
-    Viewer viewer(std::move(model), std::move(environment_texture), render_settings);
-    viewer.resize_window(ivec2(console_arguments.windowWidth, console_arguments.windowHeight));
-    viewer.snap_to_camera();
-
-    std::thread worker_thread([&viewer, console_arguments]() {
-        auto start = std::chrono::high_resolution_clock::now();
-        viewer.render();
-        auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
-        std::cout << "rendered in " << diff.count() << " ms." << '\n';
-    });
-
     const float clear_color[] = {0.45f, 0.55f, 0.60f, 1.00f};
 
     // Main loop
     while (!dx_window.close_window) {
         // Poll and handle messages (inputs, window resize, etc.)
-        // See the WndProc() function below for our to dispatch events to the Win32 backend.
         dx_window.Update();
         if (dx_window.close_window) break;
         // Handle window screen locked / minimized or out of view
@@ -149,32 +183,169 @@ int main(int argc, char* argv[]) {
         UINT backBufferIdx = d3d_ctx.g_pSwapChain->GetCurrentBackBufferIndex();
         d3d_ctx.InitCommandList(*frameCtx->CommandAllocator.Get());
 
-        // Show window with progress
-        {
-            float progress = viewer.get_render_progress();
-
-            ImGui::Begin("Hello, world!");
-            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
-            ImGui::Text("Render progress %.1f percent.", 100.f * progress);
-            ImGui::ProgressBar(progress);
-            if (ImGui::Button("Save image")) {
-                start = std::chrono::high_resolution_clock::now();
-                viewer.take_snapshot(console_arguments.outputPath);
-                diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
-                std::cout << "output saved in " << diff.count() << " ms." << '\n';
-            }
-            ImGui::End();
-        }
         // Show window with image
         {
+            const bool use_work_area = true;
+            const ImGuiWindowFlags flags =
+                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+                ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
+                ImGuiWindowFlags_NoBringToFrontOnFocus;
+
+            static float zoom_scale = 0.0f;
+            static ImVec2 offset = {0.0f, 0.0f};
+
+            const ImGuiViewport* viewport = ImGui::GetMainViewport();
+            ImGui::SetNextWindowPos(use_work_area ? viewport->WorkPos : viewport->Pos);
+            ImGui::SetNextWindowSize(use_work_area ? viewport->WorkSize : viewport->Size);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, offset);
+            ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
+
             auto dims = viewer.get_window_dimensions();
             viewer.get_framebuffer().upload_to_gpu();
             const auto& texture_srv_gpu_handle = viewer.get_framebuffer().srv_gpu_handle;
-            ImGui::Begin("Rendering Image");
+            ImGui::Begin("Rendering Image", nullptr, flags);
+            if (ImGui::IsWindowHovered()) {
+                if (io.MouseWheel != 0.0f){
+                    zoom_scale += io.MouseWheel;
+                    zoom_scale = max(0.0f, zoom_scale);
+                }
+                if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+                    ImVec2 drag_delta = io.MouseDelta;
+                    offset.x += drag_delta.x;
+                    offset.y += drag_delta.y; 
+                }
+            }
+            const float scroll_speed = 0.05f;
+            float scale = std::exp(zoom_scale * scroll_speed);
+            ImGui::Image((ImTextureID)texture_srv_gpu_handle.ptr, ImVec2(scale * (float)dims.x, scale * (float) dims.y));
             ImGui::Text("size = %d x %d", dims.x, dims.y);
-            ImGui::Image((ImTextureID)texture_srv_gpu_handle.ptr, ImVec2((float)dims.x, (float)dims.y));
+
+            ImGui::Text("zoom = %.2f", zoom_scale);
             ImGui::End();
+            ImGui::PopStyleVar();
+            ImGui::PopStyleVar();
         }
+        // Show options window
+        ImGui::Begin("Options");
+        {
+            float progress = viewer.get_render_progress();
+
+            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+            ImGui::Text("Render progress %.1f percent.", 100.f * progress);
+            ImGui::ProgressBar(progress);
+            if (ImGui::Button("Render")) {
+                viewer.async_start_render();
+            }
+            if (viewer.get_rendering_state() == Renderer::RenderingState::Rendering) {
+                if (ImGui::Button("Stop Rendering")) {
+                    viewer.cancel_rendering();
+                }
+            }
+        }
+        ImGui::Separator();
+        if (viewer.get_rendering_state() == Renderer::RenderingState::Idle)
+        {
+            if (ImGui::Button("Save image")) {
+                fs::path filepath = SaveFileDialog();
+                if (!filepath.empty()) {
+                    save_render_image_lambda(filepath);
+                    console_arguments.outputPath = filepath;
+                }
+            }
+            if (ImGui::Button("Load Model/Envmap")) {
+                fs::path filepath = OpenFileDialog();
+                std::cout << "Selected file: " << filepath << '\n';
+                if (filepath.extension() == ".hdr") {
+                    std::cout << "Loading new environment map file " << std::endl;
+                    CPUTexture<hdr_pixel> new_environment_texture = CPUTexture<hdr_pixel>(filepath);
+                    viewer.load_envmap(std::move(new_environment_texture));
+                    console_arguments.environmentPath = filepath;
+                } else if (filepath.extension() == ".gltf" || filepath.extension() == ".glb") {
+                    std::cout << "Loading Gltf model file " << std::endl;
+                    Model new_model;
+                    {
+                        ModelLoader loader{};
+                        auto success = loader.loadFromFile(filepath);
+                        if (!success) {
+                            std::cerr << "Failed to load model from " << filepath << '\n';
+                            return 1;  // todo: better error handling
+                        }
+                        new_model = loader.constructModel();
+                    }
+                    viewer.load_model(std::move(new_model));
+                    viewer.snap_to_camera();
+                    console_arguments.modelPath = filepath;
+                } else if (filepath.empty()) {
+                    std::cout << "No file selected." << std::endl;
+                } else {
+                    std::cout << "Unsupported file format: " << filepath.extension() << std::endl;
+                }
+            }
+            bool use_def_envmap_check_changed = ImGui::Checkbox("Use default Envmap", &console_arguments.useDefaultEnv);
+            if (console_arguments.useDefaultEnv) {
+                bool def_envmap_type_changed =
+                    imgui_combo("Default Envmap:", std::array{"Black", "White"}, console_arguments.defaultEnv);
+                if (def_envmap_type_changed || use_def_envmap_check_changed) {
+                    CPUTexture<hdr_pixel> new_environment_texture = 
+                        (console_arguments.defaultEnv == DefaultEnvironment::White)
+                                              ? CPUTexture<hdr_pixel>::create_white_texture()
+                                              : CPUTexture<hdr_pixel>::create_black_texture();
+                    viewer.load_envmap(std::move(new_environment_texture));
+                }
+            } else if (use_def_envmap_check_changed) {
+                if (console_arguments.environmentPath.empty()) {
+                    console_arguments.useDefaultEnv = true;
+                } else {
+                    // switched from using default envmap to custom, load from path
+                    CPUTexture<hdr_pixel> new_environment_texture = CPUTexture<hdr_pixel>(console_arguments.environmentPath);
+                    viewer.load_envmap(std::move(new_environment_texture));
+                }
+            }
+            {
+                static bool use_progressive_rendering = false;
+                //ImGui::Checkbox("Use progressive rendering", &use_progressive_rendering);
+                if (use_progressive_rendering) {
+                    // show current number of rendered spp
+                }
+
+                static bool size_changed = false;
+                size_changed |= InputUInt("Width", &console_arguments.windowWidth);
+                size_changed |= InputUInt("Height", &console_arguments.windowHeight);
+
+                static bool setings_changed = false;
+                setings_changed |= SliderUInt("samples per pixel", &console_arguments.samplesPerPixel, 1, 128);
+                setings_changed |= SliderUInt("max ray bounces", &console_arguments.maxRayBounces, 0, 10);
+                setings_changed |= SliderUInt("max new rays per bounce", &console_arguments.maxNewRaysPerBounce, 0, 32);
+                setings_changed |= SliderUInt("max triangles per BVH leaf", &console_arguments.maxTrianglesPerBVHLeaf, 1, 32);
+                setings_changed |= ImGui::DragInt(
+                    "environment rotation in degrees (on UP axis)", &console_arguments.envmapRotation, 1.0f, 0, 360);
+                setings_changed |= imgui_combo(
+                    "Ray Program Mode:", std::array{"RayCaster", "AmbientOcclusion", "PBR"}, console_arguments.programMode);
+                setings_changed |= imgui_combo("Acceleration Struct Type:", std::array{"Naive", "BVH"}, console_arguments.accelStructType);
+
+                if (setings_changed || size_changed) {
+                    // don't change during rendering
+                    ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.0f, 0.6f, 0.6f));
+                    if (ImGui::Button("Update render settings")) {
+                        if (setings_changed) {
+                            auto new_render_settings = RenderSettings{console_arguments};
+                            viewer.set_render_settings(new_render_settings);
+                            setings_changed = false;
+                        }
+                        if (size_changed) {
+                            // don't resize before rendering?
+                            viewer.resize_window(ivec2(console_arguments.windowWidth, console_arguments.windowHeight));
+                            viewer.snap_to_camera();
+                            size_changed = false;
+                        }
+                    }
+                    ImGui::PopStyleColor();
+                }
+            }
+        } else {
+            ImGui::Text("Stop rendering process to access rendering options");
+        }
+        ImGui::End();
         // Rendering ImGui
         ImGui::Render();
 
@@ -230,6 +401,7 @@ int main(int argc, char* argv[]) {
 
     DXDebugLayer::Get().Shutdown();
 
+    finish_worker_thread = true;
     worker_thread.join();
 
     return 0;

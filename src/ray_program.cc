@@ -205,7 +205,7 @@ fvec3 AOProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_inf
     auto ws_pos = ray_.origin + ray_.direction * hit.t;
     auto new_pos = ws_pos + point.normal * 1e-5f;  // offset to avoid self-intersection
 
-    std::uint8_t new_depth = ray_.depth - 1;
+    std::uint8_t new_depth = 0;  // only one AO bounce
 
     auto jitter_value_x = dist(gen);
     auto jitter_value_y = dist(gen);

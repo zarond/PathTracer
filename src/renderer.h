@@ -44,12 +44,27 @@ class Renderer {
         fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams);
 
     void load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap);  // should be in constructor?
+    void load_envmap(const CPUTexture<hdr_pixel>& envmap);
+    void load_model(const Model& model);
+    void reload_ray_program();
+    void reload_acceleration_structure();
+
     void render_frame(CPUFrameBuffer& framebuffer);
     void set_render_settings(const RenderSettings& settings);
     RenderSettings get_render_settings() const;
     BBox get_scene_bound() const;
 
+    enum RenderingState { 
+        Idle, 
+        ReadyToStart,
+        Rendering, 
+        Cancelling
+    };
+
     float get_progress() const;
+    void cancel_rendering();
+    RenderingState get_rendering_state() const;
+    void set_render_starting_state();
 
     ~Renderer() = default;
 
@@ -66,6 +81,7 @@ class Renderer {
     fvec3 origin_ = fvec3{0.0f};
 
     float progress = 0.0f;
+    RenderingState render_state = Idle;
 
   private:
     ray_with_payload generate_camera_ray(int x, int y, float inv_width, float inv_height, int sampleIndex = 0) const noexcept;
