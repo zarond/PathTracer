@@ -29,7 +29,7 @@ int main(int argc, char* argv[]) {
     Model model;
     {
         ModelLoader loader{};
-        auto success = loader.loadFromFile(console_arguments.modelPath);
+        bool success = loader.loadFromFile(console_arguments.modelPath);
         if (success ) {
             model = loader.constructModel();
         } else {
@@ -259,22 +259,20 @@ int main(int argc, char* argv[]) {
                     std::cout << "Loading new environment map file " << std::endl;
                     CPUTexture<hdr_pixel> new_environment_texture = CPUTexture<hdr_pixel>(filepath);
                     viewer.load_envmap(std::move(new_environment_texture));
+                    console_arguments.useDefaultEnv = false;
                     console_arguments.environmentPath = filepath;
                 } else if (filepath.extension() == ".gltf" || filepath.extension() == ".glb") {
                     std::cout << "Loading Gltf model file " << std::endl;
-                    Model new_model;
-                    {
-                        ModelLoader loader{};
-                        auto success = loader.loadFromFile(filepath);
-                        if (!success) {
-                            std::cerr << "Failed to load model from " << filepath << '\n';
-                            return 1;  // todo: better error handling
-                        }
-                        new_model = loader.constructModel();
+                    ModelLoader loader{};
+                    bool success = loader.loadFromFile(filepath);
+                    if (success) {
+                        Model new_model = loader.constructModel();
+                        viewer.load_model(std::move(new_model));
+                        viewer.snap_to_camera();
+                        console_arguments.modelPath = filepath;
+                    } else {
+                        std::cout << "Failed to load model from " << filepath << '\n';
                     }
-                    viewer.load_model(std::move(new_model));
-                    viewer.snap_to_camera();
-                    console_arguments.modelPath = filepath;
                 } else if (filepath.empty()) {
                     std::cout << "No file selected." << std::endl;
                 } else {
