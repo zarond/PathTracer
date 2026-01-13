@@ -515,14 +515,15 @@ std::span<BVH_AS::MeshBVHNode::triangle>::iterator BVH_AS::MeshBVHData::split_tr
             return centroid < best_center;
         });
 
-    if (best_cost != parent_weight) return central_it;
+    bool bad_split = (central_it == triangles_span.begin() || central_it == triangles_span.end());
+
+    if ((best_cost != parent_weight) && !bad_split) return central_it;
 
     if (triangles_span.size() <= maxTrianglesPerLeaf) {
         return triangles_span.end();
     }
 
-    if (central_it == triangles_span.begin() || central_it == triangles_span.end() ||
-        central_it == triangles_span.begin() + 1 || central_it + 1 == triangles_span.end()) {
+    if (bad_split) {
         std::sort(triangles_span.begin(), triangles_span.end(),
             [best_axis](const MeshBVHNode::triangle& a, const MeshBVHNode::triangle& b) {
                 float centroid_a = (a.p1[best_axis] + a.p2[best_axis] + a.p3[best_axis]);
