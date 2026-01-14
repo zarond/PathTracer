@@ -4,11 +4,18 @@ A small path-tracing renderer written in C++ 20 for educational purposes.
 
 At this time it only uses CPU computation. In the future, however, I will port the algorithms to GPU as well. I have CUDA and DirectX Raytracing (DXR) in mind.
 
-At this time the program is command-line only and doesn't have a user interface; an interactive UI is planned in the future.
+The program has GUI, but you can also run it in command-line mode to render images without opening a window.
+
+The program requires Windows OS due to usage of Windows API and DirectX for UI.
 
 ## Usage
 
 Build with CMake and run the `PathTracer` executable. Use `-h` flag to list options.
+
+By default, without any flags, the program opens a window, allowing loading a Gltf model with a file browser,
+but you can also provide command-line arguments.
+
+Provide `-no-gui` flag to disable GUI and run in command-line mode. In this case you must provide at least a model path with `-f`.
 
 Provide a path to a valid GLTF or GLB file with `-f` flag to render the model.
 
@@ -54,6 +61,6 @@ This project uses the following libraries:
  - STB
  - argparse
  - MikkTSpace
+ - Dear IMGUI
  - *Google Test (unused for now)*
- - *Dear IMGUI (unused for now)*
 
