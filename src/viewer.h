@@ -33,7 +33,8 @@ class Viewer {
 
     void take_snapshot(const std::filesystem::path& filePath) const;
 
-    bool snap_to_camera();
+    bool snap_to_camera(bool use_default = true);  // use_default forces to set default camera if no camera is present in model
+    int get_number_of_cameras() const;
 
     void set_render_settings(const RenderSettings& settings);
     RenderSettings get_render_settings() const;

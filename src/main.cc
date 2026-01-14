@@ -300,6 +300,19 @@ int main(int argc, char* argv[]) {
                 }
             }
             {
+                // camera ids from gltf
+                int cameras_N = viewer.get_number_of_cameras();
+                auto active_camera = viewer.get_active_camera();
+                if (cameras_N > 0) {
+                    int new_acive_camera_index = active_camera.has_value() ? static_cast<int>(active_camera.value()) : 0;
+                    bool camera_changed = ImGui::SliderInt("Active Camera", &new_acive_camera_index, 0, cameras_N - 1,
+                        nullptr,  ImGuiSliderFlags_ClampOnInput | ImGuiSliderFlags_NoInput);
+                    if (camera_changed) {
+                        viewer.set_active_camera(static_cast<uint32_t>(new_acive_camera_index));
+                    }
+                }
+            }
+            {
                 static bool use_progressive_rendering = false;
                 //ImGui::Checkbox("Use progressive rendering", &use_progressive_rendering);
                 if (use_progressive_rendering) {

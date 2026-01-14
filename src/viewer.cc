@@ -21,11 +21,7 @@ Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture, const 
     renderer_.set_render_settings(settings);
     renderer_.load_scene(model_, environmentTexture_);
 
-    bool res = snap_to_camera();
-    if (res == false) {
-        set_up_default_camera_transforms();
-        renderer_.update_camera_transform_state(position_, direction_, up_, cam_params_);
-    }
+    snap_to_camera();
 }
 
 void Viewer::resize_window(const ivec2& newDimensions) {
@@ -57,7 +53,7 @@ std::optional<uint32_t> Viewer::get_active_camera() const { return activeCameraI
 
 void Viewer::take_snapshot(const std::filesystem::path& filePath) const { framebuffer_.save_to_file(filePath); }
 
-bool Viewer::snap_to_camera() {
+bool Viewer::snap_to_camera(bool use_default) {
     bool success = false;
 
     if (activeCameraIndex_.has_value()) {
@@ -77,12 +73,16 @@ bool Viewer::snap_to_camera() {
             },
         camera.camera_params);
     }
-
     cam_params_.aspectRatio = static_cast<float>(windowDimensions_.x) / windowDimensions_.y;  // adjust camera aspect ratio to screen
+    if (!success && use_default) {
+        set_up_default_camera_transforms();
+    }
     renderer_.update_camera_transform_state(position_, direction_, up_, cam_params_);
 
     return success;
 }
+
+int Viewer::get_number_of_cameras() const { return static_cast<int>(model_.cameras_.size()); }
 
 void Viewer::set_render_settings(const RenderSettings& settings) {
     const auto currentSettings = renderer_.get_render_settings();
