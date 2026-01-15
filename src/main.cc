@@ -1,6 +1,9 @@
 #include <chrono>
 #include <iostream>
 #include <thread>
+#include <stop_token>
+#include <atomic>
+#include <mutex>
 
 #include "arguments.h"
 #include "cpu_framebuffer.h"
@@ -80,21 +83,26 @@ int main(int argc, char* argv[]) {
     //------------------------------------------------------------------
     // GUI version logic starts from here
     //------------------------------------------------------------------
-    bool finish_worker_thread = false;
-    auto render_worker_lambda = [&render_lambda, &viewer, &finish_worker_thread]() {
-        while (!finish_worker_thread) {
+    std::stop_source finish_worker_thread_source;
+    std::stop_token finish_worker_thread_token = finish_worker_thread_source.get_token();
+    auto render_worker_lambda = [&render_lambda, &viewer](std::stop_token stop) {
+        std::mutex mtx_render;
+        std::unique_lock<std::mutex> lock(mtx_render);
+        while (!stop.stop_requested()) {
             if (viewer.get_rendering_state() == Renderer::ReadyToStart) {
                 render_lambda();
-            } else {
-                // todo: use condition variable to avoid busy waiting
-                // todo: use atomic bools
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
+            if (viewer.continuous_rendering) {
+                continue;
+            }
+            viewer.cv_render.wait(lock, [&stop, &viewer]() 
+                { return !stop.stop_requested() || (viewer.get_rendering_state() == Renderer::ReadyToStart); });
         }
     };
 
-    std::thread worker_thread(render_worker_lambda);
+    viewer.clear_framebuffer_black();
     viewer.async_start_render();
+    std::thread worker_thread(render_worker_lambda, finish_worker_thread_token);
 
     DXDebugLayer::Get().Init();
 
@@ -225,6 +233,7 @@ int main(int argc, char* argv[]) {
             ImGui::PopStyleVar();
             ImGui::PopStyleVar();
         }
+        const auto rendering_state = viewer.get_rendering_state();
         // Show options window
         ImGui::Begin("Options");
         {
@@ -233,18 +242,28 @@ int main(int argc, char* argv[]) {
             ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
             ImGui::Text("Render progress %.1f percent.", 100.f * progress);
             ImGui::ProgressBar(progress);
-            if (ImGui::Button("Render")) {
-                viewer.async_start_render();
-            }
-            if (viewer.get_rendering_state() == Renderer::RenderingState::Rendering) {
+            if (rendering_state == Renderer::RenderingState::Idle) {
+                if (ImGui::Button("Render")) {
+                    viewer.async_start_render();
+                }
+            } else if (rendering_state == Renderer::RenderingState::Rendering) {
                 if (ImGui::Button("Stop Rendering")) {
                     viewer.cancel_rendering();
                 }
             }
+            {
+                bool continuous_rendering = viewer.continuous_rendering.load();
+                if (ImGui::Checkbox("Continuous Rendering", &continuous_rendering)) {
+                    viewer.continuous_rendering = continuous_rendering;
+                }
+            }
         }
         ImGui::Separator();
-        if (viewer.get_rendering_state() == Renderer::RenderingState::Idle)
+        if (rendering_state == Renderer::RenderingState::Idle)
         {
+            if (ImGui::Button("Clear image with black")) {
+                viewer.clear_framebuffer_black();
+            }
             if (ImGui::Button("Save image")) {
                 fs::path filepath = SaveFileDialog();
                 if (!filepath.empty()) {
@@ -335,7 +354,6 @@ int main(int argc, char* argv[]) {
                 setings_changed |= imgui_combo("Acceleration Struct Type:", std::array{"Naive", "BVH"}, console_arguments.accelStructType);
 
                 if (setings_changed || size_changed) {
-                    // don't change during rendering
                     ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.0f, 0.6f, 0.6f));
                     if (ImGui::Button("Update render settings")) {
                         if (setings_changed) {
@@ -344,9 +362,9 @@ int main(int argc, char* argv[]) {
                             setings_changed = false;
                         }
                         if (size_changed) {
-                            // don't resize before rendering?
                             viewer.resize_window(ivec2(console_arguments.windowWidth, console_arguments.windowHeight));
                             viewer.snap_to_camera();
+                            viewer.clear_framebuffer_black();
                             size_changed = false;
                         }
                     }
@@ -412,7 +430,8 @@ int main(int argc, char* argv[]) {
 
     DXDebugLayer::Get().Shutdown();
 
-    finish_worker_thread = true;
+    finish_worker_thread_source.request_stop();
+    viewer.cancel_rendering();
     worker_thread.join();
 
     return 0;

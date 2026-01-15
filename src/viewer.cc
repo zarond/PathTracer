@@ -31,13 +31,21 @@ void Viewer::resize_window(const ivec2& newDimensions) {
 
 ivec2 Viewer::get_window_dimensions() const { return windowDimensions_; }
 
-void Viewer::render() { renderer_.render_frame(framebuffer_); }
+void Viewer::render() { renderer_.render_frame(framebuffer_, false, continuous_rendering); }
 
-void Viewer::cancel_rendering() { renderer_.cancel_rendering(); }
+void Viewer::cancel_rendering() {
+    renderer_.cancel_rendering(); 
+    cv_render.notify_one();
+}
 
 Renderer::RenderingState Viewer::get_rendering_state() const { return renderer_.get_rendering_state(); }
 
-void Viewer::async_start_render() { renderer_.set_render_starting_state(); }
+void Viewer::async_start_render() { 
+    renderer_.set_render_starting_state();
+    cv_render.notify_one();
+}
+
+void Viewer::clear_framebuffer_black() { framebuffer_.clear(); }
 
 void Viewer::set_active_camera(std::optional<uint32_t> cameraIndex) {
     if (cameraIndex.has_value()) {

@@ -4,6 +4,7 @@
 #include <glm/glm.hpp>
 #include <memory>
 #include <optional>
+#include <condition_variable>
 
 #include "cpu_framebuffer.h"
 #include "model_loader.h"
@@ -28,6 +29,8 @@ class Viewer {
     void cancel_rendering();
     Renderer::RenderingState get_rendering_state() const;
 
+    void clear_framebuffer_black();
+
     void set_active_camera(std::optional<uint32_t> cameraIndex);
     std::optional<uint32_t> get_active_camera() const;
 
@@ -44,6 +47,9 @@ class Viewer {
 
     void load_envmap(CPUTexture<hdr_pixel>&& environmentTexture);
     void load_model(Model&& model);
+
+    std::condition_variable cv_render;
+    std::atomic<bool> continuous_rendering = false;
 
   private:
     Model model_;

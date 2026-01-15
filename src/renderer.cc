@@ -92,17 +92,20 @@ ray_with_payload Renderer::generate_camera_ray(int x, int y, float inv_width, fl
         false};
 }
 
-void Renderer::render_frame(CPUFrameBuffer& framebuffer) {
+void Renderer::render_frame(CPUFrameBuffer& framebuffer, bool clear, bool continuous) {
+    // atomic<bool>& instead of bool continuous?
     assert(modelRef);
     if (modelRef == nullptr || envmapRef == nullptr || accelStruct == nullptr || rayProgram == nullptr) {
         throw std::runtime_error("One of components is nullptr in Renderer::render_frame()");
     }
-    progress = 0.0f;
-    render_state = RenderingState::Rendering;
+    progress_ = 0.0f;
+    render_state_ = RenderingState::Rendering;
 
     generate_subsample_positions();
 
-    framebuffer.clear(hdr_pixel{0.0f, 0.0f, 0.0f, 1.0f});
+    if (clear) {
+        framebuffer.clear(hdr_pixel{0.0f, 0.0f, 0.0f, 1.0f});
+    }
 
     int width = framebuffer.width();
     int height = framebuffer.height();
@@ -122,7 +125,7 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer) {
             rays.reserve(reserved_size);
 
             for (int x = 0; x < width; ++x) {
-                if (render_state == RenderingState::Cancelling) {
+                if (render_state_.load(std::memory_order_relaxed) == RenderingState::Cancelling) {
                     return;
                 }
                 SamplesAccumulator<fvec3> final_color;
@@ -142,13 +145,17 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer) {
                 }
                 framebuffer.at(x, y) = hdr_pixel{final_color.get_mean(), 1.0f};
             }
-            progress = max(progress, y * inv_height);
+            progress_ = max(progress_, y * inv_height);
         });
 
-    if (render_state == RenderingState::Rendering) {
-        progress = 1.0f;
+    if (render_state_ == RenderingState::Rendering) {
+        progress_ = 1.0f;
     }
-    render_state = RenderingState::Idle;
+    if (continuous && (render_state_ != RenderingState::Cancelling)) {
+        render_state_ = RenderingState::ReadyToStart;
+    } else {
+        render_state_ = RenderingState::Idle;
+    }
 }
 
 void Renderer::set_render_settings(const RenderSettings& settings) { renderSettings_ = settings; }
@@ -161,18 +168,21 @@ BBox Renderer::get_scene_bound() const {
     return BBox{};
 }
 
-float Renderer::get_progress() const { return progress; }
+float Renderer::get_progress() const { return progress_; }
 
 void Renderer::cancel_rendering() {
-    if (render_state == Idle) {
-        return;
+    if (render_state_ == Rendering) {
+        render_state_ = Cancelling;
     }
-    render_state = Cancelling;
 }
 
-Renderer::RenderingState Renderer::get_rendering_state() const { return render_state; }
+Renderer::RenderingState Renderer::get_rendering_state() const { return render_state_; }
 
-void Renderer::set_render_starting_state() { render_state = ReadyToStart; }
+void Renderer::set_render_starting_state() {
+    if (render_state_ == Idle) {
+        render_state_ = ReadyToStart; 
+    }
+}
 
 void Renderer::generate_subsample_positions() {
     if (renderSettings_.samplesPerPixel == subsamplesPositions.size()) {

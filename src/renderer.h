@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 #include <memory>
 #include <vector>
+#include <atomic>
 
 #include "acceleration_structure.h"
 #include "arguments.h"
@@ -49,7 +50,7 @@ class Renderer {
     void reload_ray_program();
     void reload_acceleration_structure();
 
-    void render_frame(CPUFrameBuffer& framebuffer);
+    void render_frame(CPUFrameBuffer& framebuffer, bool clear, bool continuous);
     void set_render_settings(const RenderSettings& settings);
     RenderSettings get_render_settings() const;
     BBox get_scene_bound() const;
@@ -80,8 +81,8 @@ class Renderer {
     fmat4x4 NDC2WorldMatrix_ = fmat4x4(1.0f);
     fvec3 origin_ = fvec3{0.0f};
 
-    float progress = 0.0f;
-    RenderingState render_state = Idle;
+    float progress_ = 0.0f;
+    std::atomic<RenderingState> render_state_ = Idle;
 
   private:
     ray_with_payload generate_camera_ray(int x, int y, float inv_width, float inv_height, int sampleIndex = 0) const noexcept;
