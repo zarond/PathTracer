@@ -50,7 +50,7 @@ class Renderer {
     void reload_ray_program();
     void reload_acceleration_structure();
 
-    void render_frame(CPUFrameBuffer& framebuffer, bool clear, bool continuous);
+    void render_frame(CPUFrameBuffer& framebuffer, bool clear, bool continuous, bool iterative, int iteration_count);
     void set_render_settings(const RenderSettings& settings);
     RenderSettings get_render_settings() const;
     BBox get_scene_bound() const;
@@ -85,7 +85,8 @@ class Renderer {
     std::atomic<RenderingState> render_state_ = Idle;
 
   private:
-    ray_with_payload generate_camera_ray(int x, int y, float inv_width, float inv_height, int sampleIndex = 0) const noexcept;
+    ray_with_payload generate_camera_ray(
+        int x, int y, float inv_width, float inv_height, int sampleIndex = 0, fvec2 jitter = {0.0f, 0.0f}) const noexcept;
     void generate_subsample_positions();
 
     std::vector<fvec2> subsamplesPositions;

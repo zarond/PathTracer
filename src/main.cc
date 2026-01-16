@@ -228,7 +228,7 @@ int main(int argc, char* argv[]) {
             ImGui::Image((ImTextureID)texture_srv_gpu_handle.ptr, ImVec2(scale * (float)dims.x, scale * (float) dims.y));
             ImGui::Text("size = %d x %d", dims.x, dims.y);
 
-            ImGui::Text("zoom = %.2f", zoom_scale);
+            ImGui::Text("zoom = %.2f", scale);
             ImGui::End();
             ImGui::PopStyleVar();
             ImGui::PopStyleVar();
@@ -250,11 +250,25 @@ int main(int argc, char* argv[]) {
                 if (ImGui::Button("Stop Rendering")) {
                     viewer.cancel_rendering();
                 }
+            } else {
+                ImGui::Button("Stop Rendering");  // disabled button to prevent UI jumping
             }
             {
                 bool continuous_rendering = viewer.continuous_rendering.load();
                 if (ImGui::Checkbox("Continuous Rendering", &continuous_rendering)) {
                     viewer.continuous_rendering = continuous_rendering;
+                }
+            }
+            {
+                bool iterative_rendering = viewer.iterative_rendering.load();
+                if (ImGui::Checkbox("Iterative Rendering", &iterative_rendering)) {
+                    viewer.iterative_rendering = iterative_rendering;
+                    if (!iterative_rendering) {
+                        viewer.reset_iteration_counter();
+                    }
+                }
+                if (iterative_rendering) {
+                    ImGui::Text("Iterations: %d", viewer.get_iteration_counter());
                 }
             }
         }
@@ -332,12 +346,6 @@ int main(int argc, char* argv[]) {
                 }
             }
             {
-                static bool use_progressive_rendering = false;
-                //ImGui::Checkbox("Use progressive rendering", &use_progressive_rendering);
-                if (use_progressive_rendering) {
-                    // show current number of rendered spp
-                }
-
                 static bool size_changed = false;
                 size_changed |= InputUInt("Width", &console_arguments.windowWidth);
                 size_changed |= InputUInt("Height", &console_arguments.windowHeight);

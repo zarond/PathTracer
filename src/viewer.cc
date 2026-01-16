@@ -31,7 +31,14 @@ void Viewer::resize_window(const ivec2& newDimensions) {
 
 ivec2 Viewer::get_window_dimensions() const { return windowDimensions_; }
 
-void Viewer::render() { renderer_.render_frame(framebuffer_, false, continuous_rendering); }
+void Viewer::render() { 
+    renderer_.render_frame(framebuffer_, false, continuous_rendering, iterative_rendering, iterations_counter);
+    if (iterative_rendering) {
+        ++iterations_counter;
+    } else {
+        reset_iteration_counter();
+    }
+}
 
 void Viewer::cancel_rendering() {
     renderer_.cancel_rendering(); 
@@ -124,6 +131,9 @@ void Viewer::load_model(Model&& model) {
 }
 
 CPUFrameBuffer& Viewer::get_framebuffer() { return framebuffer_; }
+
+void Viewer::reset_iteration_counter() { iterations_counter = 1; }
+int Viewer::get_iteration_counter() const { return iterations_counter; }
 
 void Viewer::set_up_default_camera_transforms() {
     direction_ = fvec3(0.0f, 0.0f, -1.0f);

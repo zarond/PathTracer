@@ -50,10 +50,15 @@ class Viewer {
 
     std::condition_variable cv_render;
     std::atomic<bool> continuous_rendering = false;
+    std::atomic<bool> iterative_rendering = false;
+    void reset_iteration_counter();
+    int get_iteration_counter() const;
 
   private:
     Model model_;
     CPUTexture<hdr_pixel> environmentTexture_;
+
+    int iterations_counter = 1;
 
     std::optional<uint32_t> activeCameraIndex_ = std::nullopt;
 

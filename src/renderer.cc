@@ -6,6 +6,7 @@
 #include <glm/glm.hpp>
 #include <ranges>
 #include <vector>
+#include <random>
 
 #include "arguments.h"
 #include "brdf.h"
@@ -81,8 +82,8 @@ void Renderer::reload_acceleration_structure() {
     }
 }
 
-ray_with_payload Renderer::generate_camera_ray(int x, int y, float inv_width, float inv_height, int sampleIndex) const noexcept {
-    fvec2 pixel_coords = fvec2{static_cast<float>(x), static_cast<float>(y)} + subsamplesPositions[sampleIndex];
+ray_with_payload Renderer::generate_camera_ray(int x, int y, float inv_width, float inv_height, int sampleIndex, fvec2 jitter) const noexcept {
+    fvec2 pixel_coords = fvec2{static_cast<float>(x), static_cast<float>(y)} + subsamplesPositions[sampleIndex] + jitter;
     auto ndc_coords = ndc_from_pixel(pixel_coords.x, pixel_coords.y, inv_width, inv_height);
     auto direction = xyz(NDC2WorldMatrix_ * ndc_coords);
     return ray_with_payload{
@@ -92,7 +93,7 @@ ray_with_payload Renderer::generate_camera_ray(int x, int y, float inv_width, fl
         false};
 }
 
-void Renderer::render_frame(CPUFrameBuffer& framebuffer, bool clear, bool continuous) {
+void Renderer::render_frame(CPUFrameBuffer& framebuffer, bool clear, bool continuous, bool iterative, int iteration_count) {
     // atomic<bool>& instead of bool continuous?
     assert(modelRef);
     if (modelRef == nullptr || envmapRef == nullptr || accelStruct == nullptr || rayProgram == nullptr) {
@@ -102,6 +103,17 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer, bool clear, bool contin
     render_state_ = RenderingState::Rendering;
 
     generate_subsample_positions();
+
+    glm::fvec2 jitter = glm::fvec2{0.0f};
+    float inverse_iteration_count = 1.0f;
+    if (iterative) {
+        static std::minstd_rand gen = std::minstd_rand(std::random_device{}());
+        static std::uniform_real_distribution<float> dist{-0.5f, 0.5f};
+        jitter = fvec2{dist(gen), dist(gen)};
+        float n_sqrt = sqrtf(renderSettings_.samplesPerPixel);
+        jitter /= n_sqrt;
+        inverse_iteration_count = 1.0f / static_cast<float>(iteration_count);
+    }
 
     if (clear) {
         framebuffer.clear(hdr_pixel{0.0f, 0.0f, 0.0f, 1.0f});
@@ -119,7 +131,7 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer, bool clear, bool contin
     }
 
     std::for_each(std::execution::par_unseq, indices.begin(), indices.end(),
-        [this, width, inv_width, inv_height, &framebuffer, reserved_size](int y) {
+        [this, width, inv_width, inv_height, &framebuffer, reserved_size, iterative, inverse_iteration_count, jitter](int y) {
             static thread_local std::vector<ray_with_payload> rays;
             rays.clear();
             rays.reserve(reserved_size);
@@ -133,7 +145,7 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer, bool clear, bool contin
                 for (unsigned int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
                     fvec3 sample_col{};
 
-                    rays.push_back(generate_camera_ray(x, y, inv_width, inv_height, i));
+                    rays.push_back(generate_camera_ray(x, y, inv_width, inv_height, i, jitter));
                     while (rays.size() > 0) {
                         assert(rays.size() <= reserved_size);
                         auto ray = rays.back();
@@ -143,7 +155,15 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer, bool clear, bool contin
                     }
                     final_color.add_sample(sample_col);
                 }
-                framebuffer.at(x, y) = hdr_pixel{final_color.get_mean(), 1.0f};
+                if (!iterative) {
+                    framebuffer.at(x, y) = hdr_pixel{final_color.get_mean(), 1.0f};
+                } else {
+                    auto& p = framebuffer.at(x, y);
+                    const auto f0 = xyz(p);
+                    const auto f1 = final_color.get_mean();
+                    p = hdr_pixel{glm::mix(f0, f1, inverse_iteration_count), 1.0f};
+                    // todo: make framebuffer into SamplesAccumulator internally?
+                }
             }
             progress_ = max(progress_, y * inv_height);
         });
