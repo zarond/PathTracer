@@ -193,44 +193,46 @@ int main(int argc, char* argv[]) {
 
         // Show window with image
         {
-            const bool use_work_area = true;
             const ImGuiWindowFlags flags =
                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
                 ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
                 ImGuiWindowFlags_NoBringToFrontOnFocus;
 
-            static float zoom_scale = 0.0f;
-            static ImVec2 offset = {0.0f, 0.0f};
-
             const ImGuiViewport* viewport = ImGui::GetMainViewport();
-            ImGui::SetNextWindowPos(use_work_area ? viewport->WorkPos : viewport->Pos);
-            ImGui::SetNextWindowSize(use_work_area ? viewport->WorkSize : viewport->Size);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, offset);
+            auto WorkSize = viewport->WorkSize;
+
+            static float zoom_scale = 0.0f;
+            static ImVec2 offset = {-WorkSize.x * 0.5f, -WorkSize.y * 0.5f};
+
+            ImGui::SetNextWindowPos(viewport->WorkPos);
+            ImGui::SetNextWindowSize(viewport->WorkSize);
             ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
 
             auto dims = viewer.get_window_dimensions();
             viewer.get_framebuffer().upload_to_gpu();
             const auto& texture_srv_gpu_handle = viewer.get_framebuffer().srv_gpu_handle;
             ImGui::Begin("Rendering Image", nullptr, flags);
+            const float scroll_speed = 0.05f;
+            float scale = std::exp(zoom_scale * scroll_speed);
             if (ImGui::IsWindowHovered()) {
                 if (io.MouseWheel != 0.0f){
                     zoom_scale += io.MouseWheel;
                     zoom_scale = max(0.0f, zoom_scale);
+                    scale = std::exp(zoom_scale * scroll_speed);
                 }
                 if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
                     ImVec2 drag_delta = io.MouseDelta;
-                    offset.x += drag_delta.x;
-                    offset.y += drag_delta.y; 
+                    offset.x += drag_delta.x / scale;
+                    offset.y += drag_delta.y / scale; 
                 }
             }
-            const float scroll_speed = 0.05f;
-            float scale = std::exp(zoom_scale * scroll_speed);
+            ImGui::SetCursorPos(
+                ImVec2(scale * offset.x + WorkSize.x * 0.5f, scale * offset.y + WorkSize.y * 0.5f));
             ImGui::Image((ImTextureID)texture_srv_gpu_handle.ptr, ImVec2(scale * (float)dims.x, scale * (float) dims.y));
             ImGui::Text("size = %d x %d", dims.x, dims.y);
 
             ImGui::Text("zoom = %.2f", scale);
             ImGui::End();
-            ImGui::PopStyleVar();
             ImGui::PopStyleVar();
         }
         const auto rendering_state = viewer.get_rendering_state();
