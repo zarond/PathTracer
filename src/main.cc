@@ -134,6 +134,7 @@ int main(int argc, char* argv[]) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
+    io.IniFilename = NULL;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;   // Enable Gamepad Controls
 
@@ -239,7 +240,7 @@ int main(int argc, char* argv[]) {
         }
         const auto rendering_state = viewer.get_rendering_state();
         // Show options window
-        ImGui::Begin("Options");
+        ImGui::Begin("Options", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
         {
             float progress = viewer.get_render_progress();
 
@@ -375,6 +376,7 @@ int main(int argc, char* argv[]) {
                     viewer.load_envmap(std::move(new_environment_texture));
                 }
             }
+            ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.5f);
             {
                 static bool size_changed = false;
                 size_changed |= InputUInt("Width", &console_arguments.windowWidth);
@@ -384,9 +386,11 @@ int main(int argc, char* argv[]) {
                 setings_changed |= SliderUInt("samples per pixel", &console_arguments.samplesPerPixel, 1, 128);
                 setings_changed |= SliderUInt("max ray bounces", &console_arguments.maxRayBounces, 0, 10);
                 setings_changed |= SliderUInt("max new rays per bounce", &console_arguments.maxNewRaysPerBounce, 0, 32);
+                HelpTooltip("For AmbientOcclusion mode only, set >= 1");
                 setings_changed |= SliderUInt("max triangles per BVH leaf", &console_arguments.maxTrianglesPerBVHLeaf, 1, 32);
                 setings_changed |= ImGui::DragInt(
-                    "environment rotation in degrees (on UP axis)", &console_arguments.envmapRotation, 1.0f, 0, 360);
+                    "environment rotation", &console_arguments.envmapRotation, 1.0f, 0, 360);
+                HelpTooltip("environment rotation in degrees around UP axis.");
                 setings_changed |= imgui_combo(
                     "Ray Program Mode:", std::array{"RayCaster", "AmbientOcclusion", "PBR"}, console_arguments.programMode);
                 setings_changed |= imgui_combo("Acceleration Struct Type:", std::array{"Naive", "BVH"}, console_arguments.accelStructType);
@@ -409,6 +413,7 @@ int main(int argc, char* argv[]) {
                     ImGui::PopStyleColor();
                 }
             }
+            ImGui::PopItemWidth();
         } else {
             ImGui::Text("Stop rendering process to access rendering options");
         }

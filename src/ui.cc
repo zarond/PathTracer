@@ -176,4 +176,8 @@ bool InputUInt(const char* label, unsigned int* v, unsigned int step, unsigned i
         (void*)(step_fast > 0 ? &step_fast : NULL), format, flags);
 }
 
+void HelpTooltip(const char* msg) {
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) ImGui::SetTooltip("%s", msg);
+}
+
 }

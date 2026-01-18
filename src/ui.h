@@ -70,4 +70,5 @@ bool SliderUInt(const char* label, unsigned int* v, unsigned int v_min, unsigned
 
 bool InputUInt(const char* label, unsigned int* v, unsigned int step = 1, unsigned int step_fast = 100, ImGuiInputTextFlags flags = 0);
 
+void HelpTooltip(const char* msg);
 }
