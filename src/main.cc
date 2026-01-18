@@ -10,6 +10,8 @@
 #include "model_loader.h"
 #include "viewer.h"
 
+#include <glm/ext.hpp>
+
 #define NOMINMAX
 
 #include <imgui.h>
@@ -275,6 +277,45 @@ int main(int argc, char* argv[]) {
             }
         }
         ImGui::Separator();
+        if (ImGui::TreeNode("Camera")) {
+            int cameras_N = viewer.get_number_of_cameras();
+            auto active_camera = viewer.get_active_camera();
+            bool use_camera = active_camera.has_value();
+            bool setings_changed = false;
+            if (cameras_N != 0) {
+                setings_changed = ImGui::Checkbox("Use Camera from Gltf file", &use_camera);
+            }
+            if (use_camera) {
+                int new_acive_camera_index = active_camera.has_value() ? static_cast<int>(active_camera.value()) : 0;
+                bool camera_changed = ImGui::SliderInt("Active Camera", &new_acive_camera_index, 0, cameras_N - 1, nullptr,
+                    ImGuiSliderFlags_ClampOnInput | ImGuiSliderFlags_NoInput);
+                if (camera_changed || setings_changed) {
+                    viewer.set_active_camera(static_cast<uint32_t>(new_acive_camera_index));
+                }
+            } else if (setings_changed) {
+                viewer.set_active_camera(std::nullopt);
+            }
+            if (!use_camera) {
+                // manual camera controls
+                auto& yfov = viewer.get_yfov();
+                auto euler_angles = glm::degrees(viewer.get_euler_angles_camera()); 
+                static float camera_speed = 1.0f;
+                bool transform_changed = false;
+                transform_changed |= ImGui::DragFloat3("Camera Position", &viewer.position_.x, camera_speed * 0.001f, 0.0f, 0.0f, "%.4f");
+                transform_changed |= ImGui::DragFloat3("Camera Euler", &euler_angles.x, 0.1f, -180.0f, 180.0f, nullptr, ImGuiSliderFlags_WrapAround);
+                transform_changed |= ImGui::SliderFloat("Camera Y fov", &yfov, 0.01f, 3.1415f, nullptr, ImGuiSliderFlags_ClampOnInput);
+                ImGui::SliderFloat("Camera Speed", &camera_speed, 0.01f, 10.0f);
+                if (transform_changed) {
+                    euler_angles = glm::radians(euler_angles);
+                    auto quat = glm::quat(euler_angles);
+                    viewer.direction_ = quat * fvec3(0.0f, 0.0f, -1.0f);
+                    viewer.up_ = quat * fvec3(0.0f, 1.0f, 0.0f);
+                    viewer.snap_to_camera(false);
+                }
+            }
+            ImGui::TreePop();
+        }
+        ImGui::Separator();
         if (rendering_state == Renderer::RenderingState::Idle)
         {
             if (ImGui::Button("Clear image with black")) {
@@ -332,19 +373,6 @@ int main(int argc, char* argv[]) {
                     // switched from using default envmap to custom, load from path
                     CPUTexture<hdr_pixel> new_environment_texture = CPUTexture<hdr_pixel>(console_arguments.environmentPath);
                     viewer.load_envmap(std::move(new_environment_texture));
-                }
-            }
-            {
-                // camera ids from gltf
-                int cameras_N = viewer.get_number_of_cameras();
-                auto active_camera = viewer.get_active_camera();
-                if (cameras_N > 0) {
-                    int new_acive_camera_index = active_camera.has_value() ? static_cast<int>(active_camera.value()) : 0;
-                    bool camera_changed = ImGui::SliderInt("Active Camera", &new_acive_camera_index, 0, cameras_N - 1,
-                        nullptr,  ImGuiSliderFlags_ClampOnInput | ImGuiSliderFlags_NoInput);
-                    if (camera_changed) {
-                        viewer.set_active_camera(static_cast<uint32_t>(new_acive_camera_index));
-                    }
                 }
             }
             {

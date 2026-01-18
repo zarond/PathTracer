@@ -7,6 +7,8 @@
 
 #include "cpu_framebuffer.h"
 
+#include <glm/ext.hpp>
+
 namespace app {
 
 using namespace glm;
@@ -61,6 +63,8 @@ void Viewer::set_active_camera(std::optional<uint32_t> cameraIndex) {
         }
         activeCameraIndex_ = cameraIndex;
         snap_to_camera();
+    } else {
+        activeCameraIndex_ = cameraIndex;
     }
 }
 
@@ -150,6 +154,13 @@ void Viewer::set_up_default_camera_transforms() {
     auto center = (not_empty) ? bounds.min + dims * 0.5f : fvec3{0.0f};
     fvec3 offset = fvec3(0.0f, 0.0f, 1.0f) * max_dim * 1.5f;
     position_ = center + offset;
+}
+
+float& Viewer::get_yfov() { return cam_params_.yfov; }
+
+fvec3 Viewer::get_euler_angles_camera() const { 
+    glm::quat quat = glm::quatLookAt(direction_, up_);
+    return glm::eulerAngles(quat);
 }
 
 }  // namespace app

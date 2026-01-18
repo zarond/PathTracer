@@ -54,6 +54,13 @@ class Viewer {
     void reset_iteration_counter();
     int get_iteration_counter() const;
 
+    fvec3 position_ = fvec3(0.0f);                // camera position
+    fvec3 direction_ = fvec3(0.0f, 0.0f, -1.0f);  // center view direction
+    fvec3 up_ = fvec3(0.0f, 1.0f, 0.0f);          // up view direction
+
+    float& get_yfov();
+    fvec3 get_euler_angles_camera() const;
+
   private:
     Model model_;
     CPUTexture<hdr_pixel> environmentTexture_;
@@ -72,13 +79,10 @@ class Viewer {
 
     fvec3 accelerationVector_ = fvec3(0.0f);
     fvec3 velocity_ = fvec3(0.0f);
-    fvec3 position_ = fvec3(0.0f);
 
-    fvec3 direction_ = fvec3(0.0f, 0.0f, -1.0f);  // center view direction
-    fvec3 up_ = fvec3(0.0f, 1.0f, 0.0f);          // up view direction
     fastgltf::Camera::Perspective cam_params_;
-    dvec2 lastCursorPosition_ = dvec2(0.0f);
 
+    dvec2 lastCursorPosition_ = dvec2(0.0f);
     float yaw_ = -90.0f;
     float pitch_ = 0.0f;
     bool firstMouse_ = true;
