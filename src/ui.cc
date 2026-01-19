@@ -10,6 +10,10 @@
 // Forward declare message handler from imgui_impl_win32.cpp
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
+// Forward declare functions from imgui_impl_dx12.cpp
+extern void ImGui_ImplDX12_SetupSamplerLinear(ID3D12GraphicsCommandList* command_list);
+extern void ImGui_ImplDX12_SetupSamplerNearest(ID3D12GraphicsCommandList* command_list);
+
 namespace app {
 
 bool DXWindow::Init() {
@@ -178,6 +182,17 @@ bool InputUInt(const char* label, unsigned int* v, unsigned int step, unsigned i
 
 void HelpTooltip(const char* msg) {
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) ImGui::SetTooltip("%s", msg);
+}
+
+// For DX12 backend: Callback to modify current sampler
+void ImDrawCallback_ImplDX12_SetSamplerNearest(const ImDrawList* parent_list, const ImDrawCmd* cmd) {
+    ImGui_ImplDX12_RenderState* state = (ImGui_ImplDX12_RenderState*)ImGui::GetPlatformIO().Renderer_RenderState;
+    ImGui_ImplDX12_SetupSamplerNearest(state->CommandList);
+}
+
+void ImDrawCallback_ImplDX12_SetSamplerLinear(const ImDrawList* parent_list, const ImDrawCmd* cmd) {
+    ImGui_ImplDX12_RenderState* state = (ImGui_ImplDX12_RenderState*)ImGui::GetPlatformIO().Renderer_RenderState;
+    ImGui_ImplDX12_SetupSamplerLinear(state->CommandList);
 }
 
 }

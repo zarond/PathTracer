@@ -212,8 +212,9 @@ int main(int argc, char* argv[]) {
             ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0);
 
             auto dims = viewer.get_window_dimensions();
-            viewer.get_framebuffer().upload_to_gpu();
-            const auto& texture_srv_gpu_handle = viewer.get_framebuffer().srv_gpu_handle;
+            auto& framebuffer = viewer.get_framebuffer();
+            framebuffer.upload_to_gpu();
+            const auto& texture_srv_gpu_handle = framebuffer.srv_gpu_handle;
             ImGui::Begin("Rendering Image", nullptr, flags);
             const float scroll_speed = 0.05f;
             float scale = std::exp(zoom_scale * scroll_speed);
@@ -231,7 +232,13 @@ int main(int argc, char* argv[]) {
             }
             ImGui::SetCursorPos(
                 ImVec2(scale * offset.x + WorkSize.x * 0.5f, scale * offset.y + WorkSize.y * 0.5f));
-            ImGui::Image((ImTextureID)texture_srv_gpu_handle.ptr, ImVec2(scale * (float)dims.x, scale * (float) dims.y));
+            if (framebuffer.nearest_filtering) {
+                ImGui::GetWindowDrawList()->AddCallback(ImDrawCallback_ImplDX12_SetSamplerNearest, nullptr); // Set custom sampler
+                ImGui::Image((ImTextureID)texture_srv_gpu_handle.ptr, ImVec2(scale * (float)dims.x, scale * (float) dims.y));
+                ImGui::GetWindowDrawList()->AddCallback(ImDrawCallback_ImplDX12_SetSamplerLinear, nullptr);  // Restore sampler
+            } else {
+                ImGui::Image((ImTextureID)texture_srv_gpu_handle.ptr, ImVec2(scale * (float)dims.x, scale * (float)dims.y));
+            }
             ImGui::Text("size = %d x %d", dims.x, dims.y);
 
             ImGui::Text("zoom = %.2f", scale);
@@ -275,6 +282,9 @@ int main(int argc, char* argv[]) {
                 if (iterative_rendering) {
                     ImGui::Text("Iterations: %d", viewer.get_iteration_counter());
                 }
+            }
+            {
+                ImGui::Checkbox("Nearest Filtering", &viewer.get_framebuffer().nearest_filtering);
             }
         }
         ImGui::Separator();
