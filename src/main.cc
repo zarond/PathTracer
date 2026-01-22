@@ -154,7 +154,7 @@ int main(int argc, char* argv[]) {
     init_info.Device = d3d_ctx.g_pd3dDevice.Get();
     init_info.CommandQueue = d3d_ctx.g_pd3dCommandQueue.Get();
     init_info.NumFramesInFlight = APP_NUM_FRAMES_IN_FLIGHT;
-    init_info.RTVFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    init_info.RTVFormat = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
     init_info.DSVFormat = DXGI_FORMAT_UNKNOWN;
     // Allocating SRV descriptors (for textures) is up to the application, so we provide callbacks.
     // (current version of the backend will only allocate one descriptor, future versions will need to allocate more)

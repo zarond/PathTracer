@@ -102,7 +102,7 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
     {
         sd.Width = 0;
         sd.Height = 0;
-        sd.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        sd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
         sd.Stereo = FALSE;
         sd.SampleDesc.Count = 1;
         sd.SampleDesc.Quality = 0;
@@ -238,7 +238,7 @@ void D3DContext::CreateRenderTarget() {
         g_pSwapChain->GetBuffer(i, IID_PPV_ARGS(&g_mainRenderTargetResource[i]));
         
         D3D12_RENDER_TARGET_VIEW_DESC rtv{};
-        rtv.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        rtv.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
         rtv.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
         rtv.Texture2D.MipSlice = 0;
         rtv.Texture2D.PlaneSlice = 0;
