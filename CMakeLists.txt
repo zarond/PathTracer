@@ -108,4 +108,16 @@ target_link_libraries(my_tests
 )
 
 include(GoogleTest)
-gtest_discover_tests(my_tests)
+gtest_discover_tests(my_tests WORKING_DIRECTORY $<TARGET_FILE_DIR:PathTracer>)
+
+# copy example assets to build dir
+add_custom_command(
+    TARGET  ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+            ${CMAKE_SOURCE_DIR}/example/scene.glb
+            $<TARGET_FILE_DIR:PathTracer>/scene.glb
+    COMMAND ${CMAKE_COMMAND} -E copy
+            ${CMAKE_SOURCE_DIR}/example/farmland_overcast_1k.hdr
+            $<TARGET_FILE_DIR:PathTracer>/farmland_overcast_1k.hdr
+    COMMAND ${CMAKE_COMMAND} -E echo "Copying scene file and HDR from /example to $<TARGET_FILE_DIR:PathTracer>"
+    COMMENT "Copying scene file and HDR from /example to $<TARGET_FILE_DIR:PathTracer>")
