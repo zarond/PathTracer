@@ -8,6 +8,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 # application
+option(NO_WINDOWS "remove Windows specific dependencies, that leaves CPU mode only and no GUI" OFF)
+
 set(LIBS_DIR libs)
 
 set(APP_SOURCES
@@ -21,11 +23,17 @@ set(APP_SOURCES
     src/acceleration_structure.cc
     src/renderer.cc
     src/render_settings.cc
-    src/ui.cc
     src/brdf.cc
-    src/d3d_debug_layer.cc
-    src/d3d_context.cc
 )
+if(NOT NO_WINDOWS)
+    list(APPEND APP_SOURCES
+        src/ui.cc
+        src/d3d_debug_layer.cc
+        src/d3d_context.cc
+    )
+else()
+    add_definitions(-DNO_WINDOWS)
+endif()
 
 add_executable(${PROJECT_NAME} ${APP_SOURCES})
 
@@ -42,15 +50,17 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 #)
 
 # libs for application
-add_library(imgui STATIC 
-    ${LIBS_DIR}/imgui/imgui.cpp
-    ${LIBS_DIR}/imgui/imgui_draw.cpp
-    ${LIBS_DIR}/imgui/imgui_tables.cpp
-    ${LIBS_DIR}/imgui/imgui_widgets.cpp
-    ${LIBS_DIR}/imgui/backends/imgui_impl_win32.cpp
-    ${LIBS_DIR}/imgui/backends/imgui_impl_dx12.cpp
-)
-target_include_directories(imgui PUBLIC ${LIBS_DIR}/imgui)
+if(NOT NO_WINDOWS)
+    add_library(imgui STATIC 
+        ${LIBS_DIR}/imgui/imgui.cpp
+        ${LIBS_DIR}/imgui/imgui_draw.cpp
+        ${LIBS_DIR}/imgui/imgui_tables.cpp
+        ${LIBS_DIR}/imgui/imgui_widgets.cpp
+        ${LIBS_DIR}/imgui/backends/imgui_impl_win32.cpp
+        ${LIBS_DIR}/imgui/backends/imgui_impl_dx12.cpp
+    )
+    target_include_directories(imgui PUBLIC ${LIBS_DIR}/imgui)
+endif()
 
 add_library(argparse INTERFACE)
 target_include_directories(argparse INTERFACE ${LIBS_DIR}/argparse/include)
@@ -71,18 +81,22 @@ set(GLM_ENABLE_CXX_20 True)
 set(GLM_ENABLE_SIMD_AVX2 "Enable AVX2 optimizations" True)
 add_subdirectory(${LIBS_DIR}/glm)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE 
-    imgui 
+target_link_libraries(${PROJECT_NAME} PRIVATE
     argparse 
     stb
     fastgltf::fastgltf
     mikktspace
     glm::glm
-    d3d12
-    dxgi
 )
+if(NOT NO_WINDOWS)
+    target_link_libraries(${PROJECT_NAME} PRIVATE 
+        imgui 
+        d3d12
+        dxgi
+    )
+endif()
 
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+if((CMAKE_BUILD_TYPE STREQUAL "Debug") AND (NOT NO_WINDOWS))
     target_link_libraries(${PROJECT_NAME} PRIVATE dxguid)
 endif()
 

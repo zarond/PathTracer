@@ -8,9 +8,19 @@ The program has GUI, but you can also run it in command-line mode to render imag
 
 The program requires Windows OS due to usage of Windows API and DirectX for UI.
 
+You can use CMake option "NO_WINDOWS" to disable Windows-specific code and build it on Linux or MacOS, but GUI will be disabled in this case.
+
 ## Usage
 
-Build with CMake and run the `PathTracer` executable. Use `-h` flag to list options.
+Build with CMake and run the `PathTracer` executable.
+
+    git submodule update --init --recursive
+    cmake -B ./build -DCMAKE_BUILD_TYPE=Release
+    cmake --build ./build --config Release
+    cd build
+    ctest -C Release --output-on-failure
+
+Use `-h` flag to list options.
 
 By default, without any flags, the program opens a window, allowing loading a Gltf model with a file browser,
 but you can also provide command-line arguments.
@@ -33,7 +43,7 @@ Additional command-line options include:
  - maximum number of ray bounces `-b`
  -  and some others...
 
-Try it by copying `PathTracer` executable to `/example` folder and running
+Try it by running this command in binary (build/Release) folder:
 
     ./PathTracer -f ./scene.glb -e ./farmland_overcast_1k.hdr -o snapshot.png -s 300 -b 6
 
@@ -62,5 +72,5 @@ This project uses the following libraries:
  - argparse
  - MikkTSpace
  - Dear IMGUI
- - *Google Test (unused for now)*
+ - Google Test
 

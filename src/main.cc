@@ -1,5 +1,6 @@
 #include <chrono>
 #include <iostream>
+
 #include <thread>
 #include <stop_token>
 #include <atomic>
@@ -14,13 +15,16 @@
 
 #define NOMINMAX
 
+#ifndef NO_WINDOWS
 #include <imgui.h>
 #include "backends/imgui_impl_win32.h"
 #include "backends/imgui_impl_dx12.h"
 
 #include "d3d_debug_layer.h"
 #include "d3d_context.h"
+
 #include "ui.h"
+#endif
 
 int main(int argc, char* argv[]) {
     using namespace app;
@@ -82,6 +86,8 @@ int main(int argc, char* argv[]) {
         save_render_image_lambda(console_arguments.outputPath);
         return 0;
     }
+
+#ifndef NO_WINDOWS
     //------------------------------------------------------------------
     // GUI version logic starts from here
     //------------------------------------------------------------------
@@ -487,5 +493,6 @@ int main(int argc, char* argv[]) {
     viewer.cancel_rendering();
     worker_thread.join();
 
+#endif  // #ifndef NO_WINDOWS
     return 0;
 }

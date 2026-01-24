@@ -12,7 +12,9 @@
 #include "stb_image.h"
 #include "stb_image_write.h"
 
+#ifndef NO_WINDOWS
 #include "d3d_context.h"
+#endif
 
 namespace {
 using namespace app;
@@ -118,7 +120,9 @@ CPUFrameBuffer::CPUFrameBuffer(int width, int height) {
     data_.resize(width_ * height_, hdr_pixel{});
 }
 
+#ifndef NO_WINDOWS
 CPUFrameBuffer::~CPUFrameBuffer() { release_gpu_resource(); }
+#endif
 
 void CPUFrameBuffer::clear(const hdr_pixel clearColor) { data_.assign(width_ * height_, clearColor); }
 
@@ -151,6 +155,7 @@ void CPUFrameBuffer::save_to_file(const std::filesystem::path& filePath) const {
     }
 }
 
+#ifndef NO_WINDOWS
 void CPUFrameBuffer::upload_to_gpu(){
     D3DContext& d3d_ctx = D3DContext::Get();
 
@@ -333,5 +338,5 @@ void CPUFrameBuffer::release_gpu_resource() {
         uploadBuffer = nullptr;
     }
 }
-
+#endif  // ifndef NO_WINDOWS
 }  // namespace app
