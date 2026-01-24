@@ -2,7 +2,7 @@ name: CMake build + test on multiple platforms
 
 on:
   push:
-    branches: [ "master", "interactive-mode" ]
+    branches: [ "master" ]
   pull_request:
     branches: [ "master" ]
 
