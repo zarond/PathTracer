@@ -78,7 +78,13 @@ add_library(mikktspace STATIC
 target_include_directories(mikktspace PUBLIC ${LIBS_DIR}/MikkTSpace)
 
 set(GLM_ENABLE_CXX_20 True)
-set(GLM_ENABLE_SIMD_AVX2 "Enable AVX2 optimizations" True)
+
+if(APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+    set(GLM_ENABLE_SIMD_NEON "Enable ARM NEON optimizations" True)
+else()
+    set(GLM_ENABLE_SIMD_AVX2 "Enable AVX2 optimizations" True)
+endif()
+
 add_subdirectory(${LIBS_DIR}/glm)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
@@ -102,7 +108,7 @@ endif()
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     #GLM_FORCE_MESSAGES
-    GLM_FORCE_INTRINSICS
+    #GLM_FORCE_INTRINSICS
     #GLM_FORCE_INLINE 
     GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 )
