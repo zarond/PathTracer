@@ -135,8 +135,7 @@ BBox object_to_ws_bbox(const Object& obj, const Mesh& mesh) {
         auto p = xyz(mat * xyz1(v.position));
         return BBox{p, p};
     };
-    return std::transform_reduce(
-        std::execution::unseq, mesh.vertices.begin(), mesh.vertices.end(), BBox{}, combine, make_bbox);
+    return std::transform_reduce(std::execution::unseq, mesh.vertices.begin(), mesh.vertices.end(), BBox{}, combine, make_bbox);
     // unfortunately no performance benefit using transform_reduce compared to simple for_each vertex expand() on my
     // machine std::execution::par_unseq is slower too
 }
@@ -214,8 +213,7 @@ DOP object_to_ws_dop(const Object& obj, const Mesh& mesh) {
         auto p = xyz(mat * xyz1(v.position));
         return DOP{p};
     };
-    return std::transform_reduce(
-        std::execution::unseq, mesh.vertices.begin(), mesh.vertices.end(), DOP{}, combine, make_dop);
+    return std::transform_reduce(std::execution::unseq, mesh.vertices.begin(), mesh.vertices.end(), DOP{}, combine, make_dop);
     // unfortunately no performance benefit using transform_reduce
 }
 
