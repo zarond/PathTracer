@@ -7,6 +7,11 @@
 #include <glm/glm.hpp>
 #include <vector>
 
+#ifndef NO_WINDOWS
+#define NOMINMAX
+#include <d3d12.h>
+#endif
+
 namespace app {
 
 using namespace glm;
@@ -143,6 +148,10 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
     CPUFrameBuffer();
     CPUFrameBuffer(int width, int height);
 
+#ifndef NO_WINDOWS
+    ~CPUFrameBuffer();
+#endif
+
     void clear(const hdr_pixel clearColor = hdr_pixel{0.0f, 0.0f, 0.0f, 1.0f});
     hdr_pixel& at(int x, int y);
     const hdr_pixel& at(int x, int y) const;
@@ -152,6 +161,21 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
     using CPUTexture::width;
 
     void save_to_file(const std::filesystem::path& filePath) const;
+
+#ifndef NO_WINDOWS
+    void upload_to_gpu();
+    void release_gpu_resource();
+    D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu_handle;
+    D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle;
+    void transition_back_for_copy();
+    bool nearest_filtering = true;
+  private:
+    ID3D12Resource* pTexture = nullptr;
+    ID3D12Resource* uploadBuffer = nullptr;
+    UINT uploadPitch;
+    UINT uploadSize;
+    void* mapped = nullptr;
+#endif
 };
 
 }  // namespace app

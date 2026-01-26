@@ -4,11 +4,28 @@ A small path-tracing renderer written in C++ 20 for educational purposes.
 
 At this time it only uses CPU computation. In the future, however, I will port the algorithms to GPU as well. I have CUDA and DirectX Raytracing (DXR) in mind.
 
-At this time the program is command-line only and doesn't have a user interface; an interactive UI is planned in the future.
+The program has GUI, but you can also run it in command-line mode to render images without opening a window.
+
+The program requires Windows OS due to usage of Windows API and DirectX for UI.
+
+You can use CMake option "NO_WINDOWS" to disable Windows-specific code and build it on Linux or MacOS, but GUI will be disabled in this case.
 
 ## Usage
 
-Build with CMake and run the `PathTracer` executable. Use `-h` flag to list options.
+Build with CMake and run the `PathTracer` executable.
+
+    git submodule update --init --recursive
+    cmake -B ./build -DCMAKE_BUILD_TYPE=Release
+    cmake --build ./build --config Release
+    cd build
+    ctest -C Release --output-on-failure
+
+Use `-h` flag to list options.
+
+By default, without any flags, the program opens a window, allowing loading a Gltf model with a file browser,
+but you can also provide command-line arguments.
+
+Provide `-no-gui` flag to disable GUI and run in command-line mode. In this case you must provide at least a model path with `-f`.
 
 Provide a path to a valid GLTF or GLB file with `-f` flag to render the model.
 
@@ -26,7 +43,7 @@ Additional command-line options include:
  - maximum number of ray bounces `-b`
  -  and some others...
 
-Try it by copying `PathTracer` executable to `/example` folder and running
+Try it by running this command in binary (build/Release) folder:
 
     ./PathTracer -f ./scene.glb -e ./farmland_overcast_1k.hdr -o snapshot.png -s 300 -b 6
 
@@ -34,7 +51,13 @@ This image was rendered in 199 seconds on Intel Core i7-11800H @ 2.30GHz;
 
 ![rendered image](example/render.png)
 
-Same scene took 110 seconds in Blender CPU rendering with similar parameters
+Same scene took 110 seconds in Blender CPU rendering with similar parameters.
+
+Screenshot from GUI mode with AO rendering:
+
+![gui_screen](example/gui_screenshot.png)
+
+Check out this [Video on LinkedIn](https://www.linkedin.com/posts/artur-makoev-85755a2b3_hello-friends-i-would-like-to-show-you-my-activity-7419366989909045249-WOIP) to see how the program works in action.
 
 ## Features
 
@@ -54,6 +77,6 @@ This project uses the following libraries:
  - STB
  - argparse
  - MikkTSpace
- - *Google Test (unused for now)*
- - *Dear IMGUI (unused for now)*
+ - Dear IMGUI
+ - Google Test
 

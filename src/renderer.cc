@@ -6,6 +6,7 @@
 #include <glm/glm.hpp>
 #include <ranges>
 #include <vector>
+#include <random>
 
 #include "arguments.h"
 #include "brdf.h"
@@ -41,30 +42,48 @@ void Renderer::update_camera_transform_state(
 void Renderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap) {
     modelRef = &model;
     envmapRef = &envmap;
-    switch (renderSettings_.accelStructType) {
-        case AccelerationStructureType::BVH:
-            accelStruct = std::make_unique<BVH_AS>(model, renderSettings_.maxTrianglesPerBVHLeaf);
-            break;
-        case AccelerationStructureType::Naive:
-        default:
-            accelStruct = std::make_unique<NaiveAS>(model);
-            break;
-    }
+    reload_acceleration_structure();
+    reload_ray_program();
+}
+
+void Renderer::load_envmap(const CPUTexture<hdr_pixel>& envmap) {
+    envmapRef = &envmap;
+    reload_ray_program();
+}
+
+void Renderer::load_model(const Model& model) {
+    modelRef = &model;
+    reload_acceleration_structure();
+    reload_ray_program();
+}
+
+void Renderer::reload_ray_program() {
     switch (renderSettings_.programMode) {
         case RayProgramMode::AmbientOcclusion:
-            rayProgram = std::make_unique<AOProgram>(model, renderSettings_);
+            rayProgram = std::make_unique<AOProgram>(*modelRef, renderSettings_);
             break;
         case RayProgramMode::PBR:
-            rayProgram = std::make_unique<PBRProgram>(model, envmap, renderSettings_);
+            rayProgram = std::make_unique<PBRProgram>(*modelRef, *envmapRef, renderSettings_);
             break;
         case RayProgramMode::RayCaster:
         default:
-            rayProgram = std::make_unique<RayCasterProgram>(model, envmap, renderSettings_);
+            rayProgram = std::make_unique<RayCasterProgram>(*modelRef, *envmapRef, renderSettings_);
+    }
+}
+void Renderer::reload_acceleration_structure() {
+    switch (renderSettings_.accelStructType) {
+        case AccelerationStructureType::BVH:
+            accelStruct = std::make_unique<BVH_AS>(*modelRef, renderSettings_.maxTrianglesPerBVHLeaf);
+            break;
+        case AccelerationStructureType::Naive:
+        default:
+            accelStruct = std::make_unique<NaiveAS>(*modelRef);
+            break;
     }
 }
 
-ray_with_payload Renderer::generate_camera_ray(int x, int y, float inv_width, float inv_height, int sampleIndex) const noexcept {
-    fvec2 pixel_coords = fvec2{static_cast<float>(x), static_cast<float>(y)} + subsamplesPositions[sampleIndex];
+ray_with_payload Renderer::generate_camera_ray(int x, int y, float inv_width, float inv_height, int sampleIndex, fvec2 jitter) const noexcept {
+    fvec2 pixel_coords = fvec2{static_cast<float>(x), static_cast<float>(y)} + subsamplesPositions[sampleIndex] + jitter;
     auto ndc_coords = ndc_from_pixel(pixel_coords.x, pixel_coords.y, inv_width, inv_height);
     auto direction = xyz(NDC2WorldMatrix_ * ndc_coords);
     return ray_with_payload{
@@ -74,15 +93,27 @@ ray_with_payload Renderer::generate_camera_ray(int x, int y, float inv_width, fl
         false};
 }
 
-void Renderer::render_frame(CPUFrameBuffer& framebuffer) {
+void Renderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, bool iterative, int iteration_count) {
+    // atomic<bool>& instead of bool continuous?
     assert(modelRef);
     if (modelRef == nullptr || envmapRef == nullptr || accelStruct == nullptr || rayProgram == nullptr) {
         throw std::runtime_error("One of components is nullptr in Renderer::render_frame()");
     }
+    progress_ = 0.0f;
+    render_state_ = RenderingState::Rendering;
 
     generate_subsample_positions();
 
-    framebuffer.clear(hdr_pixel{0.0f, 0.0f, 0.0f, 1.0f});
+    glm::fvec2 jitter = glm::fvec2{0.0f};
+    float inverse_iteration_count = 1.0f;
+    if (iterative) {
+        static std::minstd_rand gen = std::minstd_rand(std::random_device{}());
+        static std::uniform_real_distribution<float> dist{-0.5f, 0.5f};
+        jitter = fvec2{dist(gen), dist(gen)};
+        float n_sqrt = sqrtf(renderSettings_.samplesPerPixel);
+        jitter /= n_sqrt;
+        inverse_iteration_count = 1.0f / static_cast<float>(iteration_count);
+    }
 
     int width = framebuffer.width();
     int height = framebuffer.height();
@@ -96,18 +127,21 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer) {
     }
 
     std::for_each(std::execution::par_unseq, indices.begin(), indices.end(),
-        [this, width, inv_width, inv_height, &framebuffer, reserved_size](int y) {
+        [this, width, inv_width, inv_height, &framebuffer, reserved_size, iterative, inverse_iteration_count, jitter](int y) {
             static thread_local std::vector<ray_with_payload> rays;
             rays.clear();
             rays.reserve(reserved_size);
 
             for (int x = 0; x < width; ++x) {
+                if (render_state_.load(std::memory_order_relaxed) == RenderingState::Cancelling) {
+                    return;
+                }
                 SamplesAccumulator<fvec3> final_color;
 
                 for (unsigned int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
                     fvec3 sample_col{};
 
-                    rays.push_back(generate_camera_ray(x, y, inv_width, inv_height, i));
+                    rays.push_back(generate_camera_ray(x, y, inv_width, inv_height, i, jitter));
                     while (rays.size() > 0) {
                         assert(rays.size() <= reserved_size);
                         auto ray = rays.back();
@@ -117,9 +151,27 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer) {
                     }
                     final_color.add_sample(sample_col);
                 }
-                framebuffer.at(x, y) = hdr_pixel{final_color.get_mean(), 1.0f};
+                if (!iterative) {
+                    framebuffer.at(x, y) = hdr_pixel{final_color.get_mean(), 1.0f};
+                } else {
+                    auto& p = framebuffer.at(x, y);
+                    const auto f0 = xyz(p);
+                    const auto f1 = final_color.get_mean();
+                    p = hdr_pixel{glm::mix(f0, f1, inverse_iteration_count), 1.0f};
+                    // todo: make framebuffer into SamplesAccumulator internally?
+                }
             }
+            progress_ = max(progress_, y * inv_height);
         });
+
+    if (render_state_ == RenderingState::Rendering) {
+        progress_ = 1.0f;
+    }
+    if (continuous && (render_state_ != RenderingState::Cancelling)) {
+        render_state_ = RenderingState::ReadyToStart;
+    } else {
+        render_state_ = RenderingState::Idle;
+    }
 }
 
 void Renderer::set_render_settings(const RenderSettings& settings) { renderSettings_ = settings; }
@@ -130,6 +182,22 @@ BBox Renderer::get_scene_bound() const {
         return accelStruct->get_scene_bounds();
     }
     return BBox{};
+}
+
+float Renderer::get_progress() const { return progress_; }
+
+void Renderer::cancel_rendering() {
+    if (render_state_ == Rendering) {
+        render_state_ = Cancelling;
+    }
+}
+
+Renderer::RenderingState Renderer::get_rendering_state() const { return render_state_; }
+
+void Renderer::set_render_starting_state() {
+    if (render_state_ == Idle) {
+        render_state_ = ReadyToStart; 
+    }
 }
 
 void Renderer::generate_subsample_positions() {

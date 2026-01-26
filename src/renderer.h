@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 #include <memory>
 #include <vector>
+#include <atomic>
 
 #include "acceleration_structure.h"
 #include "arguments.h"
@@ -44,10 +45,27 @@ class Renderer {
         fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams);
 
     void load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap);  // should be in constructor?
-    void render_frame(CPUFrameBuffer& framebuffer);
+    void load_envmap(const CPUTexture<hdr_pixel>& envmap);
+    void load_model(const Model& model);
+    void reload_ray_program();
+    void reload_acceleration_structure();
+
+    void render_frame(CPUFrameBuffer& framebuffer, bool continuous, bool iterative, int iteration_count);
     void set_render_settings(const RenderSettings& settings);
     RenderSettings get_render_settings() const;
     BBox get_scene_bound() const;
+
+    enum RenderingState { 
+        Idle, 
+        ReadyToStart,
+        Rendering, 
+        Cancelling
+    };
+
+    float get_progress() const;
+    void cancel_rendering();
+    RenderingState get_rendering_state() const;
+    void set_render_starting_state();
 
     ~Renderer() = default;
 
@@ -63,8 +81,12 @@ class Renderer {
     fmat4x4 NDC2WorldMatrix_ = fmat4x4(1.0f);
     fvec3 origin_ = fvec3{0.0f};
 
+    float progress_ = 0.0f;
+    std::atomic<RenderingState> render_state_ = Idle;
+
   private:
-    ray_with_payload generate_camera_ray(int x, int y, float inv_width, float inv_height, int sampleIndex = 0) const noexcept;
+    ray_with_payload generate_camera_ray(
+        int x, int y, float inv_width, float inv_height, int sampleIndex = 0, fvec2 jitter = {0.0f, 0.0f}) const noexcept;
     void generate_subsample_positions();
 
     std::vector<fvec2> subsamplesPositions;
