@@ -51,7 +51,13 @@ This image was rendered in 199 seconds on Intel Core i7-11800H @ 2.30GHz;
 
 ![rendered image](example/render.png)
 
-Same scene took 110 seconds in Blender CPU rendering with similar parameters
+Same scene took 110 seconds in Blender CPU rendering with similar parameters.
+
+Screenshot from GUI mode with AO rendering:
+
+![gui_screen](example/gui_screenshot.png)
+
+Check out this [Video on LinkedIn](https://www.linkedin.com/posts/artur-makoev-85755a2b3_hello-friends-i-would-like-to-show-you-my-activity-7419366989909045249-WOIP) to see how the program works in action.
 
 ## Features
 
