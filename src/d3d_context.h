@@ -13,7 +13,7 @@ namespace app {
 
 using Microsoft::WRL::ComPtr;
 
-// Config for example app
+// Config
 static const int APP_NUM_FRAMES_IN_FLIGHT = 2;  // double buffering
 static const int APP_NUM_BACK_BUFFERS = 2;
 static const int APP_SRV_HEAP_SIZE = 64;
@@ -80,7 +80,6 @@ struct D3DContext {
     void WaitForPendingOperations();
     void WaitForPending—opy();
     void InitCommandList(ID3D12CommandAllocator& CommandAllocator);
-    void PopulateList();
     void DispatchCommandList();
     void CreateRenderTarget();
     void CleanupRenderTarget();

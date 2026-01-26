@@ -93,7 +93,7 @@ ray_with_payload Renderer::generate_camera_ray(int x, int y, float inv_width, fl
         false};
 }
 
-void Renderer::render_frame(CPUFrameBuffer& framebuffer, bool clear, bool continuous, bool iterative, int iteration_count) {
+void Renderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, bool iterative, int iteration_count) {
     // atomic<bool>& instead of bool continuous?
     assert(modelRef);
     if (modelRef == nullptr || envmapRef == nullptr || accelStruct == nullptr || rayProgram == nullptr) {
@@ -113,10 +113,6 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer, bool clear, bool contin
         float n_sqrt = sqrtf(renderSettings_.samplesPerPixel);
         jitter /= n_sqrt;
         inverse_iteration_count = 1.0f / static_cast<float>(iteration_count);
-    }
-
-    if (clear) {
-        framebuffer.clear(hdr_pixel{0.0f, 0.0f, 0.0f, 1.0f});
     }
 
     int width = framebuffer.width();

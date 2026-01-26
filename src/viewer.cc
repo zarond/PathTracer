@@ -34,7 +34,7 @@ void Viewer::resize_window(const ivec2& newDimensions) {
 ivec2 Viewer::get_window_dimensions() const { return windowDimensions_; }
 
 void Viewer::render() { 
-    renderer_.render_frame(framebuffer_, false, continuous_rendering, iterative_rendering, iterations_counter);
+    renderer_.render_frame(framebuffer_, continuous_rendering, iterative_rendering, iterations_counter);
     if (iterative_rendering) {
         ++iterations_counter;
     } else {

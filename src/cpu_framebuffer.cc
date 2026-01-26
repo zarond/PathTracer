@@ -195,14 +195,11 @@ void CPUFrameBuffer::upload_to_gpu(){
         .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
     };
 
-    bool is_created = false;
-
     if (pTexture == nullptr) {
         D3DContext::Get().g_pd3dSrvDescHeapAlloc.Alloc(&srv_cpu_handle, &srv_gpu_handle);
 
         d3d_ctx.g_pd3dDevice->CreateCommittedResource(
             &def_props, D3D12_HEAP_FLAG_NONE, &tex_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&pTexture));
-        is_created = true;
 
         // Create a shader resource view for the texture
         const D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{

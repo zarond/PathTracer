@@ -1,21 +1,21 @@
 #include <chrono>
 #include <iostream>
 
+#ifndef NO_WINDOWS
 #include <thread>
 #include <stop_token>
 #include <atomic>
 #include <mutex>
+#include <glm/ext.hpp>
+#endif
 
 #include "arguments.h"
 #include "cpu_framebuffer.h"
 #include "model_loader.h"
 #include "viewer.h"
 
-#include <glm/ext.hpp>
-
-#define NOMINMAX
-
 #ifndef NO_WINDOWS
+#define NOMINMAX
 #include <imgui.h>
 #include "backends/imgui_impl_win32.h"
 #include "backends/imgui_impl_dx12.h"
@@ -99,12 +99,12 @@ int main(int argc, char* argv[]) {
         while (!stop.stop_requested()) {
             if (viewer.get_rendering_state() == Renderer::ReadyToStart) {
                 render_lambda();
-            }
-            if (viewer.continuous_rendering) {
-                continue;
+                if (viewer.continuous_rendering) {
+                    continue;
+                }
             }
             viewer.cv_render.wait(lock, [&stop, &viewer]() 
-                { return !stop.stop_requested() || (viewer.get_rendering_state() == Renderer::ReadyToStart); });
+                { return stop.stop_requested() || (viewer.get_rendering_state() == Renderer::ReadyToStart); });
         }
     };
 
@@ -459,7 +459,6 @@ int main(int argc, char* argv[]) {
         
         // end frame, change resource state
         viewer.get_framebuffer().transition_back_for_copy();
-
         barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
         barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
         d3d_ctx.g_pd3dCommandList->ResourceBarrier(1, &barrier);

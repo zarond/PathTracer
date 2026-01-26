@@ -50,7 +50,7 @@ class Renderer {
     void reload_ray_program();
     void reload_acceleration_structure();
 
-    void render_frame(CPUFrameBuffer& framebuffer, bool clear, bool continuous, bool iterative, int iteration_count);
+    void render_frame(CPUFrameBuffer& framebuffer, bool continuous, bool iterative, int iteration_count);
     void set_render_settings(const RenderSettings& settings);
     RenderSettings get_render_settings() const;
     BBox get_scene_bound() const;

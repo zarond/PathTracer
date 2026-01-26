@@ -234,7 +234,6 @@ void D3DContext::WaitForPending—opy() {
 
 void D3DContext::CreateRenderTarget() {
     for (UINT i = 0; i < APP_NUM_BACK_BUFFERS; i++) {
-        //g_mainRenderTargetResource[i].Reset();
         g_pSwapChain->GetBuffer(i, IID_PPV_ARGS(&g_mainRenderTargetResource[i]));
         
         D3D12_RENDER_TARGET_VIEW_DESC rtv{};
