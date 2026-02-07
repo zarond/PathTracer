@@ -16,6 +16,10 @@
 #include "d3d_context.h"
 #endif
 
+namespace app {
+    std::array<float, 256> SRGB8_TO_LINEAR_LUT = make_srgb_lut();
+}
+
 namespace {
 using namespace app;
 

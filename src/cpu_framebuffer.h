@@ -16,6 +16,9 @@ namespace app {
 
 using namespace glm;
 
+// init-time initialized LUT
+extern std::array<float, 256> SRGB8_TO_LINEAR_LUT;
+
 inline float linear_to_srgb(float channel) {
     if (channel <= 0.0031308f) {
         return 12.92f * channel;
@@ -30,6 +33,16 @@ inline float srgb_to_linear(float channel) {
         return std::pow((channel + 0.055f) / 1.055f, 2.4f);
     }
 }
+inline fvec3 linear_to_srgb(const fvec3 channel) {
+    auto low = 12.92f * channel;
+    auto high = 1.055f * glm::pow(channel, fvec3{1.0f / 2.4f}) - 0.055f;
+    return mix(high, low, lessThanEqual(channel, fvec3{0.0031308f}));
+}
+inline fvec3 srgb_to_linear(const fvec3 channel) {
+    auto low = channel / 12.92f;
+    auto high = glm::pow((channel + 0.055f) / 1.055f, fvec3{2.4f});
+    return mix(high, low, lessThanEqual(channel, fvec3{0.04045f}));
+}
 
 using sdr_pixel = std::array<std::uint8_t, 4>;
 using hdr_pixel = fvec4;
@@ -40,27 +53,46 @@ concept PixelType = std::is_same_v<T, sdr_pixel> || std::is_same_v<T, hdr_pixel>
 template <PixelType pixel>
 inline fvec4 pixel_to_float(pixel sample) {
     return fvec4(
-        static_cast<float>(sample[0]) / 255.0f, 
-        static_cast<float>(sample[1]) / 255.0f,
-        static_cast<float>(sample[2]) / 255.0f, 
-        static_cast<float>(sample[3]) / 255.0f);
+        static_cast<float>(sample[0]), 
+        static_cast<float>(sample[1]), 
+        static_cast<float>(sample[2]),
+        static_cast<float>(sample[3])) / 255.0f;
 }
+// unused at the time, because I use LUT for UINT8 sRGB to linear float conversion
 template <PixelType pixel>
-inline fvec4 srgb_pixel_to_float(pixel sample) {
-    return fvec4(
-        srgb_to_linear(static_cast<float>(sample[0]) / 255.0f),
-        srgb_to_linear(static_cast<float>(sample[1]) / 255.0f), 
-        srgb_to_linear(static_cast<float>(sample[2]) / 255.0f),
-        static_cast<float>(sample[3]) / 255.0f);
+inline fvec4 srgb_pixel_to_float(const pixel sample) {
+    fvec4 in = pixel_to_float(sample);
+    return fvec4(srgb_to_linear(in), in.w);
 }
 
 inline sdr_pixel float_pixel_to_srgb8(hdr_pixel sample) {
     sample = clamp(sample, 0.0f, 1.0f);
+    auto out = fvec4{linear_to_srgb(sample), sample.a} * 255.0f + 0.5f;
     return sdr_pixel{
-        static_cast<uint8_t>(linear_to_srgb(sample.r) * 255 + 0.5f),
-        static_cast<uint8_t>(linear_to_srgb(sample.g) * 255 + 0.5f),
-        static_cast<uint8_t>(linear_to_srgb(sample.b) * 255 + 0.5f),
-        static_cast<uint8_t>(linear_to_srgb(sample.a) * 255 + 0.5f)};
+        static_cast<uint8_t>(out.x), 
+        static_cast<uint8_t>(out.y), 
+        static_cast<uint8_t>(out.z),
+        static_cast<uint8_t>(out.w)};
+}
+
+inline std::array<float, 256> make_srgb_lut() {
+    std::array<float, 256> lut{};
+
+    for (int i = 0; i < 256; ++i) {
+        float x = i / 255.0f;
+        lut[i] = srgb_to_linear(x);
+    }
+
+    return lut;
+}
+
+static inline float srgb8_to_linear(const uint8_t c) { return SRGB8_TO_LINEAR_LUT[c]; }
+static inline fvec4 pixel_srgb8_to_linear(const sdr_pixel p) {
+    return fvec4{
+        srgb8_to_linear(p[0]), 
+        srgb8_to_linear(p[1]), 
+        srgb8_to_linear(p[2]), 
+        static_cast<float>(p[3]) / 255.0f};
 }
 
 template <PixelType pixel>
@@ -76,7 +108,7 @@ class CPUTexture {
     int width() const { return width_; }
     int height() const { return height_; }
 
-    fvec4 sample_nearest(fvec2 uv, bool srgb_tex = false) const {  // Idea: sampler to individual class
+    fvec4 sample_nearest(const fvec2 uv, const bool srgb_tex = false) const {  // Idea: sampler to individual class
         auto xf = std::fmod(uv.x, 1.0f);
         auto yf = std::fmod(uv.y, 1.0f);
         if (xf < 0.0f) xf += 1.0f;
@@ -86,13 +118,13 @@ class CPUTexture {
         assert(x < width_ && y < height_);
         pixel sample = data_[y * width_ + x];
         if (srgb_tex) {
-            return srgb_pixel_to_float(sample);
+            return pixel_srgb8_to_linear(sample);
         } else {
             return pixel_to_float(sample);
         }
     }
 
-    fvec4 sample_bilinear(fvec2 uv, bool srgb_tex = false) const {
+    fvec4 sample_bilinear(const fvec2 uv, const bool srgb_tex = false) const {
         auto xf = uv.x * static_cast<float>(width_) - 0.5f;
         auto yf = uv.y * static_cast<float>(height_) - 0.5f;
         float tx = xf - std::floor(xf);
@@ -111,10 +143,18 @@ class CPUTexture {
         const pixel c11 = data_[y1 * width_ + x1];
         fvec4 col00, col10, col01, col11;
         if constexpr (std::is_same_v<pixel, sdr_pixel>) {
-            col00 = srgb_tex ? srgb_pixel_to_float(c00) : pixel_to_float(c00);
-            col10 = srgb_tex ? srgb_pixel_to_float(c10) : pixel_to_float(c10);
-            col01 = srgb_tex ? srgb_pixel_to_float(c01) : pixel_to_float(c01);
-            col11 = srgb_tex ? srgb_pixel_to_float(c11) : pixel_to_float(c11);
+            if (srgb_tex) {
+                col00 = pixel_srgb8_to_linear(c00);
+                col10 = pixel_srgb8_to_linear(c10);
+                col01 = pixel_srgb8_to_linear(c01);
+                col11 = pixel_srgb8_to_linear(c11);
+            }
+            else {
+                col00 = pixel_to_float(c00);
+                col10 = pixel_to_float(c10);
+                col01 = pixel_to_float(c01);
+                col11 = pixel_to_float(c11);
+            }
         } else if constexpr (std::is_same_v<pixel, hdr_pixel>) {
             col00 = c00;
             col10 = c10;
