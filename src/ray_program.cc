@@ -11,6 +11,7 @@ using namespace glm;
 using namespace app;
 
 constexpr float kEpsilon = 1e-8f;
+constexpr float kEpsilon5 = 1e-5f;
 constexpr float kMaxBRDF = 10.0f;
 
 fvec3 ImportanceSampleCosDir(fvec2 xi) {
@@ -60,7 +61,7 @@ float G1(float NdW, float k) { return 1.0f / (NdW * (1.0f - k) + k); }
 // [ http://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf ]
 float V_Schlick(float NoL, float NoV, float Roughness)  // Roughness is perceptual roughness
 {
-    float k = max(Roughness * Roughness * 0.5f, 1e-5f);
+    float k = max(Roughness * Roughness * 0.5f, kEpsilon5);
     return G1(NoL, k) * G1(NoV, k);  // should be G1*G1 / 4.0;
 }
 fvec3 Tangent2World(fvec3 v, fvec3 T, fvec3 B, fvec3 N) { return T * v.x + B * v.y + N * v.z; }
@@ -203,7 +204,7 @@ fvec3 AOProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_inf
     }
 
     auto ws_pos = ray_.origin + ray_.direction * hit.t;
-    auto new_pos = ws_pos + point.normal * 1e-5f;  // offset to avoid self-intersection
+    auto new_pos = ws_pos + point.normal * kEpsilon5;  // offset to avoid self-intersection
 
     std::uint8_t new_depth = 0;  // only one AO bounce
 
@@ -216,7 +217,7 @@ fvec3 AOProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_inf
         auto new_direction = ImportanceSampleCosDir(rand);
         assert(new_direction.z > 0.0f);
         new_direction = Tangent2World(new_direction, TBN);
-        assert(abs(length(new_direction) - 1.0f) < 1e-5f);
+        assert(abs(length(new_direction) - 1.0f) < kEpsilon5);
         ray_with_payload new_ray{{new_pos, new_direction}, fvec4(inv_aoSamples), new_depth, true};
         ray_collection.push_back(new_ray);
     }
@@ -265,7 +266,7 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
     if (alpha != 1.0f) {
         ray_with_payload new_ray = ray_;
         new_ray.origin = point.position +
-                         (exiting_volume ? 1.0f : -1.0f) * point.normal * 1e-5f;  // offset to avoid self-intersection
+                         (exiting_volume ? 1.0f : -1.0f) * point.normal * kEpsilon5;  // offset to avoid self-intersection
         new_ray.payload *= (1.0f - alpha);
         ray_collection.push_back(new_ray);
     }
@@ -310,13 +311,13 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
         auto l = ImportanceSampleCosDir(rand);
         assert(l.z > 0.0f);
         l = normalize(Tangent2World(l, TBN));  // normalizing for better accuracy
-        assert(abs(length(l) - 1.0f) < 1e-5f);
+        assert(abs(length(l) - 1.0f) < kEpsilon5);
 
         const auto h = normalize(v + l);
         float LdH = clamp(dot(l, h), 0.0f, 1.0f);
 
         auto F = fvec3(1.0f) - fresnel_schlick(f0, f90, LdH);
-        auto new_pos = point.position + point.normal * 1e-5f;  // offset to avoid self-intersection
+        auto new_pos = point.position + point.normal * kEpsilon5;  // offset to avoid self-intersection
         auto new_payload = F * diffuse_color * (1.0f - transmission) * attenuation * ray_.payload * alpha;
         ray_with_payload new_ray{{new_pos, l}, new_payload, new_depth, false};
         ray_collection.push_back(new_ray);
@@ -327,7 +328,7 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
         auto m = importanceSampleGGX(rand, linear_roughness);
         assert(m.z > 0.0f);
         m = Tangent2World(m, TBN);
-        assert(abs(length(m) - 1.0f) < 1e-5f);
+        assert(abs(length(m) - 1.0f) < kEpsilon5);
 
         auto N = TBN[2];
         auto new_pos_offset_dir = point.normal;
@@ -348,7 +349,7 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
 
         const bool sample_transmission = (diffuse_color * transmission != fvec3(0.0f) && (l != fvec3(0.0f)));
         if (sample_transmission) {  // transmission
-            assert(abs(length(l) - 1.0f) < 1e-5f);
+            assert(abs(length(l) - 1.0f) < kEpsilon5);
             auto h = -(interface_ior * v + l);  // transmission half-vector;
                                                 // minus is because normal points into into the medium with the lower
                                                 // index of refraction (e.g., air). (convention)
@@ -362,7 +363,7 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
 
             auto brdf = (fvec3(1.0f) - F) * (G * VdH * LdN / NdM);
             brdf = min(brdf, fvec3(kMaxBRDF));                           // clamp to avoid fireflies
-            auto new_pos = point.position - new_pos_offset_dir * 1e-5f;  // offset to avoid self-intersection
+            auto new_pos = point.position - new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
             auto new_payload = diffuse_color * transmission * attenuation * brdf * ray_.payload * alpha;
             ray_with_payload new_ray{
                 {new_pos, normalize(l)}, new_payload, new_depth, false};  // normalizing for better accuracy
@@ -370,7 +371,7 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
         }
         {  // specular reflection
             auto h = m;
-            assert(abs(length(h) - 1.0f) < 1e-5f);
+            assert(abs(length(h) - 1.0f) < kEpsilon5);
 
             l = normalize(reflect(-v, h));  // normalizing for better accuracy
             float LdH = clamp(dot(l, h), 0.0f, 1.0f);
@@ -381,7 +382,7 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
             // auto G = V_Schlick(LdN, VdN, roughness);
             auto brdf = F * (G * LdN * LdH / NdH);
             brdf = min(brdf, fvec3(kMaxBRDF));                           // clamp to avoid fireflies
-            auto new_pos = point.position + new_pos_offset_dir * 1e-5f;  // offset to avoid self-intersection
+            auto new_pos = point.position + new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
             auto new_payload = attenuation * brdf * ray_.payload * alpha;
             ray_with_payload new_ray{{new_pos, l}, new_payload, new_depth, false};
             ray_collection.push_back(new_ray);

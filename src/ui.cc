@@ -109,7 +109,7 @@ LRESULT WINAPI DXWindow::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
             {
                 D3DContext& d3d_ctx = D3DContext::Get();
                 if (d3d_ctx.g_pd3dDevice != nullptr && wParam != SIZE_MINIMIZED) {
-                    d3d_ctx.resize_swapchain(LOWORD(lParam), HIWORD(lParam));
+                    d3d_ctx.ResizeSwapchain(LOWORD(lParam), HIWORD(lParam));
                 }
             }
             return 0;

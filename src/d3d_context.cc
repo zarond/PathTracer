@@ -264,7 +264,7 @@ FrameContext* D3DContext::WaitForNextFrameContext() {
     return frame_context;
 }
 
-void D3DContext::resize_swapchain(UINT Width, UINT Height) {
+void D3DContext::ResizeSwapchain(UINT Width, UINT Height) {
     CleanupRenderTarget();
     DXGI_SWAP_CHAIN_DESC1 desc = {};
     g_pSwapChain->GetDesc1(&desc);

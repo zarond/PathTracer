@@ -85,7 +85,7 @@ struct D3DContext {
     void CleanupRenderTarget();
     FrameContext* WaitForNextFrameContext();
 
-    void resize_swapchain(UINT Width, UINT Height);
+    void ResizeSwapchain(UINT Width, UINT Height);
 
     // Singleton pattern
   public:

@@ -13,7 +13,6 @@
 
 namespace {
 using namespace glm;
-using namespace app;
 
 fvec4 ndc_from_pixel(float x, float y, float inv_width, float inv_height) {
     float ndc_x = x * inv_width * 2.0f - 1.0f;
