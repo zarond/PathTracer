@@ -134,6 +134,8 @@ void Viewer::load_model(Model&& model) {
     renderer_.load_model(model_);
 }
 
+const Model& Viewer::get_model() const { return model_; }
+
 CPUFrameBuffer& Viewer::get_framebuffer() { return framebuffer_; }
 
 void Viewer::reset_iteration_counter() { iterations_counter = 1; }
@@ -162,5 +164,7 @@ fvec3 Viewer::get_euler_angles_camera() const {
     glm::quat quat = glm::quatLookAt(direction_, up_);
     return glm::eulerAngles(quat);
 }
+
+fmat4x4 Viewer::get_NDC2WorldMatrix() const { return renderer_.get_NDC2WorldMatrix(); }
 
 }  // namespace app

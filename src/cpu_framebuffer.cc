@@ -190,7 +190,7 @@ void CPUFrameBuffer::upload_to_gpu(){
         .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
         .SampleDesc =  {1, 0},
         .Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN,
-        .Flags = D3D12_RESOURCE_FLAG_NONE
+        .Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS // for raytracing
     };
 
     const D3D12_HEAP_PROPERTIES def_props{
@@ -201,6 +201,7 @@ void CPUFrameBuffer::upload_to_gpu(){
 
     if (pTexture == nullptr) {
         D3DContext::Get().g_pd3dSrvDescHeapAlloc.Alloc(&srv_cpu_handle, &srv_gpu_handle);
+        D3DContext::Get().g_pd3dSrvDescHeapAlloc.Alloc(&uav_cpu_handle, &uav_gpu_handle);
 
         d3d_ctx.g_pd3dDevice->CreateCommittedResource(
             &def_props, D3D12_HEAP_FLAG_NONE, &tex_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&pTexture));
@@ -217,6 +218,19 @@ void CPUFrameBuffer::upload_to_gpu(){
                 },
         };
         d3d_ctx.g_pd3dDevice->CreateShaderResourceView(pTexture, &srvDesc, srv_cpu_handle);
+
+        // Create a unordered access view for the texture
+        const D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{
+            .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+            .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D,
+            .Texture2D =
+                D3D12_TEX2D_UAV{
+                    .MipSlice = 0,
+                    .PlaneSlice = 0,
+                },
+        };
+        d3d_ctx.g_pd3dDevice->CreateUnorderedAccessView(pTexture, nullptr, &uavDesc, uav_cpu_handle);
+
     }
     
     HRESULT hr;
@@ -290,6 +304,7 @@ void CPUFrameBuffer::upload_to_gpu(){
     assert(SUCCEEDED(hr));
     d3d_ctx.g_pd3dCommandQueue->Wait(d3d_ctx.copy_fence.Get(), d3d_ctx.copy_fenceLastSignaledValue);
 
+    // Transition the texture to be a shader resource for use in shaders
     const D3D12_RESOURCE_BARRIER barrier_to_psr = {
         .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
         .Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE,
@@ -304,7 +319,7 @@ void CPUFrameBuffer::upload_to_gpu(){
     d3d_ctx.g_pd3dCommandList->ResourceBarrier(1, &barrier_to_psr);
 }
 
-void CPUFrameBuffer::transition_back_for_copy() {
+void CPUFrameBuffer::transition_from_srv_to_copy() {
     if (!pTexture) return;
 
     D3DContext& d3d_ctx = D3DContext::Get();
@@ -323,9 +338,47 @@ void CPUFrameBuffer::transition_back_for_copy() {
     d3d_ctx.g_pd3dCommandList->ResourceBarrier(1, &toCopyDest);
 }
 
+void CPUFrameBuffer::transition_from_srv_to_uav() {
+    if (!pTexture) return;
+
+    D3DContext& d3d_ctx = D3DContext::Get();
+
+    const D3D12_RESOURCE_BARRIER toUAV = {
+        .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
+        .Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE,
+        .Transition =
+            D3D12_RESOURCE_TRANSITION_BARRIER{
+                .pResource = pTexture,
+                .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+                .StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                .StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            },
+    };
+    d3d_ctx.g_pd3dCommandList->ResourceBarrier(1, &toUAV);
+}
+void CPUFrameBuffer::transition_from_uav_to_srv() {
+    if (!pTexture) return;
+
+    D3DContext& d3d_ctx = D3DContext::Get();
+
+    const D3D12_RESOURCE_BARRIER toSRV = {
+        .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
+        .Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE,
+        .Transition =
+            D3D12_RESOURCE_TRANSITION_BARRIER{
+                .pResource = pTexture,
+                .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
+                .StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                .StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+            },
+    };
+    d3d_ctx.g_pd3dCommandList->ResourceBarrier(1, &toSRV);
+}
+
 void CPUFrameBuffer::release_gpu_resource() {
     if (pTexture) {
         D3DContext::Get().g_pd3dSrvDescHeapAlloc.Free(srv_cpu_handle, srv_gpu_handle);
+        D3DContext::Get().g_pd3dSrvDescHeapAlloc.Free(uav_cpu_handle, uav_gpu_handle);
         pTexture->Release();
         pTexture = nullptr;
     }

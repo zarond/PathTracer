@@ -33,9 +33,7 @@ void Renderer::update_camera_transform_state(
         perspectiveParams.aspectRatio.value_or(1.77777777777777777f),
         perspectiveParams.znear, 
         perspectiveParams.zfar.value_or(1000.f));
-    auto viewMatrixNoTranslation = viewMatrix_;
-    viewMatrixNoTranslation[3] = fvec4(0.0f, 0.0f, 0.0f, 1.0f);  // Remove translation from view matrix for direction calculation
-    NDC2WorldMatrix_ = glm::inverse(projectionMatrix_ * viewMatrixNoTranslation);
+    NDC2WorldMatrix_ = glm::inverse(projectionMatrix_ * viewMatrix_);
 }
 
 void Renderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap) {
@@ -84,9 +82,11 @@ void Renderer::reload_acceleration_structure() {
 ray_with_payload Renderer::generate_camera_ray(int x, int y, float inv_width, float inv_height, int sampleIndex, fvec2 jitter) const noexcept {
     fvec2 pixel_coords = fvec2{static_cast<float>(x), static_cast<float>(y)} + subsamplesPositions[sampleIndex] + jitter;
     auto ndc_coords = ndc_from_pixel(pixel_coords.x, pixel_coords.y, inv_width, inv_height);
-    auto direction = xyz(NDC2WorldMatrix_ * ndc_coords);
+    auto world_coords = NDC2WorldMatrix_ * ndc_coords;
+    world_coords /= world_coords.w;
+    auto direction = normalize(xyz(world_coords) - origin_);
     return ray_with_payload{
-        {origin_, normalize(direction)}, 
+        {origin_, direction}, 
         fvec4(1.0f), 
         static_cast<std::uint8_t>(renderSettings_.maxRayBounces), 
         false};
@@ -220,5 +220,7 @@ void Renderer::generate_subsample_positions() {
         }
     }
 }
+
+fmat4x4 Renderer::get_NDC2WorldMatrix() const { return NDC2WorldMatrix_; }
 
 }  // namespace app

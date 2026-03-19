@@ -40,7 +40,7 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
     if (FAILED(CreateDXGIFactory2(0, IID_PPV_ARGS(&g_pdxgiFactory)))) return false;
 
     // Create device
-    D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
+    D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_12_0; // check first for 11
 
     ComPtr<IDXGIAdapter4> adapter;
     for (UINT i = 0; 
@@ -164,7 +164,16 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
         g_pd3dSrvDescHeapAlloc.Create(g_pd3dDevice.Get(), g_pd3dSrvDescHeap.Get());
     }
 
+    hardware_ray_tracing_support = CheckRaytracingSupport();
+
     CreateRenderTarget();
+    return true;
+}
+
+bool D3DContext::CheckRaytracingSupport() {
+    D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
+    if (FAILED(g_pd3dDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5)))) return false;
+    if (options5.RaytracingTier < D3D12_RAYTRACING_TIER_1_0) return false;
     return true;
 }
 

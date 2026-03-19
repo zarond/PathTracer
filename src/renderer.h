@@ -67,6 +67,8 @@ class Renderer {
     RenderingState get_rendering_state() const;
     void set_render_starting_state();
 
+    fmat4x4 get_NDC2WorldMatrix() const;
+
     ~Renderer() = default;
 
   protected:

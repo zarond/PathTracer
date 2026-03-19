@@ -45,18 +45,18 @@ struct D3DContext {
     UINT g_frameIndex = 0;
     FrameContext g_frameContext[APP_NUM_FRAMES_IN_FLIGHT] = {};
 
-    ComPtr<ID3D12Device> g_pd3dDevice;
+    ComPtr<ID3D12Device5> g_pd3dDevice;
 
     ComPtr<ID3D12DescriptorHeap> g_pd3dRtvDescHeap;
     ComPtr<ID3D12DescriptorHeap> g_pd3dSrvDescHeap;
     ExampleDescriptorHeapAllocator g_pd3dSrvDescHeapAlloc;
 
     ComPtr<ID3D12CommandQueue> g_pd3dCommandQueue;
-    ComPtr<ID3D12GraphicsCommandList> g_pd3dCommandList;
+    ComPtr<ID3D12GraphicsCommandList4> g_pd3dCommandList;
 
     ComPtr<ID3D12CommandQueue> g_pd3dCopyQueue;
     ComPtr<ID3D12CommandAllocator> g_pd3dCopyAllocator;
-    ComPtr<ID3D12GraphicsCommandList> g_pd3dCopyCommandList;
+    ComPtr<ID3D12GraphicsCommandList4> g_pd3dCopyCommandList;
 
     ComPtr<ID3D12Fence> copy_fence;
     HANDLE copy_fenceEvent = nullptr;
@@ -71,6 +71,8 @@ struct D3DContext {
     // bool g_SwapChainTearingSupport = false;
     bool g_SwapChainOccluded = false;
     HANDLE g_hSwapChainWaitableObject = nullptr;
+
+    bool hardware_ray_tracing_support = false;
 
     ComPtr<ID3D12Resource> g_mainRenderTargetResource[APP_NUM_BACK_BUFFERS] = {};
     D3D12_CPU_DESCRIPTOR_HANDLE g_mainRenderTargetDescriptor[APP_NUM_BACK_BUFFERS] = {};
@@ -98,6 +100,8 @@ struct D3DContext {
     }
   private:
     D3DContext() = default;
+
+    bool CheckRaytracingSupport();
 };
 
 }

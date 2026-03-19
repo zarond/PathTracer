@@ -207,7 +207,11 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
     void release_gpu_resource();
     D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu_handle;
     D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle;
-    void transition_back_for_copy();
+    D3D12_CPU_DESCRIPTOR_HANDLE uav_cpu_handle;
+    D3D12_GPU_DESCRIPTOR_HANDLE uav_gpu_handle;
+    void transition_from_srv_to_copy();
+    void transition_from_srv_to_uav();
+    void transition_from_uav_to_srv();
     bool nearest_filtering = true;
   private:
     ID3D12Resource* pTexture = nullptr;

@@ -47,6 +47,7 @@ class Viewer {
 
     void load_envmap(CPUTexture<hdr_pixel>&& environmentTexture);
     void load_model(Model&& model);
+    const Model& get_model() const;
 
     std::condition_variable cv_render;
     std::atomic<bool> continuous_rendering = false;
@@ -60,6 +61,8 @@ class Viewer {
 
     float& get_yfov();
     fvec3 get_euler_angles_camera() const;
+
+    fmat4x4 get_NDC2WorldMatrix() const;
 
   private:
     Model model_;

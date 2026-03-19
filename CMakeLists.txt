@@ -12,6 +12,8 @@ option(NO_WINDOWS "remove Windows specific dependencies, that leaves CPU mode on
 
 set(LIBS_DIR libs)
 
+set(SHADERS)
+
 set(APP_SOURCES
     src/main.cc
     src/model_loader.cc
@@ -30,9 +32,54 @@ if(NOT NO_WINDOWS)
         src/ui.cc
         src/d3d_debug_layer.cc
         src/d3d_context.cc
+        src/DXR/GPU_model.cc
+        #src/DXR/GPU_renderer.cc
+        src/DXR/GPU_pipeline.cc
+    )
+    list(APPEND SHADERS
+        src/DXR/Shaders/RaytracingSimpleShaders.hlsl
     )
 else()
     add_definitions(-DNO_WINDOWS)
+endif()
+
+# compile hlsl shaders to dxil
+if(NOT NO_WINDOWS)
+    set(DXC dxc)
+    #set(XXD xxd)
+
+    foreach(SHADER ${SHADERS})
+        get_filename_component(FILE_NAME ${SHADER} NAME_WE)
+
+        # commented out because xxd is not available on Windows
+        #add_custom_command(
+        #    OUTPUT  ${CMAKE_SOURCE_DIR}/src/DXR/Shaders/Compiled/${FILE_NAME}.hlsl.h
+        #    COMMAND ${DXC}
+        #    -T lib_6_6
+        #    -Fo ${CMAKE_SOURCE_DIR}/src/DXR/Shaders/Compiled/${FILE_NAME}.dxil
+        #    ${CMAKE_SOURCE_DIR}/${SHADER}
+        #    COMMAND ${XXD} 
+        #    -i ${CMAKE_SOURCE_DIR}/src/DXR/Shaders/Compiled/${FILE_NAME}.dxil > ${CMAKE_SOURCE_DIR}/src/DXR/Shaders/Compiled/${FILE_NAME}.hlsl.h
+        #    DEPENDS ${SHADER}
+        #)
+        #list(APPEND COMPILED_SHADERS
+        #    ${CMAKE_SOURCE_DIR}/src/DXR/Shaders/Compiled/${FILE_NAME}.hlsl.h
+        #)
+        # todo: better yet, compile into object file and link into executable, use extern const in code
+        add_custom_command(
+            OUTPUT  ${CMAKE_CURRENT_BINARY_DIR}/${FILE_NAME}.dxil
+            COMMAND ${DXC}
+            -T lib_6_6
+            -Fo ${CMAKE_CURRENT_BINARY_DIR}/${FILE_NAME}.dxil
+            ${CMAKE_SOURCE_DIR}/${SHADER}
+            DEPENDS ${SHADER}
+        )
+        list(APPEND COMPILED_SHADERS
+            ${CMAKE_CURRENT_BINARY_DIR}/${FILE_NAME}.dxil
+        )
+    endforeach()
+
+    add_custom_target(Shaders ALL DEPENDS ${COMPILED_SHADERS})
 endif()
 
 add_executable(${PROJECT_NAME} ${APP_SOURCES})

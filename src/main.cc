@@ -24,6 +24,10 @@
 #include "d3d_context.h"
 
 #include "ui.h"
+
+#include "DXR/GPU_model.h"
+#include "DXR/GPU_pipeline.h"
+
 #endif
 
 int main(int argc, char* argv[]) {
@@ -177,6 +181,22 @@ int main(int argc, char* argv[]) {
 
     const float clear_color[] = {0.45f, 0.55f, 0.60f, 1.00f};
 
+    std::unique_ptr<GPU_model> gpu_model;
+    std::unique_ptr<GPU_pipeline> gpu_pipeline;
+    {
+        // Init time GPU instructions
+        FrameContext* frameCtx = d3d_ctx.WaitForNextFrameContext();
+        d3d_ctx.InitCommandList(*frameCtx->CommandAllocator.Get());
+        
+        gpu_model = std::make_unique<GPU_model>(viewer.get_model());
+
+        gpu_pipeline = std::make_unique<GPU_pipeline>(viewer.get_NDC2WorldMatrix(), xyz1(viewer.position_));
+
+        d3d_ctx.DispatchCommandList();
+        d3d_ctx.WaitForPendingOperations();
+    }
+
+
     // Main loop
     while (!dx_window.close_window) {
         // Poll and handle messages (inputs, window resize, etc.)
@@ -220,6 +240,14 @@ int main(int argc, char* argv[]) {
             auto dims = viewer.get_window_dimensions();
             auto& framebuffer = viewer.get_framebuffer();
             framebuffer.upload_to_gpu();
+
+            ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.g_pd3dSrvDescHeap.Get()};
+            d3d_ctx.g_pd3dCommandList->SetDescriptorHeaps(1, desc_heap);
+            framebuffer.transition_from_srv_to_uav(); // remove, just testing now
+            
+            gpu_pipeline->DoRaytracing(*gpu_model, framebuffer, viewer.get_NDC2WorldMatrix(), xyz1(viewer.position_));
+            
+            framebuffer.transition_from_uav_to_srv(); //
             const auto& texture_srv_gpu_handle = framebuffer.srv_gpu_handle;
             ImGui::Begin("Rendering Image", nullptr, flags);
             const float scroll_speed = 0.05f;
@@ -458,7 +486,7 @@ int main(int argc, char* argv[]) {
         ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), d3d_ctx.g_pd3dCommandList.Get());
         
         // end frame, change resource state
-        viewer.get_framebuffer().transition_back_for_copy();
+        viewer.get_framebuffer().transition_from_srv_to_copy();
         barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
         barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
         d3d_ctx.g_pd3dCommandList->ResourceBarrier(1, &barrier);
