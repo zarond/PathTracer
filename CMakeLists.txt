@@ -51,20 +51,6 @@ if(NOT NO_WINDOWS)
     foreach(SHADER ${SHADERS})
         get_filename_component(FILE_NAME ${SHADER} NAME_WE)
 
-        # commented out because xxd is not available on Windows
-        #add_custom_command(
-        #    OUTPUT  ${CMAKE_SOURCE_DIR}/src/DXR/Shaders/Compiled/${FILE_NAME}.hlsl.h
-        #    COMMAND ${DXC}
-        #    -T lib_6_6
-        #    -Fo ${CMAKE_SOURCE_DIR}/src/DXR/Shaders/Compiled/${FILE_NAME}.dxil
-        #    ${CMAKE_SOURCE_DIR}/${SHADER}
-        #    COMMAND ${XXD} 
-        #    -i ${CMAKE_SOURCE_DIR}/src/DXR/Shaders/Compiled/${FILE_NAME}.dxil > ${CMAKE_SOURCE_DIR}/src/DXR/Shaders/Compiled/${FILE_NAME}.hlsl.h
-        #    DEPENDS ${SHADER}
-        #)
-        #list(APPEND COMPILED_SHADERS
-        #    ${CMAKE_SOURCE_DIR}/src/DXR/Shaders/Compiled/${FILE_NAME}.hlsl.h
-        #)
         # todo: better yet, compile into object file and link into executable, use extern const in code
         add_custom_command(
             OUTPUT  ${CMAKE_CURRENT_BINARY_DIR}/${FILE_NAME}.dxil

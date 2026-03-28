@@ -1,15 +1,11 @@
 #include "GPU_pipeline.h"
 #include "../d3d_context.h"
 
-//#include "helpers/stdafx.h"
 #include "helpers/DXSampleHelper.h"
 #include "helpers/DirectXRaytracingHelper.h"
 
 #include <exception>
 #include <iostream>
-
-//#include "Shaders/Compiled/Raytracing.hlsl.h" // This header is generated from the Raytracing.hlsl shader file by the build process, and contains the compiled shader bytecode as byte arrays.
-//#include "Shaders/Compiled/RaytracingSimpleShaders.hlsl.h"
 
 #include <d3dcompiler.h>
 
@@ -18,6 +14,9 @@ namespace GlobalRootSignatureParams {
         OutputViewSlot = 0,
         AccelerationStructureSlot, 
         SceneConstantSlot,
+        IndexBufferSlot,
+        VertexBufferSlot,
+        IndicesOffsetBufferSlot,
         Count 
     };
 }
@@ -59,12 +58,19 @@ void GPU_pipeline::CreateRootSignatures() {
     // Global Root Signature
     // This is a root signature that is shared across all raytracing shaders invoked during a DispatchRays() call.
     {
-        CD3DX12_DESCRIPTOR_RANGE UAVDescriptor;
-        UAVDescriptor.Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
+        CD3DX12_DESCRIPTOR_RANGE ranges[4];                     // Perfomance TIP: Order from most frequent to least frequent.
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
+        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 2 static index buffer.
+        ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 3 static vertex buffer.
+        ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 4 static index offsets buffer.
+
         CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
-        rootParameters[GlobalRootSignatureParams::OutputViewSlot].InitAsDescriptorTable(1, &UAVDescriptor);
+        rootParameters[GlobalRootSignatureParams::OutputViewSlot].InitAsDescriptorTable(1, &ranges[0]);
         rootParameters[GlobalRootSignatureParams::AccelerationStructureSlot].InitAsShaderResourceView(0);
         rootParameters[GlobalRootSignatureParams::SceneConstantSlot].InitAsConstantBufferView(0);
+        rootParameters[GlobalRootSignatureParams::IndexBufferSlot].InitAsDescriptorTable(1, &ranges[1]);
+        rootParameters[GlobalRootSignatureParams::VertexBufferSlot].InitAsDescriptorTable(1, &ranges[2]);
+        rootParameters[GlobalRootSignatureParams::IndicesOffsetBufferSlot].InitAsDescriptorTable(1, &ranges[3]);
         CD3DX12_ROOT_SIGNATURE_DESC globalRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
         SerializeAndCreateRaytracingRootSignature(globalRootSignatureDesc, &m_raytracingGlobalRootSignature);
     }
@@ -305,6 +311,12 @@ void GPU_pipeline::DoRaytracing(
     memcpy(&m_mappedConstantData->constants, &m_rayGenCB, sizeof(m_rayGenCB));
     auto cbGpuAddress = m_perFrameConstants->GetGPUVirtualAddress();
     commandList->SetComputeRootConstantBufferView(GlobalRootSignatureParams::SceneConstantSlot, cbGpuAddress);
+
+    // Set index and successive vertex buffer decriptor tables
+    commandList->SetComputeRootDescriptorTable(
+        GlobalRootSignatureParams::IndexBufferSlot, gpu_model.combined_mesh_indices.gpuDescriptorHandle);
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::VertexBufferSlot, gpu_model.combined_mesh_vertices.gpuDescriptorHandle);
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::IndicesOffsetBufferSlot, gpu_model.combined_mesh_offsets.gpuDescriptorHandle);
 
     // Bind the heaps, acceleration structure and dispatch rays.    
     D3D12_DISPATCH_RAYS_DESC dispatchDesc = {};

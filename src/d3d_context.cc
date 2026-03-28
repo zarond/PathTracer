@@ -189,6 +189,18 @@ void D3DContext::DispatchCommandList() {
     g_pd3dCommandQueue->ExecuteCommandLists(1, lists);
 }
 
+void D3DContext::InitCopyCommandList() {
+    g_pd3dCopyAllocator->Reset();
+    g_pd3dCopyCommandList->Reset(g_pd3dCopyAllocator.Get(), nullptr);
+}
+
+void D3DContext::DispatchCopyCommandList() {
+    if (FAILED(g_pd3dCopyCommandList->Close())) return;
+
+    ID3D12CommandList* lists[] = {g_pd3dCopyCommandList.Get()};
+    g_pd3dCopyQueue->ExecuteCommandLists(1, lists);
+}
+
 void D3DContext::CleanupDeviceD3D() {
     CleanupRenderTarget();
 

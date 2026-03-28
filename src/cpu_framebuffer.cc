@@ -176,8 +176,7 @@ void CPUFrameBuffer::upload_to_gpu(){
         }
     }
 
-    d3d_ctx.g_pd3dCopyAllocator->Reset();
-    d3d_ctx.g_pd3dCopyCommandList->Reset(d3d_ctx.g_pd3dCopyAllocator.Get(), nullptr);
+    d3d_ctx.InitCopyCommandList();
 
     // Create texture resource
     const D3D12_RESOURCE_DESC tex_desc{
@@ -294,11 +293,7 @@ void CPUFrameBuffer::upload_to_gpu(){
     // Copy call
     d3d_ctx.g_pd3dCopyCommandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, nullptr);
 
-    hr = d3d_ctx.g_pd3dCopyCommandList->Close();
-    assert(SUCCEEDED(hr));
-    // Execute the copy
-    ID3D12CommandList* lists[] = {d3d_ctx.g_pd3dCopyCommandList.Get()};
-    d3d_ctx.g_pd3dCopyQueue->ExecuteCommandLists(1, lists);
+    d3d_ctx.DispatchCopyCommandList();
 
     hr = d3d_ctx.g_pd3dCopyQueue->Signal(d3d_ctx.copy_fence.Get(), ++d3d_ctx.copy_fenceLastSignaledValue);
     assert(SUCCEEDED(hr));

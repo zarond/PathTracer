@@ -4,11 +4,8 @@
 #include "GPU_model.h"
 
 #include <d3d12.h>
-//#include <Dxcapi.h>
 
 #include "helpers/d3dx12.h"
-
-//#include "Shaders/RaytracingHlslCompat.h"
 
 #define NOMINMAX
 //#include <windows.h>

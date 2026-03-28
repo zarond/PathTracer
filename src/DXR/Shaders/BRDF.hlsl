@@ -1,5 +1,6 @@
 static const float PI = 3.14159265359f;
 static const float GOLDEN_RATIO = 1.618034f;
+static const float kEpsilon5 = 1e-5f;
 
 float3 ImportanceSampleCosDir(float2 xi) {
     // pdf(x) = cos(l, n) / pi
@@ -25,7 +26,7 @@ float3x3 construct_TBN(const float3 tangent, const float3 bitangent, const float
     float3 n = normalize(normal);
     float3 t = normalize(tangent - n * dot(n, tangent));
     float3 b = normalize(bitangent - n * dot(n, bitangent) - t * dot(t, bitangent));
-    return float3x3(t, b, n);
+    return float3x3(t, b, n); // transposed TBN matrix, tangent is the first row, bitangent - second row, normal - third
 }
 
-float3 Tangent2World(float3 v, const float3x3 TBN) { return mul(TBN, v); }
+float3 Tangent2World(float3 v, const float3x3 TBN) { return mul(v, TBN); } // swap mul(M, v) order because TBN matrix is transposed 

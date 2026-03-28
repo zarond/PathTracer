@@ -1,5 +1,37 @@
 #include "GPU_model.h"
 
+namespace {
+
+using namespace app;
+// Create SRV description for a buffer.
+D3D12_SHADER_RESOURCE_VIEW_DESC CreatSRVDescription(UINT numElements, UINT elementSize) {
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Buffer.NumElements = numElements;
+    if (elementSize == 0) {
+        srvDesc.Format = DXGI_FORMAT_R32_TYPELESS;
+        srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
+        srvDesc.Buffer.StructureByteStride = 0;
+    } else {
+        srvDesc.Format = DXGI_FORMAT_UNKNOWN;
+        srvDesc.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+        srvDesc.Buffer.StructureByteStride = elementSize;
+    }
+    return srvDesc;
+}
+
+void CreateBufferSRV(
+    D3DContext& d3d_ctx, const ComPtr<ID3D12Resource>& buffer, UINT numElements, UINT elementSize, 
+    GPU_model::D3D_Handle_Pair& handles) 
+{
+    d3d_ctx.g_pd3dSrvDescHeapAlloc.Alloc(&handles.cpuDescriptorHandle, &handles.gpuDescriptorHandle);
+    const auto srvDesc = CreatSRVDescription(numElements, elementSize);
+    d3d_ctx.g_pd3dDevice->CreateShaderResourceView(buffer.Get(), &srvDesc, handles.cpuDescriptorHandle);
+}
+
+}  // namespace
+
 namespace app {
 
 inline void ThrowIfFailed(HRESULT hr) {
@@ -8,27 +40,10 @@ inline void ThrowIfFailed(HRESULT hr) {
     }
 }
 
-GPU_mesh::GPU_mesh(const Mesh& cpu_mesh) { 
+GPU_mesh::GPU_mesh(const Mesh& cpu_mesh, bool positions_only) : positions_only_(positions_only) { 
     D3DContext& d3d_ctx = D3DContext::Get();
 
-    //d3d_ctx.WaitForPendingOperations();
-    d3d_ctx.WaitForPending—opy();
-    /*
-    if (d3d_ctx.g_fenceLastSignaledValue) { // ???
-        d3d_ctx.g_pd3dCopyQueue->Wait(d3d_ctx.g_fence.Get(), d3d_ctx.g_fenceLastSignaledValue);
-    }
-
-    // Wait for previous copy to complete
-    const UINT64 lastSignaled = d3d_ctx.copy_fenceLastSignaledValue;
-    if (d3d_ctx.copy_fence->GetCompletedValue() < lastSignaled) {
-        HRESULT hr = d3d_ctx.copy_fence->SetEventOnCompletion(lastSignaled, d3d_ctx.copy_fenceEvent);
-        if (SUCCEEDED(hr)) {
-            ::WaitForSingleObject(d3d_ctx.copy_fenceEvent, INFINITE);
-        }
-    }
-    */
-    d3d_ctx.g_pd3dCopyAllocator->Reset();
-    d3d_ctx.g_pd3dCopyCommandList->Reset(d3d_ctx.g_pd3dCopyAllocator.Get(), nullptr);
+    d3d_ctx.InitCopyCommandList();
 
     ComPtr<ID3D12Resource2> uploadBuffer;
     ComPtr<ID3D12Resource2> index_uploadBuffer;
@@ -36,7 +51,7 @@ GPU_mesh::GPU_mesh(const Mesh& cpu_mesh) {
     vertexCount = cpu_mesh.vertices.size();
     indexCount = cpu_mesh.indices.size();
 
-    const UINT vertexBufferSize = sizeof(vertex) * vertexCount;
+    const UINT vertexBufferSize = (positions_only_ ? sizeof(vertex::position) : sizeof(vertex)) * vertexCount;
     const UINT indexBufferSize = sizeof(uint32_t) * indexCount;
 
     const D3D12_HEAP_PROPERTIES def_props{
@@ -116,7 +131,17 @@ GPU_mesh::GPU_mesh(const Mesh& cpu_mesh) {
     // Copy the triangle data to the vertex buffer.
     void* pVertexDataBegin;
     ThrowIfFailed(uploadBuffer->Map(0, nullptr, &pVertexDataBegin));
-    memcpy(pVertexDataBegin, cpu_mesh.vertices.data(), vertexBufferSize);
+    if (positions_only_) {
+        std::vector<fvec3> tmp_positions;
+        static_assert(sizeof(vertex::position) == sizeof(fvec3) && sizeof(fvec3) == sizeof(fvec4),
+            "vertex::position should be the same as fvec3 AND fvec4");
+        tmp_positions.reserve(vertexCount);
+        std::transform(cpu_mesh.vertices.begin(), cpu_mesh.vertices.end(), std::back_inserter(tmp_positions),
+            [](const vertex& v) { return v.position; });
+        memcpy(pVertexDataBegin, tmp_positions.data(), vertexBufferSize);
+    } else {
+        memcpy(pVertexDataBegin, cpu_mesh.vertices.data(), vertexBufferSize);
+    }
     uploadBuffer->Unmap(0, nullptr);
 
     // Copy indices data to the index buffer.
@@ -129,29 +154,7 @@ GPU_mesh::GPU_mesh(const Mesh& cpu_mesh) {
     d3d_ctx.g_pd3dCopyCommandList->CopyBufferRegion(vertexBuffer.Get(), 0, uploadBuffer.Get(), 0, vertexBufferSize);
     d3d_ctx.g_pd3dCopyCommandList->CopyBufferRegion(indexBuffer.Get(), 0, index_uploadBuffer.Get(), 0, indexBufferSize);
 
-    HRESULT hr;
-
-    hr = d3d_ctx.g_pd3dCopyCommandList->Close();
-    assert(SUCCEEDED(hr));
-
-    // Execute the copy
-    ID3D12CommandList* lists[] = {d3d_ctx.g_pd3dCopyCommandList.Get()};
-    d3d_ctx.g_pd3dCopyQueue->ExecuteCommandLists(1, lists);
-
-    //hr = d3d_ctx.g_pd3dCopyQueue->Signal(d3d_ctx.copy_fence.Get(), ++d3d_ctx.copy_fenceLastSignaledValue);
-    //assert(SUCCEEDED(hr));
-    //d3d_ctx.g_pd3dCommandQueue->Wait(d3d_ctx.copy_fence.Get(), d3d_ctx.copy_fenceLastSignaledValue);
-
-    // Initialize the vertex buffer view.
-    vertexBufferView.BufferLocation = vertexBuffer->GetGPUVirtualAddress();
-    vertexBufferView.StrideInBytes = sizeof(vertex);
-    vertexBufferView.SizeInBytes = vertexBufferSize;
-
-    // Initialize the index buffer view.
-    indexBufferView.BufferLocation = indexBuffer->GetGPUVirtualAddress();
-    indexBufferView.Format = DXGI_FORMAT_R32_UINT;
-    indexBufferView.SizeInBytes = sizeof(uint32_t) * cpu_mesh.indices.size();
-
+    d3d_ctx.DispatchCopyCommandList();
     d3d_ctx.WaitForPending—opy();
 }
 
@@ -186,9 +189,6 @@ void GPU_mesh::transition_from_copy_to_usage() {
     };
     // or D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE ? or D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE ?
     d3d_ctx.g_pd3dCommandList->ResourceBarrier(_countof(barriers), barriers);
-
-    // d3d_ctx.WaitForPendingOperations();
-    // d3d_ctx.WaitForPending—opy();
 }
 
 D3D12_GPU_VIRTUAL_ADDRESS GPU_mesh::get_blas_gpu_va() const 
@@ -197,8 +197,6 @@ D3D12_GPU_VIRTUAL_ADDRESS GPU_mesh::get_blas_gpu_va() const
 void GPU_mesh::create_bottom_level_AS() {
     D3DContext& d3d_ctx = D3DContext::Get();
 
-    d3d_ctx.WaitForPendingOperations();
-
     D3D12_RAYTRACING_GEOMETRY_DESC geomDesc = { 
         .Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES,
         .Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE, // ???
@@ -206,13 +204,13 @@ void GPU_mesh::create_bottom_level_AS() {
     };
 
     geomDesc.Triangles.VertexBuffer.StartAddress = vertexBuffer->GetGPUVirtualAddress();
-    geomDesc.Triangles.VertexBuffer.StrideInBytes = sizeof(vertex);
+    geomDesc.Triangles.VertexBuffer.StrideInBytes = positions_only_ ? sizeof(vertex::position) : sizeof(vertex);
     geomDesc.Triangles.VertexCount = vertexCount;
     geomDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
 
-    geomDesc.Triangles.IndexBuffer = indexBufferView.BufferLocation;
+    geomDesc.Triangles.IndexBuffer = indexBuffer->GetGPUVirtualAddress();
     geomDesc.Triangles.IndexCount = indexCount;
-    geomDesc.Triangles.IndexFormat = indexBufferView.Format;
+    geomDesc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
 
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs;
     inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
@@ -295,8 +293,6 @@ void GPU_mesh::create_bottom_level_AS() {
     uavBarrier.UAV.pResource = blasBuffer.Get();
     uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
     d3d_ctx.g_pd3dCommandList->ResourceBarrier(1, &uavBarrier);
-
-    d3d_ctx.WaitForPendingOperations();
 }
 
 GPU_mesh::~GPU_mesh() { release_gpu_resource(); }
@@ -325,6 +321,7 @@ GPU_model::GPU_model(const Model& cpu_model) {
         mesh.create_bottom_level_AS();
     }
     create_top_level_AS(cpu_model);
+    prepare_combined_vertex_index_buffers(cpu_model);
 }
 
 GPU_model::~GPU_model() { release_gpu_resource(); }
@@ -334,16 +331,17 @@ void GPU_model::release_gpu_resource() {
     if (d3d_ctx.g_pd3dCommandQueue != nullptr) {
         d3d_ctx.WaitForPendingOperations();
     }
-    //d3d_ctx.WaitForPending—opy();
     tlasScratchBuffer.Reset();
     tlasBuffer.Reset();
     instancesUploadBuffer.Reset();
+
+    d3d_ctx.g_pd3dSrvDescHeapAlloc.Free(combined_mesh_indices.cpuDescriptorHandle, combined_mesh_indices.gpuDescriptorHandle);
+    d3d_ctx.g_pd3dSrvDescHeapAlloc.Free(combined_mesh_vertices.cpuDescriptorHandle, combined_mesh_vertices.gpuDescriptorHandle);
+    d3d_ctx.g_pd3dSrvDescHeapAlloc.Free(combined_mesh_offsets.cpuDescriptorHandle, combined_mesh_offsets.gpuDescriptorHandle);
 };
 
 void GPU_model::create_top_level_AS(const Model& cpu_model) {
     D3DContext& d3d_ctx = D3DContext::Get();
-
-    d3d_ctx.WaitForPendingOperations();
 
     const auto& objects = cpu_model.objects_;
     const size_t instanceCount = objects.size();
@@ -369,10 +367,10 @@ void GPU_model::create_top_level_AS(const Model& cpu_model) {
             }
         }
 
-        inst.InstanceID = static_cast<UINT>(i);  // can be used to identify object in shaders
+        inst.InstanceID = objects[i].meshIndex;  // can be used to identify object in shaders
         inst.InstanceMask = 0xFF;
         inst.InstanceContributionToHitGroupIndex = 0;  // shader binding table offsets if used
-        inst.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
+        inst.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE | D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE;
 
         // Set BLAS GPU address for the referenced mesh
         uint32_t meshIndex = obj.meshIndex;
@@ -484,12 +482,99 @@ void GPU_model::create_top_level_AS(const Model& cpu_model) {
     uavBarrier.UAV.pResource = tlasBuffer.Get();
     uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
     d3d_ctx.g_pd3dCommandList->ResourceBarrier(1, &uavBarrier);
-
-    d3d_ctx.WaitForPendingOperations();
 }
 
-const std::vector<GPU_mesh>& GPU_model::get_meshes() const {
-    return meshes_; }
+void GPU_model::prepare_combined_vertex_index_buffers(const Model& cpu_model) {
+    size_t totalVertexCount = 0;
+    size_t totalIndexCount = 0;
+    for (const auto& mesh : cpu_model.meshes_) {
+        totalVertexCount += mesh.vertices.size();
+        totalIndexCount += mesh.indices.size();
+    }
+    std::vector<vertex> combinedVertices;
+    std::vector<uint32_t> combinedIndices;
+    std::vector<uint32_t> indicesOffsets;
+    combinedVertices.reserve(totalVertexCount);
+    combinedIndices.reserve(totalIndexCount);
+    indicesOffsets.reserve(cpu_model.meshes_.size());
+
+    for (const auto& mesh : cpu_model.meshes_) {
+        indicesOffsets.push_back(combinedIndices.size());
+        uint32_t vertexOffset = combinedVertices.size();
+        combinedVertices.insert(combinedVertices.end(), mesh.vertices.begin(), mesh.vertices.end());
+        std::transform(mesh.indices.begin(), mesh.indices.end(), 
+            std::back_inserter(combinedIndices),
+            [vertexOffset](uint32_t idx) { return idx + vertexOffset; });
+    }
+
+    // upload combinedVertices and combinedIndices to GPU buffers (via GPU_mesh constructor)
+    combinedMesh = GPU_mesh(Mesh{.indices = std::move(combinedIndices), .vertices = std::move(combinedVertices), .materialIndex = 0}, false);
+    combinedMesh.transition_from_copy_to_usage();
+    // Note: we don't need BLAS for the combined mesh, so we won't call create_bottom_level_AS() on it
+
+    // upload indicesOffsets to gpu buffer
+    D3DContext& d3d_ctx = D3DContext::Get();
+
+    d3d_ctx.InitCopyCommandList();
+
+    ComPtr<ID3D12Resource2> offsets_uploadBuffer;
+
+    uint32_t meshesCount = indicesOffsets.size();
+
+    const UINT offsetsBufferSize = sizeof(uint32_t) * meshesCount;
+
+    const D3D12_HEAP_PROPERTIES def_props{
+        .Type = D3D12_HEAP_TYPE_DEFAULT,
+        .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
+        .CreationNodeMask = 1,
+        .VisibleNodeMask = 1,
+    };
+
+    const D3D12_HEAP_PROPERTIES upload_props{
+        .Type = D3D12_HEAP_TYPE_UPLOAD,
+        .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
+        .CreationNodeMask = 1,
+        .VisibleNodeMask = 1,
+    };
+
+    const D3D12_RESOURCE_DESC upload_desc{
+        .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
+        .Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+        .Width = offsetsBufferSize,
+        .Height = 1,
+        .DepthOrArraySize = 1,
+        .MipLevels = 1,
+        .Format = DXGI_FORMAT_UNKNOWN,
+        .SampleDesc = {1, 0},
+        .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+        .Flags = D3D12_RESOURCE_FLAG_NONE,
+    };
+
+    ThrowIfFailed(d3d_ctx.g_pd3dDevice->CreateCommittedResource(&upload_props, D3D12_HEAP_FLAG_NONE, &upload_desc,
+        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&offsets_uploadBuffer)));
+    ThrowIfFailed(d3d_ctx.g_pd3dDevice->CreateCommittedResource(&def_props, D3D12_HEAP_FLAG_NONE, &upload_desc,
+        D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&MeshIndicesOffsets)));
+
+    void* pOffsetsDataBegin;
+    ThrowIfFailed(offsets_uploadBuffer->Map(0, nullptr, &pOffsetsDataBegin));
+    memcpy(pOffsetsDataBegin, indicesOffsets.data(), offsetsBufferSize);
+    offsets_uploadBuffer->Unmap(0, nullptr);
+
+    // Copy call
+    d3d_ctx.g_pd3dCopyCommandList->CopyBufferRegion(MeshIndicesOffsets.Get(), 0, offsets_uploadBuffer.Get(), 0, offsetsBufferSize);
+
+    d3d_ctx.DispatchCopyCommandList();
+    d3d_ctx.WaitForPending—opy();
+
+    // Create SRV for 3 buffers: combined vertices, combined indices, and indices offsets
+    CreateBufferSRV(d3d_ctx, combinedMesh.indexBuffer, totalIndexCount, 0, combined_mesh_indices);
+    CreateBufferSRV(d3d_ctx, combinedMesh.vertexBuffer, totalVertexCount, sizeof(vertex), combined_mesh_vertices);
+    CreateBufferSRV(d3d_ctx, MeshIndicesOffsets, meshesCount, 0, combined_mesh_offsets);
+}
+
+const std::vector<GPU_mesh>& GPU_model::get_meshes() const { return meshes_; }
 
 D3D12_GPU_VIRTUAL_ADDRESS GPU_model::GetGPUVirtualAddress() const {
     return tlasBuffer->GetGPUVirtualAddress();

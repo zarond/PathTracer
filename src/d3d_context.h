@@ -83,6 +83,8 @@ struct D3DContext {
     void WaitForPending—opy();
     void InitCommandList(ID3D12CommandAllocator& CommandAllocator);
     void DispatchCommandList();
+    void InitCopyCommandList();
+    void DispatchCopyCommandList();
     void CreateRenderTarget();
     void CleanupRenderTarget();
     FrameContext* WaitForNextFrameContext();
