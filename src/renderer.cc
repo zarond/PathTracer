@@ -37,6 +37,7 @@ void Renderer::update_camera_transform_state(
 }
 
 void Renderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap) {
+    // Todo: check against fence values?
     modelRef = &model;
     envmapRef = &envmap;
     reload_acceleration_structure();
@@ -220,7 +221,5 @@ void Renderer::generate_subsample_positions() {
         }
     }
 }
-
-fmat4x4 Renderer::get_NDC2WorldMatrix() const { return NDC2WorldMatrix_; }
 
 }  // namespace app

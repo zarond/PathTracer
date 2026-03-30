@@ -155,7 +155,7 @@ GPU_mesh::GPU_mesh(const Mesh& cpu_mesh, bool positions_only) : positions_only_(
     d3d_ctx.g_pd3dCopyCommandList->CopyBufferRegion(indexBuffer.Get(), 0, index_uploadBuffer.Get(), 0, indexBufferSize);
 
     d3d_ctx.DispatchCopyCommandList();
-    d3d_ctx.WaitForPending—opy();
+    d3d_ctx.WaitForPendingCopy();
 }
 
 void GPU_mesh::transition_from_copy_to_usage() {
@@ -301,7 +301,7 @@ void GPU_mesh::release_gpu_resource() {
     D3DContext& d3d_ctx = D3DContext::Get();
     if (d3d_ctx.g_pd3dCommandQueue != nullptr) {
         d3d_ctx.WaitForPendingOperations();
-        d3d_ctx.WaitForPending—opy();
+        d3d_ctx.WaitForPendingCopy();
     }
     vertexBuffer.Reset(); 
     indexBuffer.Reset();
@@ -566,7 +566,7 @@ void GPU_model::prepare_combined_vertex_index_buffers(const Model& cpu_model) {
     d3d_ctx.g_pd3dCopyCommandList->CopyBufferRegion(MeshIndicesOffsets.Get(), 0, offsets_uploadBuffer.Get(), 0, offsetsBufferSize);
 
     d3d_ctx.DispatchCopyCommandList();
-    d3d_ctx.WaitForPending—opy();
+    d3d_ctx.WaitForPendingCopy();
 
     // Create SRV for 3 buffers: combined vertices, combined indices, and indices offsets
     CreateBufferSRV(d3d_ctx, combinedMesh.indexBuffer, totalIndexCount, 0, combined_mesh_indices);

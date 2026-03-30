@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 #include <atomic>
+#include <functional>
 
 #include "acceleration_structure.h"
 #include "arguments.h"
@@ -35,11 +36,45 @@ struct SamplesAccumulator {
     T get_stddev(T variance) const { return sqrt(variance); }
 };
 
-class Renderer {
+class IRenderer {
+  public:
+    virtual ~IRenderer() = default;
+
+    enum RenderingState { 
+        Idle, 
+        ReadyToStart,
+        Rendering, 
+        Cancelling
+    };
+
+    virtual void update_camera_transform_state(
+        fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams) = 0;
+
+    virtual void load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap) = 0;  // should be in constructor?
+    virtual void load_envmap(const CPUTexture<hdr_pixel>& envmap) = 0;
+    virtual void load_model(const Model& model) = 0;
+    virtual void reload_ray_program() = 0;
+    virtual void reload_acceleration_structure() = 0;
+
+    virtual void render_frame(CPUFrameBuffer& framebuffer, bool continuous, bool iterative, int iteration_count) = 0;
+    virtual void set_render_settings(const RenderSettings& settings) = 0;
+    virtual RenderSettings get_render_settings() const = 0;
+    virtual BBox get_scene_bound() const = 0;
+
+    virtual float get_progress() const = 0;
+    virtual void cancel_rendering() = 0;
+    virtual RenderingState get_rendering_state() const = 0;
+    virtual void set_render_starting_state() = 0;
+};
+
+class Renderer : public IRenderer {
   public:
     Renderer() = default;
+    ~Renderer() = default;
     Renderer(const Renderer&) = delete;
     Renderer& operator=(const Renderer&) = delete;
+
+    using IRenderer::RenderingState;
 
     void update_camera_transform_state(
         fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams);
@@ -55,21 +90,10 @@ class Renderer {
     RenderSettings get_render_settings() const;
     BBox get_scene_bound() const;
 
-    enum RenderingState { 
-        Idle, 
-        ReadyToStart,
-        Rendering, 
-        Cancelling
-    };
-
     float get_progress() const;
     void cancel_rendering();
     RenderingState get_rendering_state() const;
     void set_render_starting_state();
-
-    fmat4x4 get_NDC2WorldMatrix() const;
-
-    ~Renderer() = default;
 
   protected:
     std::unique_ptr<IAccelerationStructure> accelStruct;
@@ -92,6 +116,9 @@ class Renderer {
     void generate_subsample_positions();
 
     std::vector<fvec2> subsamplesPositions;
+
+    size_t lastModelFenceValue = 0; // ??
+    size_t lastEnvmapFenceValue = 0;
 };
 
 }  // namespace app

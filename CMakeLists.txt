@@ -33,7 +33,7 @@ if(NOT NO_WINDOWS)
         src/d3d_debug_layer.cc
         src/d3d_context.cc
         src/DXR/GPU_model.cc
-        #src/DXR/GPU_renderer.cc
+        src/DXR/GPU_renderer.cc
         src/DXR/GPU_pipeline.cc
     )
     list(APPEND SHADERS

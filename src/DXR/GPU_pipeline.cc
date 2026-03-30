@@ -42,10 +42,7 @@ void SerializeAndCreateRaytracingRootSignature(
     ThrowIfFailed(device->CreateRootSignature(1, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&(*rootSig))));
 }
 
-GPU_pipeline::GPU_pipeline(const fmat4x4& NDC2WorldMatrix, const fvec4& origin) {
-    m_rayGenCB.cameraPosition = origin;
-    m_rayGenCB.projectionToWorld = NDC2WorldMatrix;
-    m_rayGenCB.subpixel_offset = fvec2(0.0f, 0.0f);
+GPU_pipeline::GPU_pipeline() {
     CreateRootSignatures();
     CreateRaytracingPipeline();
     CreateConstantBuffers();
@@ -281,9 +278,10 @@ void GPU_pipeline::DoRaytracing(
 
     m_rayGenCB.cameraPosition = origin;
     m_rayGenCB.projectionToWorld = NDC2WorldMatrix;
+    m_rayGenCB.subpixel_offset = fvec2(0.0f, 0.0f);
 
     D3DContext& d3d_ctx = D3DContext::Get();
-    auto commandList = d3d_ctx.g_pd3dCommandList;
+    auto commandList = d3d_ctx.g_pd3dDXRCommandList;
     
     UINT m_width = framebuffer.width();
     UINT m_height = framebuffer.height();

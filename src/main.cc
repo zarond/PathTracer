@@ -181,21 +181,26 @@ int main(int argc, char* argv[]) {
 
     const float clear_color[] = {0.45f, 0.55f, 0.60f, 1.00f};
 
-    std::unique_ptr<GPU_model> gpu_model;
-    std::unique_ptr<GPU_pipeline> gpu_pipeline;
+    // Init time GPU instructions
     {
-        // Init time GPU instructions
-        FrameContext* frameCtx = d3d_ctx.WaitForNextFrameContext();
-        d3d_ctx.InitCommandList(*frameCtx->CommandAllocator.Get());
+        auto start = std::chrono::high_resolution_clock::now();
+
+        d3d_ctx.InitDXRCommandList();
         
-        gpu_model = std::make_unique<GPU_model>(viewer.get_model());
+        viewer.InitGPURenderer();
 
-        gpu_pipeline = std::make_unique<GPU_pipeline>(viewer.get_NDC2WorldMatrix(), xyz1(viewer.position_));
+        d3d_ctx.DispatchDXRCommandList();
+        d3d_ctx.WaitForPendingDXR();
 
-        d3d_ctx.DispatchCommandList();
-        d3d_ctx.WaitForPendingOperations();
+        auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+        std::cout << "GPU renderer initialized in " << diff.count() << " ms." << '\n';
     }
 
+    struct PendingDelete {
+        ComPtr<ID3D12Resource> resource;
+        //UINT64 fenceValue;
+    };
+    std::vector<PendingDelete> deferredDeletes;
 
     // Main loop
     while (!dx_window.close_window) {
@@ -239,16 +244,16 @@ int main(int argc, char* argv[]) {
 
             auto dims = viewer.get_window_dimensions();
             auto& framebuffer = viewer.get_framebuffer();
-            framebuffer.upload_to_gpu();
+
+            if (!viewer.is_using_gpu_renderer()) {
+                //framebuffer.transition_from_srv_to_copy();
+                framebuffer.upload_to_gpu();
+                framebuffer.transition_from_copy_to_srv();
+            }
 
             ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.g_pd3dSrvDescHeap.Get()};
             d3d_ctx.g_pd3dCommandList->SetDescriptorHeaps(1, desc_heap);
-            framebuffer.transition_from_srv_to_uav(); // remove, just testing now
-            
-            gpu_pipeline->DoRaytracing(*gpu_model, framebuffer, viewer.get_NDC2WorldMatrix(), xyz1(viewer.position_));
-            
-            framebuffer.transition_from_uav_to_srv(); //
-            const auto& texture_srv_gpu_handle = framebuffer.srv_gpu_handle;
+
             ImGui::Begin("Rendering Image", nullptr, flags);
             const float scroll_speed = 0.05f;
             float scale = std::exp(zoom_scale * scroll_speed);
@@ -264,6 +269,7 @@ int main(int argc, char* argv[]) {
                     offset.y += drag_delta.y / scale; 
                 }
             }
+            const auto texture_srv_gpu_handle = framebuffer.srv_gpu_handle;
             ImGui::SetCursorPos(
                 ImVec2(scale * offset.x + WorkSize.x * 0.5f, scale * offset.y + WorkSize.y * 0.5f));
             if (framebuffer.nearest_filtering) {
@@ -363,6 +369,12 @@ int main(int argc, char* argv[]) {
         ImGui::Separator();
         if (rendering_state == Renderer::RenderingState::Idle)
         {
+            if (ImGui::Button("Switch to GPU renderer")) {
+                viewer.switch_to_gpu_renderer();
+            }
+            if (ImGui::Button("Switch to CPU renderer")) {
+                viewer.switch_to_cpu_renderer();
+            }
             if (ImGui::Button("Clear image with black")) {
                 viewer.clear_framebuffer_black();
             }
@@ -448,6 +460,9 @@ int main(int argc, char* argv[]) {
                             setings_changed = false;
                         }
                         if (size_changed) {
+                            auto& framebuffer = viewer.get_framebuffer();
+                            deferredDeletes.emplace_back(framebuffer.get_gpu_resource());
+                            deferredDeletes.emplace_back(framebuffer.get_gpu_upload_resource());
                             viewer.resize_window(ivec2(console_arguments.windowWidth, console_arguments.windowHeight));
                             viewer.snap_to_camera();
                             viewer.clear_framebuffer_black();
@@ -497,14 +512,22 @@ int main(int argc, char* argv[]) {
 
         // Present
         HRESULT hr = d3d_ctx.g_pSwapChain->Present(1, 0);  // Present with vsync
-        // HRESULT hr = g_pSwapChain->Present(0, g_SwapChainTearingSupport ? DXGI_PRESENT_ALLOW_TEARING : 0); // Present without
-        // vsync
+        // HRESULT hr = g_pSwapChain->Present(0, g_SwapChainTearingSupport ? DXGI_PRESENT_ALLOW_TEARING : 0); // Present without vsync
         d3d_ctx.g_SwapChainOccluded = (hr == DXGI_STATUS_OCCLUDED);
         d3d_ctx.g_frameIndex++;
+
+        if (deferredDeletes.size() > 0) {
+            d3d_ctx.WaitForPendingOperations();
+            d3d_ctx.WaitForPendingCopy();
+            auto& pendingDelete = deferredDeletes.front();
+            pendingDelete.resource.Reset();
+            deferredDeletes.erase(deferredDeletes.begin());
+        }
     }
 
     d3d_ctx.WaitForPendingOperations();
-    d3d_ctx.WaitForPending—opy();
+    d3d_ctx.WaitForPendingCopy();
+    d3d_ctx.WaitForPendingDXR();
 
     // Cleanup
     ImGui_ImplDX12_Shutdown();

@@ -62,17 +62,28 @@ class Viewer {
     float& get_yfov();
     fvec3 get_euler_angles_camera() const;
 
-    fmat4x4 get_NDC2WorldMatrix() const;
+    bool is_using_gpu_renderer() const;
+
+#ifndef NO_WINDOWS
+    void InitGPURenderer();
+    void switch_to_gpu_renderer();
+    void switch_to_cpu_renderer();
+#endif
 
   private:
     Model model_;
     CPUTexture<hdr_pixel> environmentTexture_;
+    size_t lastModelFenceValue = 0;
+    size_t lastEnvmapFenceValue = 0;
 
     int iterations_counter = 1;
 
     std::optional<uint32_t> activeCameraIndex_ = std::nullopt;
 
-    Renderer renderer_;
+    std::shared_ptr<IRenderer> renderer_; // currently chosen renderer
+    std::vector<std::shared_ptr<IRenderer>> renderers_;  // initialize all renderers
+    bool GPU_renderer_active = false;
+
     CPUFrameBuffer framebuffer_;
 
     ivec2 windowDimensions_ = ivec2(800, 600);

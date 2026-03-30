@@ -10,11 +10,13 @@
 #ifndef NO_WINDOWS
 #define NOMINMAX
 #include <d3d12.h>
+#include <wrl.h>
 #endif
 
 namespace app {
 
 using namespace glm;
+using Microsoft::WRL::ComPtr;
 
 // init-time initialized LUT
 extern std::array<float, 256> SRGB8_TO_LINEAR_LUT;
@@ -209,13 +211,17 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
     D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle;
     D3D12_CPU_DESCRIPTOR_HANDLE uav_cpu_handle;
     D3D12_GPU_DESCRIPTOR_HANDLE uav_gpu_handle;
+    void transition_from_copy_to_srv();
     void transition_from_srv_to_copy();
     void transition_from_srv_to_uav();
     void transition_from_uav_to_srv();
     bool nearest_filtering = true;
+
+    ComPtr<ID3D12Resource> get_gpu_resource() const;
+    ComPtr<ID3D12Resource> get_gpu_upload_resource() const;
   private:
-    ID3D12Resource* pTexture = nullptr;
-    ID3D12Resource* uploadBuffer = nullptr;
+    ComPtr<ID3D12Resource> pTexture;
+    ComPtr<ID3D12Resource> uploadBuffer;
     UINT uploadPitch;
     UINT uploadSize;
     void* mapped = nullptr;

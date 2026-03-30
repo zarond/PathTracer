@@ -58,6 +58,10 @@ struct D3DContext {
     ComPtr<ID3D12CommandAllocator> g_pd3dCopyAllocator;
     ComPtr<ID3D12GraphicsCommandList4> g_pd3dCopyCommandList;
 
+    ComPtr<ID3D12CommandQueue> g_pd3dDXRQueue;
+    ComPtr<ID3D12CommandAllocator> g_pd3dDXRAllocator;
+    ComPtr<ID3D12GraphicsCommandList4> g_pd3dDXRCommandList;
+
     ComPtr<ID3D12Fence> copy_fence;
     HANDLE copy_fenceEvent = nullptr;
     UINT64 copy_fenceLastSignaledValue = 0;
@@ -65,6 +69,10 @@ struct D3DContext {
     ComPtr<ID3D12Fence> g_fence;
     HANDLE g_fenceEvent = nullptr;
     UINT64 g_fenceLastSignaledValue = 0;
+
+    ComPtr<ID3D12Fence> dxr_fence;
+    HANDLE dxr_fenceEvent = nullptr;
+    UINT64 dxr_fenceLastSignaledValue = 0;
 
     ComPtr<IDXGIFactory7> g_pdxgiFactory;
     ComPtr<IDXGISwapChain3> g_pSwapChain;
@@ -80,11 +88,14 @@ struct D3DContext {
     bool CreateDeviceD3D(HWND hWnd);
     void CleanupDeviceD3D();
     void WaitForPendingOperations();
-    void WaitForPending—opy();
+    void WaitForPendingCopy();
+    void WaitForPendingDXR();
     void InitCommandList(ID3D12CommandAllocator& CommandAllocator);
     void DispatchCommandList();
     void InitCopyCommandList();
     void DispatchCopyCommandList();
+    void InitDXRCommandList();
+    void DispatchDXRCommandList();
     void CreateRenderTarget();
     void CleanupRenderTarget();
     FrameContext* WaitForNextFrameContext();

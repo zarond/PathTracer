@@ -82,6 +82,23 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
         copy_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
         if (copy_fenceEvent == nullptr) return false;
     }
+    // Create DXR Queue, command list and allocator
+    {
+        D3D12_COMMAND_QUEUE_DESC desc = {};
+        desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+        desc.Priority = D3D12_COMMAND_QUEUE_PRIORITY_HIGH;
+        desc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+        desc.NodeMask = 0;
+        if (FAILED(g_pd3dDevice->CreateCommandQueue(&desc, IID_PPV_ARGS(&g_pd3dDXRQueue)))) return false;
+        if (FAILED(g_pd3dDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&g_pd3dDXRAllocator))))
+            return false;
+        if (FAILED(g_pd3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, g_pd3dDXRAllocator.Get(),
+                nullptr, IID_PPV_ARGS(&g_pd3dDXRCommandList))) || FAILED(g_pd3dDXRCommandList->Close()))
+            return false;
+        if (FAILED(g_pd3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&dxr_fence)))) return false;
+        dxr_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+        if (dxr_fenceEvent == nullptr) return false;
+    }
 
     // Create fence
     if (FAILED(g_pd3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&g_fence)))) return false;
@@ -201,6 +218,18 @@ void D3DContext::DispatchCopyCommandList() {
     g_pd3dCopyQueue->ExecuteCommandLists(1, lists);
 }
 
+void D3DContext::InitDXRCommandList() {
+    g_pd3dDXRAllocator->Reset();
+    g_pd3dDXRCommandList->Reset(g_pd3dDXRAllocator.Get(), nullptr);
+}
+
+void D3DContext::DispatchDXRCommandList() {
+    if (FAILED(g_pd3dDXRCommandList->Close())) return;
+
+    ID3D12CommandList* lists[] = {g_pd3dDXRCommandList.Get()};
+    g_pd3dDXRQueue->ExecuteCommandLists(1, lists);
+}
+
 void D3DContext::CleanupDeviceD3D() {
     CleanupRenderTarget();
 
@@ -227,6 +256,10 @@ void D3DContext::CleanupDeviceD3D() {
         CloseHandle(copy_fenceEvent);
         copy_fenceEvent = nullptr;
     }
+    g_pd3dDXRCommandList.Reset();
+    g_pd3dDXRAllocator.Reset();
+    g_pd3dDXRQueue.Reset();
+
     g_pd3dCopyCommandList.Reset();
     g_pd3dCopyAllocator.Reset();
     g_pd3dCopyQueue.Reset();
@@ -244,12 +277,21 @@ void D3DContext::WaitForPendingOperations() {
         if (::WaitForSingleObject(g_fenceEvent, 20000) != WAIT_OBJECT_0) std::exit(-1);
     }
 }
-void D3DContext::WaitForPendingÑopy() {
+void D3DContext::WaitForPendingCopy() {
     if (FAILED(g_pd3dCopyQueue->Signal(copy_fence.Get(), ++copy_fenceLastSignaledValue))) std::exit(-1);
 
     if (copy_fence->GetCompletedValue() < copy_fenceLastSignaledValue) {
         if (FAILED(copy_fence->SetEventOnCompletion(copy_fenceLastSignaledValue, copy_fenceEvent))) std::exit(-1);
         if (::WaitForSingleObject(copy_fenceEvent, 20000) != WAIT_OBJECT_0) std::exit(-1);
+    }
+}
+
+void D3DContext::WaitForPendingDXR() {
+    if (FAILED(g_pd3dDXRQueue->Signal(dxr_fence.Get(), ++dxr_fenceLastSignaledValue))) std::exit(-1);
+
+    if (dxr_fence->GetCompletedValue() < dxr_fenceLastSignaledValue) {
+        if (FAILED(dxr_fence->SetEventOnCompletion(dxr_fenceLastSignaledValue, dxr_fenceEvent))) std::exit(-1);
+        if (::WaitForSingleObject(dxr_fenceEvent, 20000) != WAIT_OBJECT_0) std::exit(-1);
     }
 }
 

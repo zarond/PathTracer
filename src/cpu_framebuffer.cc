@@ -163,44 +163,28 @@ void CPUFrameBuffer::save_to_file(const std::filesystem::path& filePath) const {
 void CPUFrameBuffer::upload_to_gpu(){
     D3DContext& d3d_ctx = D3DContext::Get();
 
-    if (d3d_ctx.g_fenceLastSignaledValue) {
-        d3d_ctx.g_pd3dCopyQueue->Wait(d3d_ctx.g_fence.Get(), d3d_ctx.g_fenceLastSignaledValue);
-    }
-
-    // Wait for previous copy to complete
-    const UINT64 lastSignaled = d3d_ctx.copy_fenceLastSignaledValue;
-    if (d3d_ctx.copy_fence->GetCompletedValue() < lastSignaled) {
-        HRESULT hr = d3d_ctx.copy_fence->SetEventOnCompletion(lastSignaled, d3d_ctx.copy_fenceEvent);
-        if (SUCCEEDED(hr)) {
-            ::WaitForSingleObject(d3d_ctx.copy_fenceEvent, INFINITE);
-        }
-    }
-
-    d3d_ctx.InitCopyCommandList();
-
-    // Create texture resource
-    const D3D12_RESOURCE_DESC tex_desc{
-        .Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D,
-        .Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
-        .Width = static_cast<UINT64>(width_),
-        .Height = static_cast<UINT>(height_),
-        .DepthOrArraySize = 1,
-        .MipLevels = 1,
-        .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
-        .SampleDesc =  {1, 0},
-        .Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN,
-        .Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS // for raytracing
-    };
-
-    const D3D12_HEAP_PROPERTIES def_props{
-        .Type = D3D12_HEAP_TYPE_DEFAULT,
-        .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
-        .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
-    };
-
     if (pTexture == nullptr) {
-        D3DContext::Get().g_pd3dSrvDescHeapAlloc.Alloc(&srv_cpu_handle, &srv_gpu_handle);
-        D3DContext::Get().g_pd3dSrvDescHeapAlloc.Alloc(&uav_cpu_handle, &uav_gpu_handle);
+        // Create texture resource
+        const D3D12_RESOURCE_DESC tex_desc{
+            .Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+            .Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+            .Width = static_cast<UINT64>(width_),
+            .Height = static_cast<UINT>(height_),
+            .DepthOrArraySize = 1,
+            .MipLevels = 1,
+            .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
+            .SampleDesc = {1, 0},
+            .Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN,
+            .Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS  // for raytracing
+        };
+        const D3D12_HEAP_PROPERTIES def_props{
+            .Type = D3D12_HEAP_TYPE_DEFAULT,
+            .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+            .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
+        };
+
+        d3d_ctx.g_pd3dSrvDescHeapAlloc.Alloc(&srv_cpu_handle, &srv_gpu_handle);
+        d3d_ctx.g_pd3dSrvDescHeapAlloc.Alloc(&uav_cpu_handle, &uav_gpu_handle);
 
         d3d_ctx.g_pd3dDevice->CreateCommittedResource(
             &def_props, D3D12_HEAP_FLAG_NONE, &tex_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&pTexture));
@@ -216,7 +200,7 @@ void CPUFrameBuffer::upload_to_gpu(){
                     .MipLevels = 1,
                 },
         };
-        d3d_ctx.g_pd3dDevice->CreateShaderResourceView(pTexture, &srvDesc, srv_cpu_handle);
+        d3d_ctx.g_pd3dDevice->CreateShaderResourceView(pTexture.Get(), &srvDesc, srv_cpu_handle);
 
         // Create a unordered access view for the texture
         const D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{
@@ -228,7 +212,7 @@ void CPUFrameBuffer::upload_to_gpu(){
                     .PlaneSlice = 0,
                 },
         };
-        d3d_ctx.g_pd3dDevice->CreateUnorderedAccessView(pTexture, nullptr, &uavDesc, uav_cpu_handle);
+        d3d_ctx.g_pd3dDevice->CreateUnorderedAccessView(pTexture.Get(), nullptr, &uavDesc, uav_cpu_handle);
 
     }
     
@@ -270,9 +254,15 @@ void CPUFrameBuffer::upload_to_gpu(){
     for (int y = 0; y < height_; y++)
         memcpy((void*)((uintptr_t)mapped + y * uploadPitch), data_.data() + y * width_, width_ * sizeof(hdr_pixel));
 
+    //hr = d3d_ctx.g_pd3dCommandQueue->Signal(d3d_ctx.g_fence.Get(), ++d3d_ctx.g_fenceLastSignaledValue);
+    //assert(SUCCEEDED(hr));
+    d3d_ctx.g_pd3dCopyQueue->Wait(d3d_ctx.g_fence.Get(), d3d_ctx.g_fenceLastSignaledValue);
+
+    d3d_ctx.WaitForPendingCopy();
+
     // Copy the upload resource content into the real resource
     const D3D12_TEXTURE_COPY_LOCATION srcLocation = {
-        .pResource = uploadBuffer,
+        .pResource = uploadBuffer.Get(),
         .Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
         .PlacedFootprint = D3D12_PLACED_SUBRESOURCE_FOOTPRINT{
             .Footprint = D3D12_SUBRESOURCE_FOOTPRINT{
@@ -286,11 +276,13 @@ void CPUFrameBuffer::upload_to_gpu(){
     };
 
     const D3D12_TEXTURE_COPY_LOCATION dstLocation = {
-        .pResource = pTexture,
+        .pResource = pTexture.Get(),
         .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
         .SubresourceIndex = 0,
     };
-    // Copy call
+
+    d3d_ctx.InitCopyCommandList();
+
     d3d_ctx.g_pd3dCopyCommandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, nullptr);
 
     d3d_ctx.DispatchCopyCommandList();
@@ -298,16 +290,21 @@ void CPUFrameBuffer::upload_to_gpu(){
     hr = d3d_ctx.g_pd3dCopyQueue->Signal(d3d_ctx.copy_fence.Get(), ++d3d_ctx.copy_fenceLastSignaledValue);
     assert(SUCCEEDED(hr));
     d3d_ctx.g_pd3dCommandQueue->Wait(d3d_ctx.copy_fence.Get(), d3d_ctx.copy_fenceLastSignaledValue);
+}
 
-    // Transition the texture to be a shader resource for use in shaders
+void CPUFrameBuffer::transition_from_copy_to_srv() {
+    if (!pTexture) return;
+
+    D3DContext& d3d_ctx = D3DContext::Get();
+
     const D3D12_RESOURCE_BARRIER barrier_to_psr = {
         .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
         .Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE,
         .Transition =
             D3D12_RESOURCE_TRANSITION_BARRIER{
-                .pResource = pTexture,
+                .pResource = pTexture.Get(),
                 .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                .StateBefore = D3D12_RESOURCE_STATE_COPY_DEST,
+                .StateBefore = D3D12_RESOURCE_STATE_COMMON,
                 .StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
             },
     };
@@ -324,7 +321,7 @@ void CPUFrameBuffer::transition_from_srv_to_copy() {
         .Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE,
         .Transition =
             D3D12_RESOURCE_TRANSITION_BARRIER{
-                .pResource = pTexture,
+                .pResource = pTexture.Get(),
                 .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
                 .StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
                 .StateAfter = D3D12_RESOURCE_STATE_COMMON,
@@ -343,13 +340,13 @@ void CPUFrameBuffer::transition_from_srv_to_uav() {
         .Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE,
         .Transition =
             D3D12_RESOURCE_TRANSITION_BARRIER{
-                .pResource = pTexture,
+                .pResource = pTexture.Get(),
                 .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
                 .StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
                 .StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
             },
     };
-    d3d_ctx.g_pd3dCommandList->ResourceBarrier(1, &toUAV);
+    d3d_ctx.g_pd3dDXRCommandList->ResourceBarrier(1, &toUAV);
 }
 void CPUFrameBuffer::transition_from_uav_to_srv() {
     if (!pTexture) return;
@@ -361,30 +358,32 @@ void CPUFrameBuffer::transition_from_uav_to_srv() {
         .Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE,
         .Transition =
             D3D12_RESOURCE_TRANSITION_BARRIER{
-                .pResource = pTexture,
+                .pResource = pTexture.Get(),
                 .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
                 .StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                 .StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
             },
     };
-    d3d_ctx.g_pd3dCommandList->ResourceBarrier(1, &toSRV);
+    d3d_ctx.g_pd3dDXRCommandList->ResourceBarrier(1, &toSRV);
 }
+
+ComPtr<ID3D12Resource> CPUFrameBuffer::get_gpu_resource() const { return pTexture; }
+
+ComPtr<ID3D12Resource> CPUFrameBuffer::get_gpu_upload_resource() const { return uploadBuffer; }
 
 void CPUFrameBuffer::release_gpu_resource() {
     if (pTexture) {
         D3DContext::Get().g_pd3dSrvDescHeapAlloc.Free(srv_cpu_handle, srv_gpu_handle);
         D3DContext::Get().g_pd3dSrvDescHeapAlloc.Free(uav_cpu_handle, uav_gpu_handle);
-        pTexture->Release();
-        pTexture = nullptr;
-    }
-    if (mapped) {
-        D3D12_RANGE range = {0, uploadSize};
-        uploadBuffer->Unmap(0, &range);
-        mapped = nullptr;
+        pTexture.Reset();
     }
     if (uploadBuffer) {
-        uploadBuffer->Release();
-        uploadBuffer = nullptr;
+        if (mapped) {
+            D3D12_RANGE range = {0, uploadSize};
+            uploadBuffer->Unmap(0, &range);
+            mapped = nullptr;
+        }
+        uploadBuffer.Reset();
     }
 }
 #endif  // ifndef NO_WINDOWS

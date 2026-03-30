@@ -4,17 +4,22 @@
 #include <memory>
 #include <fastgltf/types.hpp>
 
-#include "../render_settings.h"
-#include "../model_loader.h"
+#include "../renderer.h"
+#include "GPU_model.h"
+#include "GPU_pipeline.h"
 
 namespace app {
 
 using namespace glm;
 
-class GPU_renderer {
+class GPURenderer : public IRenderer {
   public:
-    GPU_renderer();
-    ~GPU_renderer();
+    GPURenderer() = default;
+    ~GPURenderer() = default;
+    GPURenderer(const GPURenderer&) = delete;
+    GPURenderer& operator=(const GPURenderer&) = delete;
+
+    using IRenderer::RenderingState;
 
     void update_camera_transform_state(
         fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams);
@@ -30,19 +35,17 @@ class GPU_renderer {
     RenderSettings get_render_settings() const;
     BBox get_scene_bound() const;
 
-    enum RenderingState { Idle, ReadyToStart, Rendering, Cancelling };
-
     float get_progress() const;
     void cancel_rendering();
     RenderingState get_rendering_state() const;
     void set_render_starting_state();
 
-  private:
-
+  protected:
+    const Model* modelRef = nullptr;
+    const CPUTexture<hdr_pixel>* envmapRef = nullptr;
     std::unique_ptr<GPU_model> gpu_model_;
-    std::unique_ptr<RayProgram> ray_program_;
+    RenderSettings renderSettings_;
 
-    // Camera state
     fmat4x4 viewMatrix_ = fmat4x4(1.0f);
     fmat4x4 projectionMatrix_ = fmat4x4(1.0f);
     fmat4x4 NDC2WorldMatrix_ = fmat4x4(1.0f);
@@ -51,7 +54,8 @@ class GPU_renderer {
     float progress_ = 0.0f;
     std::atomic<RenderingState> render_state_ = Idle;
 
-    void release_gpu_resource();
+  private:
+    GPU_pipeline pipeline_;
 };
 
 }

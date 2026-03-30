@@ -9,6 +9,10 @@
 
 #include <glm/ext.hpp>
 
+#ifndef NO_WINDOWS
+#include "DXR/GPU_renderer.h"
+#endif
+
 namespace app {
 
 using namespace glm;
@@ -20,21 +24,65 @@ Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture, const 
     }
     framebuffer_ = CPUFrameBuffer(windowDimensions_.x, windowDimensions_.y);
 
-    renderer_.set_render_settings(settings);
-    renderer_.load_scene(model_, environmentTexture_);
+    renderers_.push_back(std::make_shared<Renderer>());
+    renderer_ = renderers_[0]; // chose CPU renderer by default
+
+    ++lastModelFenceValue;
+    ++lastEnvmapFenceValue;
+    renderer_->set_render_settings(settings);
+    renderer_->load_scene(model_, environmentTexture_);
 
     snap_to_camera();
 }
 
+#ifndef NO_WINDOWS
+void Viewer::InitGPURenderer() {
+    if (renderers_.size() >= 2) {
+        return;
+    }
+    renderers_.push_back(std::make_shared<GPURenderer>());
+}
+
+void Viewer::switch_to_gpu_renderer() {
+    if (renderers_.size() < 2) {
+        throw std::runtime_error("GPU renderer not initialized. Call InitGPURenderer() first.");
+    }
+    if (renderer_->get_rendering_state() == Renderer::RenderingState::Rendering) {
+        throw std::runtime_error("Cannot switch GPU renderer while rendering is in progress");
+    }
+    auto settings = get_render_settings();
+    renderer_ = renderers_[1]; // find by type instead?
+    renderer_->set_render_settings(settings);
+    renderer_->load_scene(model_, environmentTexture_); // think about command lists
+    snap_to_camera();
+    GPU_renderer_active = true;
+}
+
+void Viewer::switch_to_cpu_renderer() {
+    if (renderer_->get_rendering_state() == Renderer::RenderingState::Rendering) {
+        throw std::runtime_error("Cannot switch GPU renderer while rendering is in progress");
+    }
+    auto settings = get_render_settings();
+    renderer_ = renderers_[0];  // find by type instead?
+    renderer_->set_render_settings(settings);
+    renderer_->load_scene(model_, environmentTexture_);
+    snap_to_camera();
+    GPU_renderer_active = false;
+}
+#endif
+
 void Viewer::resize_window(const ivec2& newDimensions) {
     windowDimensions_ = newDimensions;
+#ifndef NO_WINDOWS
+    framebuffer_.release_gpu_resource();
+#endif
     framebuffer_ = CPUFrameBuffer(windowDimensions_.x, windowDimensions_.y);
 }
 
 ivec2 Viewer::get_window_dimensions() const { return windowDimensions_; }
 
 void Viewer::render() { 
-    renderer_.render_frame(framebuffer_, continuous_rendering, iterative_rendering, iterations_counter);
+    renderer_->render_frame(framebuffer_, continuous_rendering, iterative_rendering, iterations_counter);
     if (iterative_rendering) {
         ++iterations_counter;
     } else {
@@ -43,14 +91,14 @@ void Viewer::render() {
 }
 
 void Viewer::cancel_rendering() {
-    renderer_.cancel_rendering(); 
+    renderer_->cancel_rendering(); 
     cv_render.notify_one();
 }
 
-Renderer::RenderingState Viewer::get_rendering_state() const { return renderer_.get_rendering_state(); }
+Renderer::RenderingState Viewer::get_rendering_state() const { return renderer_->get_rendering_state(); }
 
 void Viewer::async_start_render() { 
-    renderer_.set_render_starting_state();
+    renderer_->set_render_starting_state();
     cv_render.notify_one();
 }
 
@@ -96,7 +144,7 @@ bool Viewer::snap_to_camera(bool use_default) {
     if (!success && use_default) {
         set_up_default_camera_transforms();
     }
-    renderer_.update_camera_transform_state(position_, direction_, up_, cam_params_);
+    renderer_->update_camera_transform_state(position_, direction_, up_, cam_params_);
 
     return success;
 }
@@ -104,25 +152,26 @@ bool Viewer::snap_to_camera(bool use_default) {
 int Viewer::get_number_of_cameras() const { return static_cast<int>(model_.cameras_.size()); }
 
 void Viewer::set_render_settings(const RenderSettings& settings) {
-    const auto currentSettings = renderer_.get_render_settings();
-    renderer_.set_render_settings(settings);
+    const auto currentSettings = renderer_->get_render_settings();
+    renderer_->set_render_settings(settings);
     if (currentSettings.accelStructType != settings.accelStructType ||
         currentSettings.maxTrianglesPerBVHLeaf != settings.maxTrianglesPerBVHLeaf) {
-        renderer_.reload_acceleration_structure();
+        renderer_->reload_acceleration_structure();
     }
     if (currentSettings.programMode != settings.programMode || 
         currentSettings.envmapRotation != settings.envmapRotation ||
         currentSettings.maxNewRaysPerBounce != settings.maxNewRaysPerBounce) {
-        renderer_.reload_ray_program();
+        renderer_->reload_ray_program();
     }
 }
-RenderSettings Viewer::get_render_settings() const { return renderer_.get_render_settings(); }
+RenderSettings Viewer::get_render_settings() const { return renderer_->get_render_settings(); }
 
-float Viewer::get_render_progress() const { return renderer_.get_progress(); }
+float Viewer::get_render_progress() const { return renderer_->get_progress(); }
 
 void Viewer::load_envmap(CPUTexture<hdr_pixel>&& environmentTexture) { 
     environmentTexture_ = std::move(environmentTexture);
-    renderer_.load_envmap(environmentTexture_);
+    ++lastEnvmapFenceValue;
+    renderer_->load_envmap(environmentTexture_);
 }
 
 void Viewer::load_model(Model&& model) { 
@@ -131,7 +180,8 @@ void Viewer::load_model(Model&& model) {
     if (model_.cameras_.size() > 0) {
         activeCameraIndex_ = 0;
     }
-    renderer_.load_model(model_);
+    ++lastModelFenceValue;
+    renderer_->load_model(model_);
 }
 
 const Model& Viewer::get_model() const { return model_; }
@@ -149,7 +199,7 @@ void Viewer::set_up_default_camera_transforms() {
         .yfov = glm::radians(60.f),
         .zfar = 1000.0f,
         .znear = 0.1f};
-    auto bounds = renderer_.get_scene_bound();
+    auto bounds = renderer_->get_scene_bound();
     bool not_empty = !bounds.is_empty();
     auto dims = (not_empty) ? (bounds.max - bounds.min) : fvec3{0.0f};
     auto max_dim = (not_empty) ? max(dims.x, max(dims.y, dims.z)) : 1.0f;
@@ -165,6 +215,6 @@ fvec3 Viewer::get_euler_angles_camera() const {
     return glm::eulerAngles(quat);
 }
 
-fmat4x4 Viewer::get_NDC2WorldMatrix() const { return renderer_.get_NDC2WorldMatrix(); }
+bool Viewer::is_using_gpu_renderer() const { return GPU_renderer_active; }
 
 }  // namespace app

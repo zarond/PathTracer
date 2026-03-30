@@ -23,7 +23,7 @@ struct RayGenConstantBuffer {
 
 class GPU_pipeline {
   public:
-    GPU_pipeline(const fmat4x4& NDC2WorldMatrix, const fvec4& origin);
+    GPU_pipeline();
     ~GPU_pipeline();
 
     // Root signatures
