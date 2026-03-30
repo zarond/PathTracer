@@ -15,8 +15,10 @@ void GPURenderer::update_camera_transform_state(
     NDC2WorldMatrix_ = glm::inverse(projectionMatrix_ * viewMatrix_);
 }
 
-void GPURenderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap) {
-    // Todo: check against fence values ?
+void GPURenderer::load_scene(
+    const Model& model, const CPUTexture<hdr_pixel>& envmap, size_t ModelFenceValue, size_t EnvmapFenceValue) {
+    if (ModelFenceValue == lastModelFenceValue && EnvmapFenceValue == lastEnvmapFenceValue) return;
+
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.WaitForPendingCopy();
 
@@ -24,17 +26,24 @@ void GPURenderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& en
     envmapRef = &envmap;
     reload_acceleration_structure();
     reload_ray_program();
+
+    lastModelFenceValue = ModelFenceValue;
+    lastEnvmapFenceValue = EnvmapFenceValue;
 }
 
-void GPURenderer::load_envmap(const CPUTexture<hdr_pixel>& envmap) {
+void GPURenderer::load_envmap(const CPUTexture<hdr_pixel>& envmap, size_t EnvmapFenceValue) {
+    if (EnvmapFenceValue == lastEnvmapFenceValue) return;
     envmapRef = &envmap;
     reload_ray_program();
+    lastEnvmapFenceValue = EnvmapFenceValue;
 }
 
-void GPURenderer::load_model(const Model& model) {
+void GPURenderer::load_model(const Model& model, size_t ModelFenceValue) {
+    if (ModelFenceValue == lastModelFenceValue) return;
     modelRef = &model;
     reload_acceleration_structure();
     reload_ray_program();
+    lastModelFenceValue = ModelFenceValue;
 }
 
 void GPURenderer::reload_ray_program() {
@@ -73,12 +82,18 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
         static std::minstd_rand gen = std::minstd_rand(std::random_device{}());
         static std::uniform_real_distribution<float> dist{-0.5f, 0.5f};
         jitter = fvec2{dist(gen), dist(gen)};
-        float n_sqrt = sqrtf(renderSettings_.samplesPerPixel);
+        //float n_sqrt = sqrtf(renderSettings_.samplesPerPixel);
+        float n_sqrt = 1.0f;
         jitter /= n_sqrt;
         inverse_iteration_count = 1.0f / static_cast<float>(iteration_count);
     }
+
+    pipeline_.m_rayGenCB.cameraPosition = xyz1(origin_);
+    pipeline_.m_rayGenCB.projectionToWorld = NDC2WorldMatrix_;
+    pipeline_.m_rayGenCB.subpixel_offset = jitter;
+    pipeline_.m_rayGenCB.iteration = iteration_count;
+    pipeline_.m_rayGenCB.invIterationCount = inverse_iteration_count;
     
-    // Todo: render on GPU
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
 
@@ -86,7 +101,7 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
     d3d_ctx.g_pd3dDXRCommandList->SetDescriptorHeaps(1, desc_heap);
 
     framebuffer.transition_from_srv_to_uav();
-    pipeline_.DoRaytracing(*gpu_model_, framebuffer, NDC2WorldMatrix_, xyz1(origin_));
+    pipeline_.DoRaytracing(*gpu_model_, framebuffer);
     framebuffer.transition_from_uav_to_srv();
 
     d3d_ctx.DispatchDXRCommandList();
@@ -107,6 +122,7 @@ RenderSettings GPURenderer::get_render_settings() const { return renderSettings_
 
 BBox GPURenderer::get_scene_bound() const {
     // Todo: compute scene bound from model
+    // can't get from TLAS of GPU_model
     return BBox{};
 }
 

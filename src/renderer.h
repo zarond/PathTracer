@@ -50,9 +50,10 @@ class IRenderer {
     virtual void update_camera_transform_state(
         fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams) = 0;
 
-    virtual void load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap) = 0;  // should be in constructor?
-    virtual void load_envmap(const CPUTexture<hdr_pixel>& envmap) = 0;
-    virtual void load_model(const Model& model) = 0;
+    virtual void load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap, size_t ModelFenceValue,
+        size_t EnvmapFenceValue) = 0;  // should be in constructor?
+    virtual void load_envmap(const CPUTexture<hdr_pixel>& envmap, size_t EnvmapFenceValue) = 0;
+    virtual void load_model(const Model& model, size_t ModelFenceValue) = 0;
     virtual void reload_ray_program() = 0;
     virtual void reload_acceleration_structure() = 0;
 
@@ -79,9 +80,10 @@ class Renderer : public IRenderer {
     void update_camera_transform_state(
         fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams);
 
-    void load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap);  // should be in constructor?
-    void load_envmap(const CPUTexture<hdr_pixel>& envmap);
-    void load_model(const Model& model);
+    void load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap, size_t ModelFenceValue,
+        size_t EnvmapFenceValue);  // should be in constructor?
+    void load_envmap(const CPUTexture<hdr_pixel>& envmap, size_t EnvmapFenceValue);
+    void load_model(const Model& model, size_t ModelFenceValue);
     void reload_ray_program();
     void reload_acceleration_structure();
 
@@ -117,7 +119,7 @@ class Renderer : public IRenderer {
 
     std::vector<fvec2> subsamplesPositions;
 
-    size_t lastModelFenceValue = 0; // ??
+    size_t lastModelFenceValue = 0;
     size_t lastEnvmapFenceValue = 0;
 };
 

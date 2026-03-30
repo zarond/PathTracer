@@ -274,11 +274,7 @@ void GPU_pipeline::CreateConstantBuffers() {
 }
 
 void GPU_pipeline::DoRaytracing(
-    const GPU_model& gpu_model, const CPUFrameBuffer& framebuffer, const fmat4x4& NDC2WorldMatrix, const fvec4& origin) {
-
-    m_rayGenCB.cameraPosition = origin;
-    m_rayGenCB.projectionToWorld = NDC2WorldMatrix;
-    m_rayGenCB.subpixel_offset = fvec2(0.0f, 0.0f);
+    const GPU_model& gpu_model, const CPUFrameBuffer& framebuffer) {
 
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.g_pd3dDXRCommandList;

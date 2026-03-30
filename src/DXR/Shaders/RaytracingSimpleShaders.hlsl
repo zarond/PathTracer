@@ -68,6 +68,11 @@ void RayGen() {
         payload
     );
 
+    if (g_rayGenCB.iteration > 1) {
+        float3 previousPixel = gOutput[launchIndex].xyz;
+        payload.color = lerp(previousPixel, payload.color, g_rayGenCB.invIterationCount);
+    }
+
     gOutput[launchIndex] = float4(payload.color, 1.f);
 }
 
@@ -102,7 +107,7 @@ void RayGen() {
     float3x3 TBN = construct_TBN(worldTangent, worldBitangent, worldNormal);
 
     uint2 launchIndex = DispatchRaysIndex();
-    uint3 seed = uint3(launchIndex.x, launchIndex.y, 0);
+    uint3 seed = uint3(launchIndex.x, launchIndex.y, g_rayGenCB.iteration);
     float2 jitter = float2(pcg3d16(seed).xy) / float(0xFFFF);
 
     const int N = 32;

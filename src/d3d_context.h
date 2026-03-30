@@ -99,6 +99,7 @@ struct D3DContext {
     void CreateRenderTarget();
     void CleanupRenderTarget();
     FrameContext* WaitForNextFrameContext();
+    FrameContext* GetCurrentFrameContext();
 
     void ResizeSwapchain(UINT Width, UINT Height);
 

@@ -30,7 +30,7 @@ Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture, const 
     ++lastModelFenceValue;
     ++lastEnvmapFenceValue;
     renderer_->set_render_settings(settings);
-    renderer_->load_scene(model_, environmentTexture_);
+    renderer_->load_scene(model_, environmentTexture_, lastModelFenceValue, lastEnvmapFenceValue);
 
     snap_to_camera();
 }
@@ -53,8 +53,8 @@ void Viewer::switch_to_gpu_renderer() {
     auto settings = get_render_settings();
     renderer_ = renderers_[1]; // find by type instead?
     renderer_->set_render_settings(settings);
-    renderer_->load_scene(model_, environmentTexture_); // think about command lists
-    snap_to_camera();
+    renderer_->load_scene(model_, environmentTexture_, lastModelFenceValue, lastEnvmapFenceValue);
+    snap_to_camera(false);
     GPU_renderer_active = true;
 }
 
@@ -65,8 +65,8 @@ void Viewer::switch_to_cpu_renderer() {
     auto settings = get_render_settings();
     renderer_ = renderers_[0];  // find by type instead?
     renderer_->set_render_settings(settings);
-    renderer_->load_scene(model_, environmentTexture_);
-    snap_to_camera();
+    renderer_->load_scene(model_, environmentTexture_, lastModelFenceValue, lastEnvmapFenceValue);
+    snap_to_camera(false);
     GPU_renderer_active = false;
 }
 #endif
@@ -118,7 +118,7 @@ void Viewer::set_active_camera(std::optional<uint32_t> cameraIndex) {
 
 std::optional<uint32_t> Viewer::get_active_camera() const { return activeCameraIndex_; }
 
-void Viewer::take_snapshot(const std::filesystem::path& filePath) const { framebuffer_.save_to_file(filePath); }
+void Viewer::take_snapshot(const std::filesystem::path& filePath) const { framebuffer_.save_to_file(filePath, is_using_gpu_renderer()); }
 
 bool Viewer::snap_to_camera(bool use_default) {
     bool success = false;
@@ -171,7 +171,7 @@ float Viewer::get_render_progress() const { return renderer_->get_progress(); }
 void Viewer::load_envmap(CPUTexture<hdr_pixel>&& environmentTexture) { 
     environmentTexture_ = std::move(environmentTexture);
     ++lastEnvmapFenceValue;
-    renderer_->load_envmap(environmentTexture_);
+    renderer_->load_envmap(environmentTexture_, lastEnvmapFenceValue);
 }
 
 void Viewer::load_model(Model&& model) { 
@@ -181,7 +181,7 @@ void Viewer::load_model(Model&& model) {
         activeCameraIndex_ = 0;
     }
     ++lastModelFenceValue;
-    renderer_->load_model(model_);
+    renderer_->load_model(model_, lastModelFenceValue);
 }
 
 const Model& Viewer::get_model() const { return model_; }

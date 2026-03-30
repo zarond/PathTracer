@@ -24,9 +24,10 @@ class GPURenderer : public IRenderer {
     void update_camera_transform_state(
         fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams);
 
-    void load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap);  // should be in constructor?
-    void load_envmap(const CPUTexture<hdr_pixel>& envmap);
-    void load_model(const Model& model);
+    void load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap, size_t ModelFenceValue,
+        size_t EnvmapFenceValue);  // should be in constructor?
+    void load_envmap(const CPUTexture<hdr_pixel>& envmap, size_t EnvmapFenceValue);
+    void load_model(const Model& model, size_t ModelFenceValue);
     void reload_ray_program();
     void reload_acceleration_structure();
 
@@ -56,6 +57,9 @@ class GPURenderer : public IRenderer {
 
   private:
     GPU_pipeline pipeline_;
+
+    size_t lastModelFenceValue = 0;
+    size_t lastEnvmapFenceValue = 0;
 };
 
 }

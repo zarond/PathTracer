@@ -246,7 +246,7 @@ int main(int argc, char* argv[]) {
             auto& framebuffer = viewer.get_framebuffer();
 
             if (!viewer.is_using_gpu_renderer()) {
-                //framebuffer.transition_from_srv_to_copy();
+                framebuffer.transition_from_srv_to_copy();
                 framebuffer.upload_to_gpu();
                 framebuffer.transition_from_copy_to_srv();
             }
@@ -369,14 +369,22 @@ int main(int argc, char* argv[]) {
         ImGui::Separator();
         if (rendering_state == Renderer::RenderingState::Idle)
         {
-            if (ImGui::Button("Switch to GPU renderer")) {
-                viewer.switch_to_gpu_renderer();
+            {
+                static bool renderer_changed = false;
+                static int renderer_mode = 0;
+                renderer_changed = imgui_combo("Choose Renderer:", std::array{"CPU renderer", "GPU renderer"}, renderer_mode);
+                if (renderer_changed) {
+                    if (renderer_mode == 0 && viewer.is_using_gpu_renderer()) {
+                        viewer.switch_to_cpu_renderer();
+                    } else if (renderer_mode == 1 && !viewer.is_using_gpu_renderer()) {
+                        viewer.switch_to_gpu_renderer();
+                    }
+                }
             }
-            if (ImGui::Button("Switch to CPU renderer")) {
-                viewer.switch_to_cpu_renderer();
-            }
-            if (ImGui::Button("Clear image with black")) {
-                viewer.clear_framebuffer_black();
+            if (!viewer.is_using_gpu_renderer()) {
+                if (ImGui::Button("Clear image with black")) {
+                    viewer.clear_framebuffer_black();
+                }
             }
             if (ImGui::Button("Save image")) {
                 fs::path filepath = SaveFileDialog();
@@ -439,17 +447,25 @@ int main(int argc, char* argv[]) {
                 size_changed |= InputUInt("Height", &console_arguments.windowHeight);
 
                 static bool setings_changed = false;
-                setings_changed |= SliderUInt("samples per pixel", &console_arguments.samplesPerPixel, 1, 128);
+                if (viewer.is_using_gpu_renderer()) {
+                    ImGui::Text("samples per pixel is always = 1 for GPU raytracing, use Iterative Rendering");
+                } else {
+                    setings_changed |= SliderUInt("samples per pixel", &console_arguments.samplesPerPixel, 1, 128);
+                }
                 setings_changed |= SliderUInt("max ray bounces", &console_arguments.maxRayBounces, 0, 10);
                 setings_changed |= SliderUInt("max new rays per bounce", &console_arguments.maxNewRaysPerBounce, 0, 32);
                 HelpTooltip("For AmbientOcclusion mode only, set >= 1");
-                setings_changed |= SliderUInt("max triangles per BVH leaf", &console_arguments.maxTrianglesPerBVHLeaf, 1, 32);
+                if (!viewer.is_using_gpu_renderer()) {
+                    setings_changed |= SliderUInt("max triangles per BVH leaf", &console_arguments.maxTrianglesPerBVHLeaf, 1, 32);
+                }
                 setings_changed |= ImGui::DragInt(
                     "environment rotation", &console_arguments.envmapRotation, 1.0f, 0, 360);
                 HelpTooltip("environment rotation in degrees around UP axis.");
                 setings_changed |= imgui_combo(
                     "Ray Program Mode:", std::array{"RayCaster", "AmbientOcclusion", "PBR"}, console_arguments.programMode);
-                setings_changed |= imgui_combo("Acceleration Struct Type:", std::array{"Naive", "BVH"}, console_arguments.accelStructType);
+                if (!viewer.is_using_gpu_renderer()) {
+                    setings_changed |= imgui_combo("Acceleration Struct Type:", std::array{"Naive", "BVH"}, console_arguments.accelStructType);
+                }
 
                 if (setings_changed || size_changed) {
                     ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.0f, 0.6f, 0.6f));
@@ -501,7 +517,6 @@ int main(int argc, char* argv[]) {
         ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), d3d_ctx.g_pd3dCommandList.Get());
         
         // end frame, change resource state
-        viewer.get_framebuffer().transition_from_srv_to_copy();
         barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
         barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
         d3d_ctx.g_pd3dCommandList->ResourceBarrier(1, &barrier);
@@ -516,6 +531,7 @@ int main(int argc, char* argv[]) {
         d3d_ctx.g_SwapChainOccluded = (hr == DXGI_STATUS_OCCLUDED);
         d3d_ctx.g_frameIndex++;
 
+        // Safe delete no longer used resources
         if (deferredDeletes.size() > 0) {
             d3d_ctx.WaitForPendingOperations();
             d3d_ctx.WaitForPendingCopy();

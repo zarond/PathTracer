@@ -12,6 +12,8 @@ struct RayGenConstantBuffer {
     float4x4 projectionToWorld;
     float4 cameraPosition;
     float2 subpixel_offset;
+    int iteration;
+    float invIterationCount;
 };
 
 typedef BuiltInTriangleIntersectionAttributes Attributes;

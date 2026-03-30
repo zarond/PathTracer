@@ -202,7 +202,7 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
     using CPUTexture::sample_nearest;
     using CPUTexture::width;
 
-    void save_to_file(const std::filesystem::path& filePath) const;
+    void save_to_file(const std::filesystem::path& filePath, bool from_GPU_texture) const;
 
 #ifndef NO_WINDOWS
     void upload_to_gpu();
@@ -211,8 +211,8 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
     D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle;
     D3D12_CPU_DESCRIPTOR_HANDLE uav_cpu_handle;
     D3D12_GPU_DESCRIPTOR_HANDLE uav_gpu_handle;
-    void transition_from_copy_to_srv();
-    void transition_from_srv_to_copy();
+    void transition_from_copy_to_srv() const;
+    void transition_from_srv_to_copy() const;
     void transition_from_srv_to_uav();
     void transition_from_uav_to_srv();
     bool nearest_filtering = true;
@@ -225,6 +225,8 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
     UINT uploadPitch;
     UINT uploadSize;
     void* mapped = nullptr;
+
+    std::vector<hdr_pixel> download_from_gpu() const;
 #endif
 };
 

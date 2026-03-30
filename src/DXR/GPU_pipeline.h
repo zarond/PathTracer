@@ -19,6 +19,8 @@ struct RayGenConstantBuffer {
     fmat4x4 projectionToWorld;
     fvec4 cameraPosition;
     fvec2 subpixel_offset;
+    int iteration;
+    float invIterationCount;
 };
 
 class GPU_pipeline {
@@ -82,7 +84,7 @@ class GPU_pipeline {
     ComPtr<ID3D12StateObjectProperties> m_rtStateObjectProps;
 
     void DoRaytracing(
-        const GPU_model& gpu_model, const CPUFrameBuffer& framebuffer, const fmat4x4& NDC2WorldMatrix, const fvec4& origin);
+        const GPU_model& gpu_model, const CPUFrameBuffer& framebuffer);
 
 private:
     void release_gpu_resources();

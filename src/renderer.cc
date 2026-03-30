@@ -36,23 +36,30 @@ void Renderer::update_camera_transform_state(
     NDC2WorldMatrix_ = glm::inverse(projectionMatrix_ * viewMatrix_);
 }
 
-void Renderer::load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap) {
-    // Todo: check against fence values?
+void Renderer::load_scene(
+    const Model& model, const CPUTexture<hdr_pixel>& envmap, size_t ModelFenceValue, size_t EnvmapFenceValue) {
+    if (ModelFenceValue == lastModelFenceValue && EnvmapFenceValue == lastEnvmapFenceValue) return;
     modelRef = &model;
     envmapRef = &envmap;
     reload_acceleration_structure();
     reload_ray_program();
+    lastModelFenceValue = ModelFenceValue;
+    lastEnvmapFenceValue = EnvmapFenceValue;
 }
 
-void Renderer::load_envmap(const CPUTexture<hdr_pixel>& envmap) {
+void Renderer::load_envmap(const CPUTexture<hdr_pixel>& envmap, size_t EnvmapFenceValue) {
+    if (EnvmapFenceValue == lastEnvmapFenceValue) return;
     envmapRef = &envmap;
     reload_ray_program();
+    lastEnvmapFenceValue = EnvmapFenceValue;
 }
 
-void Renderer::load_model(const Model& model) {
+void Renderer::load_model(const Model& model, size_t ModelFenceValue) {
+    if (ModelFenceValue == lastModelFenceValue) return;
     modelRef = &model;
     reload_acceleration_structure();
     reload_ray_program();
+    lastModelFenceValue = ModelFenceValue;
 }
 
 void Renderer::reload_ray_program() {
