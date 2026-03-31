@@ -580,4 +580,145 @@ D3D12_GPU_VIRTUAL_ADDRESS GPU_model::GetGPUVirtualAddress() const {
     return tlasBuffer->GetGPUVirtualAddress();
 }
 
+// GPU_texture
+
+GPU_texture::GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture) : HDR(true) { 
+    create_texture_resource(cpu_texture.width(), cpu_texture.height(), DXGI_FORMAT_R32G32B32A32_FLOAT);
+    upload_texture_to_gpu(
+        cpu_texture.width(), cpu_texture.height(), cpu_texture.data(), sizeof(hdr_pixel), DXGI_FORMAT_R32G32B32A32_FLOAT);
+}
+
+GPU_texture::GPU_texture(const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_) : HDR(false), srgb(srgb_) {
+    DXGI_FORMAT format = srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
+    create_texture_resource(cpu_texture.width(), cpu_texture.height(), format);
+    upload_texture_to_gpu(cpu_texture.width(), cpu_texture.height(), cpu_texture.data(), sizeof(sdr_pixel), format);
+}
+
+GPU_texture::~GPU_texture() { 
+    release_gpu_resource();
+}
+
+void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT format) {
+    D3DContext& d3d_ctx = D3DContext::Get(); 
+    if (pTexture == nullptr) {
+        const D3D12_RESOURCE_DESC tex_desc{
+            .Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+            .Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+            .Width = width,
+            .Height = height,
+            .DepthOrArraySize = 1,
+            .MipLevels = 1,
+            .Format = format,
+            .SampleDesc = {1, 0},
+            .Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN,
+            .Flags = D3D12_RESOURCE_FLAG_NONE
+        };
+        const D3D12_HEAP_PROPERTIES def_props{
+            .Type = D3D12_HEAP_TYPE_DEFAULT,
+            .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+            .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
+        };
+
+        d3d_ctx.g_pd3dSrvDescHeapAlloc.Alloc(&srv_cpu_handle, &srv_gpu_handle);
+
+        d3d_ctx.g_pd3dDevice->CreateCommittedResource(
+            &def_props, D3D12_HEAP_FLAG_NONE, &tex_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&pTexture));
+
+        const D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{
+            .Format = format,
+            .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
+            .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+            .Texture2D =
+                D3D12_TEX2D_SRV{
+                    .MostDetailedMip = 0,
+                    .MipLevels = 1,
+                },
+        };
+        d3d_ctx.g_pd3dDevice->CreateShaderResourceView(pTexture.Get(), &srvDesc, srv_cpu_handle);
+    }
+}
+
+void GPU_texture::upload_texture_to_gpu(int width_, int height_, const auto& data_, size_t sizeofpixel, DXGI_FORMAT format) {
+    ComPtr<ID3D12Resource> uploadBuffer;
+    UINT uploadPitch;
+    UINT uploadSize;
+    void* mapped = nullptr;
+
+    D3DContext& d3d_ctx = D3DContext::Get();
+
+    HRESULT hr;
+
+    // Create a temporary upload resource to move the data in
+    uploadPitch = (width_ * sizeofpixel + D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1u) & ~(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1u);
+    uploadSize = height_ * uploadPitch;
+
+    const D3D12_RESOURCE_DESC upload_desc{
+        .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
+        .Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+        .Width = uploadSize,
+        .Height = 1,
+        .DepthOrArraySize = 1,
+        .MipLevels = 1,
+        .Format = DXGI_FORMAT_UNKNOWN,
+        .SampleDesc = {1, 0},
+        .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+        .Flags = D3D12_RESOURCE_FLAG_NONE,
+    };
+    const D3D12_HEAP_PROPERTIES upload_props{
+        .Type = D3D12_HEAP_TYPE_UPLOAD,
+        .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
+    };
+
+    hr = d3d_ctx.g_pd3dDevice->CreateCommittedResource(&upload_props, D3D12_HEAP_FLAG_NONE, &upload_desc,
+        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&uploadBuffer));
+    assert(SUCCEEDED(hr));
+
+    // Write pixels into the upload resource
+    if (mapped == nullptr) {
+        D3D12_RANGE range = {0, uploadSize};
+        hr = uploadBuffer->Map(0, nullptr, &mapped);
+        assert(SUCCEEDED(hr));
+    }
+    for (int y = 0; y < height_; y++)
+        memcpy((void*)((uintptr_t)mapped + y * uploadPitch), data_.data() + y * width_, width_ * sizeofpixel);
+
+    // Copy the upload resource content into the real resource
+    const D3D12_TEXTURE_COPY_LOCATION srcLocation = {
+        .pResource = uploadBuffer.Get(),
+        .Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
+        .PlacedFootprint = D3D12_PLACED_SUBRESOURCE_FOOTPRINT {
+            .Footprint = D3D12_SUBRESOURCE_FOOTPRINT {
+                .Format = format,
+                .Width = static_cast<UINT>(width_),
+                .Height = static_cast<UINT>(height_),
+                .Depth = 1,
+                .RowPitch = uploadPitch,
+            }
+        }
+    };
+
+    const D3D12_TEXTURE_COPY_LOCATION dstLocation = {
+        .pResource = pTexture.Get(),
+        .Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
+        .SubresourceIndex = 0,
+    };
+
+    d3d_ctx.InitCopyCommandList();
+
+    d3d_ctx.g_pd3dCopyCommandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, nullptr);
+
+    d3d_ctx.DispatchCopyCommandList();
+    d3d_ctx.WaitForPendingCopy();
+}
+
+void GPU_texture::release_gpu_resource() {
+    if (pTexture) {
+        D3DContext::Get().g_pd3dSrvDescHeapAlloc.Free(srv_cpu_handle, srv_gpu_handle);
+        pTexture.Reset();
+    }
+}
+
+D3D12_GPU_DESCRIPTOR_HANDLE GPU_texture::GetSRVHandle() const { return srv_gpu_handle; }
+
 }  // namespace app

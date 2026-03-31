@@ -172,6 +172,8 @@ class CPUTexture {
     static CPUTexture create_white_texture();
     static CPUTexture create_black_texture();
 
+    const std::vector<pixel>& data() const { return data_; }
+
   protected:
     std::vector<pixel> data_;
     int width_ = 1;

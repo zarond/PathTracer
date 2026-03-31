@@ -14,6 +14,10 @@ struct RayGenConstantBuffer {
     float2 subpixel_offset;
     int iteration;
     float invIterationCount;
+    int maxNewRaysPerBounce;
+    float invMaxNewRaysPerBounce;
+    int maxRayBounces;
+    float envmapRotation;
 };
 
 typedef BuiltInTriangleIntersectionAttributes Attributes;

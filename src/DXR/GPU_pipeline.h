@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../cpu_framebuffer.h"
+#include "../arguments.h"
 #include "GPU_model.h"
 
 #include <d3d12.h>
@@ -21,6 +22,10 @@ struct RayGenConstantBuffer {
     fvec2 subpixel_offset;
     int iteration;
     float invIterationCount;
+    int maxNewRaysPerBounce;
+    float invMaxNewRaysPerBounce;
+    int maxRayBounces;
+    float envmapRotation;
 };
 
 class GPU_pipeline {
@@ -37,13 +42,16 @@ class GPU_pipeline {
 
     void CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
 
-    //ComPtr<ID3D12RootSignature> CreateRayGenSignature();
-    //ComPtr<ID3D12RootSignature> CreateMissSignature();
-    //ComPtr<ID3D12RootSignature> CreateHitSignature();
+    void CreateRaytracingPipelines();
 
-    void CreateRaytracingPipeline();
+    void CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const wchar_t* c_closestHitShaderName,
+        const wchar_t* c_missShaderName, ComPtr<ID3D12StateObject>& m_dxrStateObject, UINT maxRecursionDepth);
 
-    void BuildShaderTables();
+    void BuildAllShaderTables();
+
+    void BuildShaderTables(
+        const wchar_t* c_closestHitShaderName, const wchar_t* c_missShaderName, ComPtr<ID3D12StateObject>& m_dxrStateObject, 
+        ComPtr<ID3D12Resource>& m_missShaderTable, ComPtr<ID3D12Resource>& m_hitGroupShaderTable);
 
     void CreateConstantBuffers();
 
@@ -51,8 +59,10 @@ class GPU_pipeline {
 
     const wchar_t* c_hitGroupName = L"MyHitGroup";
     const wchar_t* c_raygenShaderName = L"RayGen";
-    const wchar_t* c_closestHitShaderName = L"ClosestHit";
-    const wchar_t* c_missShaderName = L"Miss";
+    const wchar_t* c_closestHitAOShaderName = L"ClosestHitAO";
+    const wchar_t* c_closestHitRCShaderName = L"ClosestHitRC";
+    const wchar_t* c_missAOShaderName = L"MissAO";
+    const wchar_t* c_missEnvmapShaderName = L"MissEnvmap";
 
     union AlignedSceneConstantBuffer {
         RayGenConstantBuffer constants;
@@ -64,27 +74,33 @@ class GPU_pipeline {
     RayGenConstantBuffer m_rayGenCB;
     ComPtr<ID3D12Resource> m_perFrameConstants;
 
-    //ComPtr<IDxcBlob> m_rayGenLibrary;
-    //ComPtr<IDxcBlob> m_hitLibrary;
-    //ComPtr<IDxcBlob> m_missLibrary;
-
-    //ComPtr<ID3D12RootSignature> m_rayGenSignature;
-    //ComPtr<ID3D12RootSignature> m_hitSignature;
-    //ComPtr<ID3D12RootSignature> m_missSignature;
-
-    // Shader tables
-    ComPtr<ID3D12Resource> m_missShaderTable;
-    ComPtr<ID3D12Resource> m_hitGroupShaderTable;
+    // Shader table for RayGen (common)
     ComPtr<ID3D12Resource> m_rayGenShaderTable;
+    
+    // Shader tables RC
+    ComPtr<ID3D12Resource> m_RC_missShaderTable;
+    ComPtr<ID3D12Resource> m_RC_hitGroupShaderTable;
 
-    // Ray tracing pipeline state
-    ComPtr<ID3D12StateObject> m_dxrStateObject;
+    // Shader tables AO
+    ComPtr<ID3D12Resource> m_AO_missShaderTable;
+    ComPtr<ID3D12Resource> m_AO_hitGroupShaderTable;
+
+    // Shader tables PBR
+    ComPtr<ID3D12Resource> m_PBR_missShaderTable;
+    ComPtr<ID3D12Resource> m_PBR_hitGroupShaderTable;
+
+    // Ray tracing pipeline states
+    ComPtr<ID3D12StateObject> m_dxrStateObjectRayCaster;
+    ComPtr<ID3D12StateObject> m_dxrStateObjectAmbientOcclusion;
+    ComPtr<ID3D12StateObject> m_dxrStateObjectPBR;
+
+    RayProgramMode RaytracingMode = RayProgramMode::AmbientOcclusion;
+
     // Ray tracing pipeline state properties, retaining the shader identifiers
     // to use in the Shader Binding Table
     ComPtr<ID3D12StateObjectProperties> m_rtStateObjectProps;
 
-    void DoRaytracing(
-        const GPU_model& gpu_model, const CPUFrameBuffer& framebuffer);
+    void DoRaytracing(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer);
 
 private:
     void release_gpu_resources();

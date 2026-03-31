@@ -45,6 +45,7 @@ class GPURenderer : public IRenderer {
     const Model* modelRef = nullptr;
     const CPUTexture<hdr_pixel>* envmapRef = nullptr;
     std::unique_ptr<GPU_model> gpu_model_;
+    std::unique_ptr<GPU_texture> gpu_envmap_;
     RenderSettings renderSettings_;
 
     fmat4x4 viewMatrix_ = fmat4x4(1.0f);

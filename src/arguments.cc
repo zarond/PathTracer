@@ -86,7 +86,7 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         .scan<'i', int>()
         .required()
         .nargs(1)
-        .default_value(0);
+        .default_value(1);
 
     program.add_argument("--env_rot")
         .help("additional env map rotation around UP axis in degrees.")

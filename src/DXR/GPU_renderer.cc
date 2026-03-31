@@ -42,21 +42,13 @@ void GPURenderer::load_model(const Model& model, size_t ModelFenceValue) {
     if (ModelFenceValue == lastModelFenceValue) return;
     modelRef = &model;
     reload_acceleration_structure();
-    reload_ray_program();
+    //reload_ray_program();
     lastModelFenceValue = ModelFenceValue;
 }
 
 void GPURenderer::reload_ray_program() {
-    // Todo: switch shaders
-    switch (renderSettings_.programMode) {
-        case RayProgramMode::AmbientOcclusion:
-            break;
-        case RayProgramMode::PBR:
-            break;
-        case RayProgramMode::RayCaster:
-        default:
-            break;
-    }
+    gpu_envmap_ = std::make_unique<GPU_texture>(*envmapRef);
+    pipeline_.RaytracingMode = renderSettings_.programMode;
 }
 void GPURenderer::reload_acceleration_structure() {
     auto start = std::chrono::high_resolution_clock::now();
@@ -93,6 +85,10 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
     pipeline_.m_rayGenCB.subpixel_offset = jitter;
     pipeline_.m_rayGenCB.iteration = iteration_count;
     pipeline_.m_rayGenCB.invIterationCount = inverse_iteration_count;
+    pipeline_.m_rayGenCB.maxNewRaysPerBounce = renderSettings_.maxNewRaysPerBounce;
+    pipeline_.m_rayGenCB.invMaxNewRaysPerBounce = 1.0f / renderSettings_.maxNewRaysPerBounce;
+    pipeline_.m_rayGenCB.maxRayBounces = renderSettings_.maxRayBounces;
+    pipeline_.m_rayGenCB.envmapRotation = renderSettings_.envmapRotation;
     
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
@@ -101,7 +97,7 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
     d3d_ctx.g_pd3dDXRCommandList->SetDescriptorHeaps(1, desc_heap);
 
     framebuffer.transition_from_srv_to_uav();
-    pipeline_.DoRaytracing(*gpu_model_, framebuffer);
+    pipeline_.DoRaytracing(*gpu_model_, *gpu_envmap_, framebuffer);
     framebuffer.transition_from_uav_to_srv();
 
     d3d_ctx.DispatchDXRCommandList();

@@ -15,6 +15,10 @@ StructuredBuffer<uint> Indices : register(t1, space0);
 StructuredBuffer<vertex> Vertices : register(t2, space0);
 StructuredBuffer<uint> IndicesOffset : register(t3, space0);
 
+// Envmap
+Texture2D<float4> EnvMap : register(t0, space1);
+SamplerState EnvMapSampler : register(s0, space1);
+
 // Generate a ray in world space for a camera pixel corresponding to an index from the dispatched 2D grid.
 inline void GenerateCameraRay(uint2 index, uint2 dims, out float3 origin, out float3 direction) {
     float2 xy = index + 0.5f + g_rayGenCB.subpixel_offset;  // center in the middle of the pixel.
@@ -76,7 +80,7 @@ void RayGen() {
     gOutput[launchIndex] = float4(payload.color, 1.f);
 }
 
-[shader("closesthit")] void ClosestHit(inout HitInfo payload, Attributes attr) {
+[shader("closesthit")] void ClosestHitAO(inout HitInfo payload, Attributes attr) {
     if (payload.depth <= 0) {
         return;
     }
@@ -110,8 +114,8 @@ void RayGen() {
     uint3 seed = uint3(launchIndex.x, launchIndex.y, g_rayGenCB.iteration);
     float2 jitter = float2(pcg3d16(seed).xy) / float(0xFFFF);
 
-    const int N = 32;
-    const float inv_aoSamples = 1.0f / N;
+    const int N = g_rayGenCB.maxNewRaysPerBounce;
+    const float inv_aoSamples = g_rayGenCB.invMaxNewRaysPerBounce;
     for (int i = 0; i < N; ++i) {
         float2 rand = fibonacci2D(i, inv_aoSamples);
         rand = fmod(rand + jitter, 1.0f);
@@ -146,7 +150,47 @@ void RayGen() {
     payload.depth -= 1;
 }
 
+[shader("closesthit")] void ClosestHitRC(inout HitInfo payload, Attributes attr) {
+    const uint mesh_id = InstanceID();
+    const uint indices_offset = IndicesOffset[mesh_id];
+    const uint base = indices_offset + PrimitiveIndex() * 3;
+    const uint3 indices = {Indices[base], Indices[base + 1], Indices[base + 2]};
+
+    float3 vertexNormals[3] = {Vertices[indices[0]].normal.xyz, Vertices[indices[1]].normal.xyz, Vertices[indices[2]].normal.xyz};
+    float4 vertexTangent[3] = {Vertices[indices[0]].tangent, Vertices[indices[1]].tangent, Vertices[indices[2]].tangent};
+
+    float3 normal = HitAttribute(vertexNormals, attr);
+    float4 tangent = HitAttribute(vertexTangent, attr);
+
+    if (HitKind() == HIT_KIND_TRIANGLE_BACK_FACE) {
+        // ray hits backside
+        normal *= -1.0f;
+    }
+
+    float3 worldRayOrigin = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
+
+    float3x3 ModelMatrix = (float3x3)ObjectToWorld3x4();
+    float3x3 NormalMatrixTransposed = (float3x3)WorldToObject3x4();
+    float3 worldNormal = mul(normal, NormalMatrixTransposed);
+    float3 worldTangent = mul(ModelMatrix, tangent.xyz);
+    float3 worldBitangent = cross(worldNormal, worldTangent) * tangent.w;
+    float3x3 TBN = construct_TBN(worldTangent, worldBitangent, worldNormal);
+
+    payload.color = worldNormal;
+}
+
 [shader("miss")] 
-void Miss(inout HitInfo payload : SV_RayPayload) {
+void MissAO(inout HitInfo payload : SV_RayPayload) {
     payload.color = float3(1.0f, 1.0f, 1.0f);
+}
+
+[shader("miss")] 
+void MissEnvmap(inout HitInfo payload : SV_RayPayload) {
+    // compared to Blender, envmap is rotated 180 degrees around Y (Blender's Z) axis, but same as SP
+    float y_rotation = g_rayGenCB.envmapRotation;
+    float3 dir = WorldRayDirection();
+    float2 uv = float2(atan2(-dir.z, -dir.x) + y_rotation, -2.0f * asin(dir.y)) * (1.0f / PI);
+    uv = uv * 0.5f + 0.5f;
+
+    payload.color = EnvMap.SampleLevel(EnvMapSampler, uv, 0).rgb;
 }
