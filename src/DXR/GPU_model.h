@@ -44,6 +44,31 @@ private:
     void release_gpu_resource();
 };
 
+struct GPU_Material { // enforce packing rules on CPU Material data
+    fvec4 baseColorFactor;
+    fvec4 emissiveFactor;
+    fvec4 attenuationFactor;
+    float metallicFactor;
+    float roughnessFactor;
+    int baseColorTextureIndex;
+    int metallicRoughnessTextureIndex;
+    int normalTextureIndex;
+    float ior;
+    float dielectric_f0;
+    float transmisionFactor;
+    int transmissionTextureIndex;
+    int emissiveTextureIndex;
+    float emissiveStrength;
+    float alpha_cutoff;
+
+    int doubleSided;
+    int hasVolume;
+    int alphaBlending;
+    int padding0;
+
+    GPU_Material(const Material& mat);
+};
+
 class GPU_model {
   public:
     explicit GPU_model(const Model& cpu_model);
@@ -68,6 +93,8 @@ class GPU_model {
     D3D_Handle_Pair combined_mesh_vertices;
     D3D_Handle_Pair combined_mesh_offsets;
 
+    D3D_Handle_Pair materials_array;
+
   private:
     std::vector<GPU_mesh> meshes_;
 
@@ -81,8 +108,10 @@ class GPU_model {
     // Combine all meshes in two buffers
     GPU_mesh combinedMesh;
     ComPtr<ID3D12Resource> MeshIndicesOffsets;
+    ComPtr<ID3D12Resource> MaterialsArray;
 
     void prepare_combined_vertex_index_buffers(const Model& cpu_model);
+    void prepare_materials_array_buffer(const Model& cpu_model);
     void release_gpu_resource();
 };
 

@@ -61,6 +61,8 @@ class GPURenderer : public IRenderer {
 
     size_t lastModelFenceValue = 0;
     size_t lastEnvmapFenceValue = 0;
+
+    unsigned int frameID = 0;
 };
 
 }

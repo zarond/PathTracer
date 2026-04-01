@@ -20,6 +20,7 @@ struct RayGenConstantBuffer {
     fmat4x4 projectionToWorld;
     fvec4 cameraPosition;
     fvec2 subpixel_offset;
+    unsigned int frameID;
     int iteration;
     float invIterationCount;
     int maxNewRaysPerBounce;

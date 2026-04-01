@@ -83,6 +83,7 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
     pipeline_.m_rayGenCB.cameraPosition = xyz1(origin_);
     pipeline_.m_rayGenCB.projectionToWorld = NDC2WorldMatrix_;
     pipeline_.m_rayGenCB.subpixel_offset = jitter;
+    pipeline_.m_rayGenCB.frameID = ++frameID;
     pipeline_.m_rayGenCB.iteration = iteration_count;
     pipeline_.m_rayGenCB.invIterationCount = inverse_iteration_count;
     pipeline_.m_rayGenCB.maxNewRaysPerBounce = renderSettings_.maxNewRaysPerBounce;

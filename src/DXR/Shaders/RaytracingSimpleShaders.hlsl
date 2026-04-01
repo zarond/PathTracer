@@ -14,6 +14,7 @@ ConstantBuffer<RayGenConstantBuffer> g_rayGenCB : register(b0);
 StructuredBuffer<uint> Indices : register(t1, space0);
 StructuredBuffer<vertex> Vertices : register(t2, space0);
 StructuredBuffer<uint> IndicesOffset : register(t3, space0);
+StructuredBuffer<Material> Materials : register(t4, space0);
 
 // Envmap
 Texture2D<float4> EnvMap : register(t0, space1);
@@ -111,7 +112,7 @@ void RayGen() {
     float3x3 TBN = construct_TBN(worldTangent, worldBitangent, worldNormal);
 
     uint2 launchIndex = DispatchRaysIndex();
-    uint3 seed = uint3(launchIndex.x, launchIndex.y, g_rayGenCB.iteration);
+    uint3 seed = uint3(launchIndex.x, launchIndex.y, g_rayGenCB.frameID);
     float2 jitter = float2(pcg3d16(seed).xy) / float(0xFFFF);
 
     const int N = g_rayGenCB.maxNewRaysPerBounce;
@@ -156,27 +157,14 @@ void RayGen() {
     const uint base = indices_offset + PrimitiveIndex() * 3;
     const uint3 indices = {Indices[base], Indices[base + 1], Indices[base + 2]};
 
-    float3 vertexNormals[3] = {Vertices[indices[0]].normal.xyz, Vertices[indices[1]].normal.xyz, Vertices[indices[2]].normal.xyz};
-    float4 vertexTangent[3] = {Vertices[indices[0]].tangent, Vertices[indices[1]].tangent, Vertices[indices[2]].tangent};
+    float2 vertexUV[3] = {Vertices[indices[0]].uv.xy, Vertices[indices[1]].uv.xy, Vertices[indices[2]].uv.xy};
 
-    float3 normal = HitAttribute(vertexNormals, attr);
-    float4 tangent = HitAttribute(vertexTangent, attr);
+    float2 uv = HitAttribute(vertexUV, attr);
 
-    if (HitKind() == HIT_KIND_TRIANGLE_BACK_FACE) {
-        // ray hits backside
-        normal *= -1.0f;
-    }
+    Material mat = Materials[mesh_id];
 
-    float3 worldRayOrigin = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
-
-    float3x3 ModelMatrix = (float3x3)ObjectToWorld3x4();
-    float3x3 NormalMatrixTransposed = (float3x3)WorldToObject3x4();
-    float3 worldNormal = mul(normal, NormalMatrixTransposed);
-    float3 worldTangent = mul(ModelMatrix, tangent.xyz);
-    float3 worldBitangent = cross(worldNormal, worldTangent) * tangent.w;
-    float3x3 TBN = construct_TBN(worldTangent, worldBitangent, worldNormal);
-
-    payload.color = worldNormal;
+    //payload.color = worldNormal;
+    payload.color = mat.baseColorFactor.rgb;
 }
 
 [shader("miss")] 

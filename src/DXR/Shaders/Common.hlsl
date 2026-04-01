@@ -12,12 +12,36 @@ struct RayGenConstantBuffer {
     float4x4 projectionToWorld;
     float4 cameraPosition;
     float2 subpixel_offset;
+    unsigned int frameID;
     int iteration;
     float invIterationCount;
     int maxNewRaysPerBounce;
     float invMaxNewRaysPerBounce;
     int maxRayBounces;
     float envmapRotation;
+};
+
+struct Material {
+    float4 baseColorFactor;
+    float4 emissiveFactor;
+    float4 attenuationFactor;
+    float metallicFactor;
+    float roughnessFactor;
+    int baseColorTextureIndex;
+    int metallicRoughnessTextureIndex;
+    int normalTextureIndex;
+    float ior;
+    float dielectric_f0;
+    float transmisionFactor;
+    int transmissionTextureIndex;
+    int emissiveTextureIndex;
+    float emissiveStrength;
+    float alpha_cutoff;
+
+    int doubleSided;
+    int hasVolume;
+    int alphaBlending;
+    int padding0;
 };
 
 typedef BuiltInTriangleIntersectionAttributes Attributes;

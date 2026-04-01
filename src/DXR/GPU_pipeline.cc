@@ -17,6 +17,7 @@ namespace GlobalRootSignatureParams {
         IndexBufferSlot,
         VertexBufferSlot,
         IndicesOffsetBufferSlot,
+        MaterialsBufferSlot,
         EnvmapTex,
         //EnvmapSampler, // remove because it is static
         Count 
@@ -57,13 +58,15 @@ void GPU_pipeline::CreateRootSignatures() {
     // Global Root Signature
     // This is a root signature that is shared across all raytracing shaders invoked during a DispatchRays() call.
     {
-        CD3DX12_DESCRIPTOR_RANGE ranges[5];                     // Perfomance TIP: Order from most frequent to least frequent.
+        CD3DX12_DESCRIPTOR_RANGE ranges[6];                     // Perfomance TIP: Order from most frequent to least frequent.
         ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
         ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 2 static index buffer.
         ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 3 static vertex buffer.
         ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 4 static index offsets buffer.
-        ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 1);  // Envmap texture.
-        //ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 1, 1);  // Envmap static sampler.
+        ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);  // 5 materials buffer.
+        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 1);  // Envmap texture.
+        //ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 1, 1);  // Envmap static sampler.
+        //ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, APP_BINDLESS_TEXTURES_SIZE, 0, 2); // bindless textures bind point
 
         D3D12_STATIC_SAMPLER_DESC envmap_sampler = {}; // Envmap static sampler.
         envmap_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -81,8 +84,9 @@ void GPU_pipeline::CreateRootSignatures() {
         rootParameters[GlobalRootSignatureParams::IndexBufferSlot].InitAsDescriptorTable(1, &ranges[1]);
         rootParameters[GlobalRootSignatureParams::VertexBufferSlot].InitAsDescriptorTable(1, &ranges[2]);
         rootParameters[GlobalRootSignatureParams::IndicesOffsetBufferSlot].InitAsDescriptorTable(1, &ranges[3]);
-        rootParameters[GlobalRootSignatureParams::EnvmapTex].InitAsDescriptorTable(1, &ranges[4]);
-        //rootParameters[GlobalRootSignatureParams::EnvmapSampler].InitAsDescriptorTable(1, &ranges[5]);
+        rootParameters[GlobalRootSignatureParams::MaterialsBufferSlot].InitAsDescriptorTable(1, &ranges[4]);
+        rootParameters[GlobalRootSignatureParams::EnvmapTex].InitAsDescriptorTable(1, &ranges[5]);
+        //rootParameters[GlobalRootSignatureParams::EnvmapSampler].InitAsDescriptorTable(1, &ranges[6]);
         CD3DX12_ROOT_SIGNATURE_DESC globalRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 1, &envmap_sampler);
         SerializeAndCreateRaytracingRootSignature(globalRootSignatureDesc, &m_raytracingGlobalRootSignature);
     }
@@ -352,6 +356,7 @@ void GPU_pipeline::DoRaytracing(const GPU_model& gpu_model, const GPU_texture& e
         GlobalRootSignatureParams::IndexBufferSlot, gpu_model.combined_mesh_indices.gpuDescriptorHandle);
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::VertexBufferSlot, gpu_model.combined_mesh_vertices.gpuDescriptorHandle);
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::IndicesOffsetBufferSlot, gpu_model.combined_mesh_offsets.gpuDescriptorHandle);
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::MaterialsBufferSlot, gpu_model.materials_array.gpuDescriptorHandle);
 
     // Envmap texture and sampler
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::EnvmapTex, envmap.GetSRVHandle());
