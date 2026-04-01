@@ -9,7 +9,6 @@
 #include "helpers/d3dx12.h"
 
 #define NOMINMAX
-//#include <windows.h>
 #include <wrl.h>
 
 namespace app {

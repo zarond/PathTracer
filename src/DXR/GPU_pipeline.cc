@@ -19,7 +19,6 @@ namespace GlobalRootSignatureParams {
         IndicesOffsetBufferSlot,
         MaterialsBufferSlot,
         EnvmapTex,
-        //EnvmapSampler, // remove because it is static
         Count 
     };
 }
@@ -65,8 +64,6 @@ void GPU_pipeline::CreateRootSignatures() {
         ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 4 static index offsets buffer.
         ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);  // 5 materials buffer.
         ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 1);  // Envmap texture.
-        //ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 1, 1);  // Envmap static sampler.
-        //ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, APP_BINDLESS_TEXTURES_SIZE, 0, 2); // bindless textures bind point
 
         D3D12_STATIC_SAMPLER_DESC envmap_sampler = {}; // Envmap static sampler.
         envmap_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -77,6 +74,12 @@ void GPU_pipeline::CreateRootSignatures() {
         envmap_sampler.RegisterSpace = 1;
         envmap_sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
+        D3D12_STATIC_SAMPLER_DESC default_sampler = envmap_sampler;  // Default static sampler.
+        default_sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        default_sampler.ShaderRegister = 1;  // s1
+
+        D3D12_STATIC_SAMPLER_DESC samplers[] = { envmap_sampler,  default_sampler};
+
         CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
         rootParameters[GlobalRootSignatureParams::OutputViewSlot].InitAsDescriptorTable(1, &ranges[0]);
         rootParameters[GlobalRootSignatureParams::AccelerationStructureSlot].InitAsShaderResourceView(0);
@@ -86,8 +89,9 @@ void GPU_pipeline::CreateRootSignatures() {
         rootParameters[GlobalRootSignatureParams::IndicesOffsetBufferSlot].InitAsDescriptorTable(1, &ranges[3]);
         rootParameters[GlobalRootSignatureParams::MaterialsBufferSlot].InitAsDescriptorTable(1, &ranges[4]);
         rootParameters[GlobalRootSignatureParams::EnvmapTex].InitAsDescriptorTable(1, &ranges[5]);
-        //rootParameters[GlobalRootSignatureParams::EnvmapSampler].InitAsDescriptorTable(1, &ranges[6]);
-        CD3DX12_ROOT_SIGNATURE_DESC globalRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 1, &envmap_sampler);
+
+        auto flags = D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
+        CD3DX12_ROOT_SIGNATURE_DESC globalRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 2, samplers, flags);
         SerializeAndCreateRaytracingRootSignature(globalRootSignatureDesc, &m_raytracingGlobalRootSignature);
     }
 
@@ -360,7 +364,6 @@ void GPU_pipeline::DoRaytracing(const GPU_model& gpu_model, const GPU_texture& e
 
     // Envmap texture and sampler
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::EnvmapTex, envmap.GetSRVHandle());
-    //commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::EnvmapSampler, ... ); // sampler is static
 
     // Bind the heaps, acceleration structure and dispatch rays.    
     D3D12_DISPATCH_RAYS_DESC dispatchDesc = {};

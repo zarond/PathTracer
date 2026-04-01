@@ -66,7 +66,37 @@ struct GPU_Material { // enforce packing rules on CPU Material data
     int alphaBlending;
     int padding0;
 
-    GPU_Material(const Material& mat);
+    GPU_Material(const Material& mat, const std::vector<int>& texture_id_conversion_table);
+};
+
+class GPU_texture {
+  public:
+    GPU_texture() = default;
+    explicit GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture);
+    explicit GPU_texture(const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_ = false);
+    ~GPU_texture();
+
+    GPU_texture(const GPU_texture&) = delete;
+    GPU_texture& operator=(const GPU_texture&) = delete;
+
+    GPU_texture(GPU_texture&&) = default;
+    GPU_texture& operator=(GPU_texture&&) = default;
+
+    D3D12_GPU_VIRTUAL_ADDRESS GetGPUVirtualAddress() const;
+    D3D12_GPU_DESCRIPTOR_HANDLE GetSRVHandle() const;
+
+    bool HDR = false;
+    bool srgb = false;  // whether to apply sRGB to linear conversion when sampling; only relevant for SDR textures
+
+  private:
+    void create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT format);
+    void upload_texture_to_gpu(int width_, int height_, const auto& data_, size_t sizeofpixel, DXGI_FORMAT format);
+
+    ComPtr<ID3D12Resource> pTexture;
+    D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu_handle;
+    D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle;
+    // ComPtr<ID3D12Resource> uploadBuffer;
+    void release_gpu_resource();
 };
 
 class GPU_model {
@@ -95,6 +125,8 @@ class GPU_model {
 
     D3D_Handle_Pair materials_array;
 
+    std::vector<GPU_texture> textures;
+
   private:
     std::vector<GPU_mesh> meshes_;
 
@@ -112,36 +144,7 @@ class GPU_model {
 
     void prepare_combined_vertex_index_buffers(const Model& cpu_model);
     void prepare_materials_array_buffer(const Model& cpu_model);
-    void release_gpu_resource();
-};
-
-class GPU_texture {
-  public:
-    GPU_texture() = default;
-    explicit GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture);
-    explicit GPU_texture(const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_ = false);
-    ~GPU_texture();
-
-    GPU_texture(const GPU_texture&) = delete;
-    GPU_texture& operator=(const GPU_texture&) = delete;
-
-    GPU_texture(GPU_texture&&) = default;
-    GPU_texture& operator=(GPU_texture&&) = default;
-
-    D3D12_GPU_VIRTUAL_ADDRESS GetGPUVirtualAddress() const;
-    D3D12_GPU_DESCRIPTOR_HANDLE GetSRVHandle() const;
-
-    bool HDR = false;
-    bool srgb = false;  // whether to apply sRGB to linear conversion when sampling; only relevant for SDR textures
-  
-private:
-    void create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT format);
-    void upload_texture_to_gpu(int width_, int height_, const auto& data_, size_t sizeofpixel, DXGI_FORMAT format);
-
-    ComPtr<ID3D12Resource> pTexture;
-    D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu_handle;
-    D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle;
-    //ComPtr<ID3D12Resource> uploadBuffer;
+    void prepare_textures_array_buffer(const Model& cpu_model);
     void release_gpu_resource();
 };
 

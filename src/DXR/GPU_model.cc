@@ -311,20 +311,24 @@ void GPU_mesh::release_gpu_resource() {
 
 // GPU_mesh
 
-GPU_Material::GPU_Material(const Material& mat) {
+GPU_Material::GPU_Material(const Material& mat, const std::vector<int>& texture_id_conversion_table) {
+    int size = texture_id_conversion_table.size();
+    const auto lambda = [&texture_id_conversion_table, size](int i) { 
+        return (i >= 0 && i < size) ? texture_id_conversion_table[i] : -1;
+    };
     baseColorFactor = mat.baseColorFactor;
     emissiveFactor = xyz1(mat.emissiveFactor);
     attenuationFactor = xyz1(mat.attenuationFactor);
     metallicFactor = mat.metallicFactor;
     roughnessFactor = mat.roughnessFactor;
-    baseColorTextureIndex = mat.baseColorTextureIndex;
-    metallicRoughnessTextureIndex = mat.metallicRoughnessTextureIndex;
-    normalTextureIndex = mat.normalTextureIndex;
+    baseColorTextureIndex = lambda(mat.baseColorTextureIndex);
+    metallicRoughnessTextureIndex = lambda(mat.metallicRoughnessTextureIndex);
+    normalTextureIndex = lambda(mat.normalTextureIndex);
     ior = mat.ior;
     dielectric_f0 = mat.dielectric_f0;
     transmisionFactor = mat.transmisionFactor;
-    transmissionTextureIndex = mat.transmissionTextureIndex;
-    emissiveTextureIndex = mat.emissiveTextureIndex;
+    transmissionTextureIndex = lambda(mat.transmissionTextureIndex);
+    emissiveTextureIndex = lambda(mat.emissiveTextureIndex);
     emissiveStrength = mat.emissiveStrength;
     alpha_cutoff = mat.alpha_cutoff;
 
@@ -347,7 +351,31 @@ GPU_model::GPU_model(const Model& cpu_model) {
     }
     create_top_level_AS(cpu_model);
     prepare_combined_vertex_index_buffers(cpu_model);
+    prepare_textures_array_buffer(cpu_model);
     prepare_materials_array_buffer(cpu_model);
+}
+
+void GPU_model::prepare_textures_array_buffer(const Model& cpu_model) {
+    int images_size = cpu_model.images_.size();
+    std::vector<bool> useSRGB;
+    useSRGB.resize(images_size, false);
+    for (const auto& mat : cpu_model.materials_) {
+        int albedo_id = mat.baseColorTextureIndex;
+        int emissive_id = mat.emissiveTextureIndex;
+        if (albedo_id >= 0 && albedo_id < images_size) {
+            useSRGB[albedo_id] = true;
+        }
+        if (emissive_id >= 0 && emissive_id < images_size) {
+            useSRGB[emissive_id] = true;
+        }
+    }  // use SRGB for textures which are used as albedo or emmisive
+
+    textures.reserve(images_size);
+    for (int i = 0; i < images_size; ++i) {
+        const auto& img = cpu_model.images_[i];
+        bool srgb = useSRGB[i];
+        textures.emplace_back(img, srgb);
+    }
 }
 
 GPU_model::~GPU_model() { release_gpu_resource(); }
@@ -603,7 +631,17 @@ void GPU_model::prepare_combined_vertex_index_buffers(const Model& cpu_model) {
 }
 
 void GPU_model::prepare_materials_array_buffer(const Model& cpu_model) {
+    D3DContext& d3d_ctx = D3DContext::Get();
+    const auto& heap_alloc = d3d_ctx.g_pd3dSrvDescHeapAlloc;
+
     std::vector<GPU_Material> data;
+
+    // convert from cpu image_id into indices within GPU SRV Heap
+    std::vector<int> texture_id_conversion_table;
+    texture_id_conversion_table.reserve(textures.size());
+    std::transform(textures.begin(), textures.end(), std::back_inserter(texture_id_conversion_table), 
+        [&heap_alloc](const auto& el) { return heap_alloc.GetIndex(el.GetSRVHandle()); }
+    );
 
     // I pack materials differently than in CPU for ease of use in shader. 
     // Here, I index material by meshID, that might lead to some redundant data
@@ -611,10 +649,8 @@ void GPU_model::prepare_materials_array_buffer(const Model& cpu_model) {
     data.reserve(cpu_model.meshes_.size());
     for (const auto& mesh : cpu_model.meshes_) {
         const auto& mat = cpu_model.materials_[mesh.materialIndex];
-        data.emplace_back(mat);
+        data.emplace_back(mat, texture_id_conversion_table);
     }
-
-    D3DContext& d3d_ctx = D3DContext::Get();
 
     d3d_ctx.InitCopyCommandList();
 

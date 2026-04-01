@@ -34,6 +34,10 @@ void ExampleDescriptorHeapAllocator::Free(
     assert(cpu_idx == gpu_idx);
     FreeIndices.push_back(cpu_idx);
 }
+int ExampleDescriptorHeapAllocator::GetIndex(D3D12_GPU_DESCRIPTOR_HANDLE gpu_desc_handle) const {
+    int gpu_idx = (int)((gpu_desc_handle.ptr - HeapStartGpu.ptr) / HeapHandleIncrement);
+    return gpu_idx;
+}
 
 bool D3DContext::CreateDeviceD3D(HWND hWnd) {
     // Create DXGI Factory

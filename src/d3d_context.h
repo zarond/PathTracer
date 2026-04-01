@@ -16,7 +16,7 @@ using Microsoft::WRL::ComPtr;
 // Config
 static const int APP_NUM_FRAMES_IN_FLIGHT = 2;  // double buffering
 static const int APP_NUM_BACK_BUFFERS = 2;
-static const int APP_SRV_HEAP_SIZE = 64;
+static const int APP_SRV_HEAP_SIZE = 1024; // maximum textures in whole pipeline, imgui + gltf scene
 
 struct FrameContext {
     ComPtr<ID3D12CommandAllocator> CommandAllocator;
@@ -38,6 +38,7 @@ class ExampleDescriptorHeapAllocator {
     void Destroy();
     void Alloc(D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle);
     void Free(D3D12_CPU_DESCRIPTOR_HANDLE out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE out_gpu_desc_handle);
+    int GetIndex(D3D12_GPU_DESCRIPTOR_HANDLE gpu_desc_handle) const;
 };
 
 // Data

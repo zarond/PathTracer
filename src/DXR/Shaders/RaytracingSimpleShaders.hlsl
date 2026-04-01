@@ -19,6 +19,8 @@ StructuredBuffer<Material> Materials : register(t4, space0);
 // Envmap
 Texture2D<float4> EnvMap : register(t0, space1);
 SamplerState EnvMapSampler : register(s0, space1);
+// Default sampler
+SamplerState Sampler : register(s1, space1);
 
 // Generate a ray in world space for a camera pixel corresponding to an index from the dispatched 2D grid.
 inline void GenerateCameraRay(uint2 index, uint2 dims, out float3 origin, out float3 direction) {
@@ -162,9 +164,14 @@ void RayGen() {
     float2 uv = HitAttribute(vertexUV, attr);
 
     Material mat = Materials[mesh_id];
+    float4 color = mat.baseColorFactor;
+    if (mat.baseColorTextureIndex != -1) {
+        Texture2D<float4> albedoTex = ResourceDescriptorHeap[mat.baseColorTextureIndex];
+        color *= albedoTex.SampleLevel(Sampler, uv, 0);
+    }
 
     //payload.color = worldNormal;
-    payload.color = mat.baseColorFactor.rgb;
+    payload.color = color;
 }
 
 [shader("miss")] 
