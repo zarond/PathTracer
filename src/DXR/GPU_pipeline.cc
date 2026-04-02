@@ -153,7 +153,8 @@ void GPU_pipeline::CreateRaytracingPipelines() {
         m_dxrStateObjectRayCaster, 10);  // RayCaster
     CreateRaytracingPipeline(libdxil, c_anyHitAOShaderName, c_closestHitAOShaderName, c_missAOShaderName, 
         m_dxrStateObjectAmbientOcclusion, 2);  // AO
-    CreateRaytracingPipeline(libdxil, nullptr, c_closestHitPBRShaderName, c_missEnvmapShaderName, m_dxrStateObjectPBR, 10);         // PBR
+    CreateRaytracingPipeline( libdxil, c_anyHitRCShaderName, c_closestHitPBRShaderName, c_missEnvmapShaderName, 
+        m_dxrStateObjectPBR, 10);  // PBR
 
 }
 

@@ -92,6 +92,25 @@ inline uint3 GetIndices() {
     return uint3(Indices[base], Indices[base + 1], Indices[base + 2]);
 }
 
+void ContinueTrace(inout HitInfo payload, float alpha) {
+    RayDesc ray;
+    ray.Origin = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
+    ray.Direction = WorldRayDirection();
+    ray.TMin = 0.001f;
+    ray.TMax = 10000.0f;
+
+    HitInfo newPayload = payload;
+    newPayload.depth -= 1;
+
+    if (newPayload.depth > 0) {
+        TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, newPayload);
+    } else {
+        MissEnvmap(newPayload);
+    }
+    // Manual Blending
+    payload.color = lerp(newPayload.color, payload.color, alpha);
+}
+
 [shader("closesthit")] void ClosestHitAO(inout HitInfo payload, Attributes attr) {
     if (payload.depth <= 0) {
         return;
@@ -123,12 +142,9 @@ inline uint3 GetIndices() {
     float3 worldBitangent = cross(worldNormal, worldTangent) * tangent.w;
     float3x3 TBN = construct_TBN(worldTangent, worldBitangent, worldNormal);
 
-    if (material.normalTextureIndex != -1) {
-        Texture2D<float4> normalTex = ResourceDescriptorHeap[material.normalTextureIndex];
-        float3 normal_map_color = normalTex.SampleLevel(Sampler, uv, 0).rgb;
-        float3 normal_vector = normal_map_color * 2.0f - 1.0f;
-        normal_vector.y *= -1;
-        normal_vector = Tangent2World(normal_vector, TBN);
+    float4 normal_map_color = sample_normals(material, uv, Sampler);
+    if (normal_map_color.w != 0.0f) {
+        float3 normal_vector = normal_map_sample_to_world(normal_map_color.rgb, TBN);
         TBN = construct_TBN(TBN[0], TBN[1], normal_vector);  // re-construct TBN with normal from normal map
     }
 
@@ -187,11 +203,7 @@ inline uint3 GetIndices() {
 
     const uint mesh_id = InstanceID();
     Material mat = Materials[mesh_id];
-    float4 color = mat.baseColorFactor;
-    if (mat.baseColorTextureIndex != -1) {
-        Texture2D<float4> albedoTex = ResourceDescriptorHeap[mat.baseColorTextureIndex];
-        color *= albedoTex.SampleLevel(Sampler, uv, 0);
-    }
+    float4 color = sample_albedo(mat, uv, Sampler);
     float alpha = color.w; 
     if (mat.alphaBlending == 0) {
         alpha = (alpha < mat.alpha_cutoff) ? 0.0f : 1.0f;
@@ -200,23 +212,7 @@ inline uint3 GetIndices() {
     if (alpha >= 1.0f - kEpsilon5) {
         return;
     }
-    // continue tracing
-    RayDesc nextRay;
-    nextRay.Origin = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
-    nextRay.Direction = WorldRayDirection();
-    nextRay.TMin = 0.001f;
-    nextRay.TMax = 10000.0f;
-
-    HitInfo nextPayload = payload;
-    nextPayload.depth -= 1;
-
-    if (nextPayload.depth > 0) {
-        TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, nextRay, nextPayload);
-    } else {
-        MissEnvmap(nextPayload);
-    }
-    // Manual Blending
-    payload.color = lerp(nextPayload.color, color.rgb, alpha);
+    ContinueTrace(payload, alpha);
 }
 
 [shader("anyhit")] void AnyHitRC(inout HitInfo payload, Attributes attr) {
@@ -239,7 +235,237 @@ inline uint3 GetIndices() {
 }
 
 [shader("closesthit")] void ClosestHitPBR(inout HitInfo payload, Attributes attr) { 
-    ClosestHitAO(payload, attr); 
+    if (payload.depth <= 0) {
+        return;
+    }
+    const uint3 indices = GetIndices();
+
+    const uint mesh_id = InstanceID();
+    Material material = Materials[mesh_id];
+
+    float3 vertexLocalPos[3] = {Vertices[indices[0]].position.xyz, Vertices[indices[1]].position.xyz, Vertices[indices[2]].position.xyz};
+    float3 vertexNormals[3] = {Vertices[indices[0]].normal.xyz, Vertices[indices[1]].normal.xyz, Vertices[indices[2]].normal.xyz};
+    float4 vertexTangent[3] = {Vertices[indices[0]].tangent, Vertices[indices[1]].tangent, Vertices[indices[2]].tangent};
+    float2 vertexUV[3] = {Vertices[indices[0]].uv.xy, Vertices[indices[1]].uv.xy, Vertices[indices[2]].uv.xy};
+
+    float3 normal = HitAttribute(vertexNormals, attr);
+    float4 tangent = HitAttribute(vertexTangent, attr);
+    float2 uv = HitAttribute(vertexUV, attr);
+
+    bool backface_hit = (HitKind() == HIT_KIND_TRIANGLE_BACK_FACE);
+    bool exiting_volume = false;
+    if (backface_hit) {
+        if (material.doubleSided) {
+            normal *= -1.0f;
+        } else if (material.hasVolume) {
+            exiting_volume = true;
+        }
+    }
+
+    float4 albedo_color = sample_albedo(material, uv, Sampler);
+    float alpha = albedo_color.w;
+    if (material.alphaBlending == 0) {
+        alpha = (alpha < material.alpha_cutoff) ? 0.0f : 1.0f;
+    }
+    if (alpha == 0.0f) {
+        ContinueTrace(payload, alpha);
+        return;
+    }
+
+    // todo: now program can't apply absorption if ray was reflected of an object that is inside volume mesh
+    // only applies absorption to part of path that directly exits (hits backface of) volume
+    float3 attenuation =
+        exiting_volume ? min(exp(-material.attenuationFactor * RayTCurrent()), 1.0f) : 1.0f;  // Volume absorption
+
+    float3 emissive = sample_emissive(material, uv, Sampler);
+    payload.color += emissive * attenuation * alpha;
+    if (payload.depth == 0) {
+        //return ray_.payload * emissive * attenuation * alpha;
+        return;
+    }
+
+    float3 v = -WorldRayDirection();
+
+    float3x3 ModelMatrix = (float3x3)ObjectToWorld3x4();
+    float3x3 NormalMatrixTransposed = (float3x3)WorldToObject3x4();
+    float3 worldNormal = mul(normal, NormalMatrixTransposed);
+    float3 worldTangent = mul(ModelMatrix, tangent.xyz);
+    float3 worldBitangent = cross(worldNormal, worldTangent) * tangent.w;
+
+    float4 normal_map_color = sample_normals(material, uv, Sampler);
+
+    float3x3 TBN = handle_TBN_creation(NormalMatrixTransposed, normal_map_color, worldTangent, worldBitangent, worldNormal, v,
+        material.doubleSided, exiting_volume, backface_hit, vertexLocalPos[0], vertexLocalPos[1], vertexLocalPos[2]);
+
+    worldNormal = normalize(worldNormal);
+    
+    float transmission = sample_transmission(material, uv, Sampler);
+    float3 ORM = sample_roughness_metallic(material, uv, Sampler);
+    float3 diffuse_color = (1.0f - ORM.z) * albedo_color.rgb;
+
+    float3 f0 = lerp(material.dielectric_f0, albedo_color.rgb, ORM.z);
+    const float3 f90 = 1.0f;
+    //const float roughness = ORM.y;
+    const float roughness = max(ORM.y, 0.002f);
+    const float linear_roughness = roughness * roughness;
+
+    int new_depth = payload.depth - 1;
+    
+    uint2 launchIndex = DispatchRaysIndex();
+    uint3 seed1 = uint3(launchIndex.x, launchIndex.y, g_rayGenCB.frameID);
+    uint3 seed2 = uint3(launchIndex.x, launchIndex.y, g_rayGenCB.frameID + 1);
+
+    float3 worldHitPos = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
+
+    const bool sample_diffuse = any(diffuse_color * (1.0f - transmission) != 0.0f);
+    if (sample_diffuse) {  // diffuse
+        //float2 rand = pcg3d16(seed1).xy / float(0xFFFF);
+        float2 rand = pcg3d(seed1).xy;
+
+        float3 l = ImportanceSampleCosDir(rand);
+        l = normalize(Tangent2World(l, TBN));  // normalizing for better accuracy
+
+        const float3 h = normalize(v + l);
+        float LdH = clamp(dot(l, h), 0.0f, 1.0f);
+
+        float3 F = 1.0f - fresnel_schlick(f0, f90, LdH);
+        float3 new_pos = worldHitPos + worldNormal * kEpsilon5;  // offset to avoid self-intersection
+        //float3 new_payload = F * diffuse_color * (1.0f - transmission) * attenuation * ray_.payload * alpha;
+        float3 MUL = F * diffuse_color * (1.0f - transmission) * attenuation * alpha;
+        //ray_with_payload new_ray{{new_pos, l}, new_payload, new_depth, false};
+        //ray_collection.push_back(new_ray);
+
+        RayDesc ray;
+        ray.Origin = new_pos;
+        ray.Direction = l;
+        ray.TMin = kEpsilon5;
+        ray.TMax = 10000.0;
+
+        HitInfo new_payload;
+        new_payload.color = float3(0.0f, 0.0f, 0.0f);
+        new_payload.depth = new_depth;
+
+        TraceRay(SceneBVH,              // RaytracingAccelerationStructure
+            RAY_FLAG_NONE,              // RayFlags
+            ~0,                         // InstanceInclusionMask
+            0,                          // RayContributionToHitGroupIndex
+            1,                          // MultiplierForGeometryContributionToShaderIndex
+            0,                          // MissShaderIndex
+            ray, new_payload);
+
+        payload.color += new_payload.color * MUL;
+    }
+    {
+        // same micro-normal for both specular reflection and transmission
+        //float2 rand = float2(pcg3d16(seed2).xy) / float(0xFFFF);
+        float2 rand = pcg3d(seed2).xy;
+        float3 m = importanceSampleGGX(rand, linear_roughness);
+
+        m = Tangent2World(m, TBN);
+
+        float3 N = TBN[2];
+        float3 new_pos_offset_dir = worldNormal;
+        if (exiting_volume) {
+            m *= -1.0f;
+            N *= -1.0f;
+            new_pos_offset_dir *= -1.0f;
+        }
+
+        const float interface_ior = (!exiting_volume) ? (1.0f / material.ior) : material.ior;
+        float3 l = refract(-v, m, interface_ior);
+
+        const float VdN = clamp(dot(N, v), kEpsilon, 1.0f);
+        const float VdM = clamp(dot(v, m), 0.0f, 1.0f);
+        const float LdM = clamp(dot(l, -m), 0.0f, 1.0f);
+
+        float3 F = fresnel_schlick(f0, f90, (!exiting_volume) ? VdM : LdM);
+
+        const bool sample_transmission = any(diffuse_color * transmission != 0.0) && any(l != 0.0f);
+        if (sample_transmission) {  // transmission
+            float3 h = -(interface_ior * v + l);  // transmission half-vector;
+                                                // minus is because normal points into into the medium with the lower
+                                                // index of refraction (e.g., air). (convention)
+            h = normalize(h);
+            float LdN = clamp(dot(-N, l), 0.0f, 1.0f);
+            float G = V_SmithGGXCorrelated(VdN, LdN, linear_roughness);
+            // auto G = V_Schlick(LdN, VdN, roughness);
+
+            float NdM = clamp(dot(N, m), kEpsilon, 1.0f);
+            float VdH = clamp(dot((!exiting_volume) ? v : -v, h), 0.0f, 1.0f);
+
+            float3 brdf = (1.0f - F) * (G * VdH * LdN / NdM);
+            brdf = min(brdf, kMaxBRDF);                               // clamp to avoid fireflies
+            float3 new_pos = worldHitPos - new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
+            
+            float3 MUL = diffuse_color * transmission * attenuation * brdf * alpha;
+            //float3 new_payload = diffuse_color * transmission * attenuation * brdf * ray_.payload * alpha;
+            //ray_with_payload new_ray{{new_pos, normalize(l)}, new_payload, new_depth, false};  // normalizing for better accuracy
+            //ray_collection.push_back(new_ray);
+
+            RayDesc ray;
+            ray.Origin = new_pos;
+            ray.Direction = normalize(l);
+            ray.TMin = kEpsilon5;
+            ray.TMax = 10000.0;
+
+            HitInfo new_payload;
+            new_payload.color = float3(0.0f, 0.0f, 0.0f);
+            new_payload.depth = new_depth;
+
+            TraceRay(SceneBVH,  // RaytracingAccelerationStructure
+                RAY_FLAG_NONE,  // RayFlags
+                ~0,             // InstanceInclusionMask
+                0,              // RayContributionToHitGroupIndex
+                1,              // MultiplierForGeometryContributionToShaderIndex
+                0,              // MissShaderIndex
+                ray, new_payload);
+
+            payload.color += new_payload.color * MUL;
+        }
+        {   // specular reflection
+            float3 h = m;
+
+            l = normalize(reflect(-v, h));  // normalizing for better accuracy
+            float LdH = clamp(dot(l, h), 0.0f, 1.0f);
+            float LdN = clamp(dot(N, l), 0.0f, 1.0f);
+            float NdH = clamp(dot(N, h), kEpsilon, 1.0f);
+
+            float G = V_SmithGGXCorrelated(VdN, LdN, linear_roughness);
+            // auto G = V_Schlick(LdN, VdN, roughness);
+            float3 brdf = F * (G * LdN * LdH / NdH);
+            brdf = min(brdf, kMaxBRDF);                               // clamp to avoid fireflies
+            float3 new_pos = worldHitPos + new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
+            float3 MUL = attenuation * brdf * alpha;
+            //float3 new_payload = attenuation * brdf * ray_.payload * alpha;
+            //ray_with_payload new_ray{{new_pos, l}, new_payload, new_depth, false};
+            //ray_collection.push_back(new_ray);
+
+            RayDesc ray;
+            ray.Origin = new_pos;
+            ray.Direction = l;
+            ray.TMin = kEpsilon5;
+            ray.TMax = 10000.0;
+
+            HitInfo new_payload;
+            new_payload.color = float3(0.0f, 0.0f, 0.0f);
+            new_payload.depth = new_depth;
+
+            TraceRay(SceneBVH,              // RaytracingAccelerationStructure
+                RAY_FLAG_NONE,              // RayFlags
+                ~0,                         // InstanceInclusionMask
+                0,                          // RayContributionToHitGroupIndex
+                1,                          // MultiplierForGeometryContributionToShaderIndex
+                0,                          // MissShaderIndex
+                ray, new_payload);
+
+            payload.color += new_payload.color * MUL;
+        }
+    }
+
+    if (alpha >= 1.0f - kEpsilon5) {
+        return;
+    }
+    ContinueTrace(payload, alpha);
 }
 
 [shader("miss")] 

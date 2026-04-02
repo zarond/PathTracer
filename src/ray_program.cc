@@ -29,7 +29,7 @@ fvec3 ImportanceSampleCosDir(fvec2 xi) {
 fvec3 importanceSampleGGX(fvec2 xi, float a) {
     // pdf(h) = D(h) * dot(n, h) : before conversion from half-vector to reflection vector
     // pdf(l) = D(h) * dot(n, h) / (4.0 * dot(l, h)) : after conversion to reflection vector
-    float cos_theta2 = (1.0f - xi.x) / (1.0f + (a * a - 1.0f) * xi.x);
+    float cos_theta2 = clamp((1.0f - xi.x) / (1.0f + (a * a - 1.0f) * xi.x), 0.0f, 1.0f);
     float cos_theta = sqrt(cos_theta2);
     float sin_theta = sqrt(1.0f - cos_theta2);
     float phi = 2.0f * xi.y * pi<float>();
