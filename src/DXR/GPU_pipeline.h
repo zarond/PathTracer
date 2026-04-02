@@ -44,7 +44,8 @@ class GPU_pipeline {
 
     void CreateRaytracingPipelines();
 
-    void CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const wchar_t* c_closestHitShaderName,
+    void CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil,
+        const wchar_t* c_anyHitShaderName, const wchar_t* c_closestHitShaderName,
         const wchar_t* c_missShaderName, ComPtr<ID3D12StateObject>& m_dxrStateObject, UINT maxRecursionDepth);
 
     void BuildAllShaderTables();
@@ -59,8 +60,11 @@ class GPU_pipeline {
 
     const wchar_t* c_hitGroupName = L"MyHitGroup";
     const wchar_t* c_raygenShaderName = L"RayGen";
+    const wchar_t* c_anyHitRCShaderName = L"AnyHitRC";
+    const wchar_t* c_anyHitAOShaderName = L"AnyHitAO";
     const wchar_t* c_closestHitAOShaderName = L"ClosestHitAO";
     const wchar_t* c_closestHitRCShaderName = L"ClosestHitRC";
+    const wchar_t* c_closestHitPBRShaderName = L"ClosestHitPBR";
     const wchar_t* c_missAOShaderName = L"MissAO";
     const wchar_t* c_missEnvmapShaderName = L"MissEnvmap";
 

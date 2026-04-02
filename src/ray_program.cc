@@ -151,16 +151,42 @@ RayCasterProgram::RayCasterProgram(const Model& model, const CPUTexture<hdr_pixe
 fvec3 RayCasterProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_info& hit,
     std::vector<ray_with_payload>& ray_collection) const noexcept {
     if (hit.forward_hit() == false) {  // on miss
-        return xyz(sample_environment(ray_.direction, envmapRef, envmap_rot));
+        return ray_.payload * xyz(sample_environment(ray_.direction, envmapRef, envmap_rot));
     }
+    const auto& object = get_object_data(modelRef, hit);
     const auto& mesh_data = get_mesh_data(modelRef, hit);
     const auto& [p1, p2, p3] = get_vertex_data(mesh_data, hit);
-    auto uv = p1.uv * hit.A + p2.uv * hit.B + p3.uv * hit.C();
+    auto point = interpolate_vertex_data(p1, p2, p3, hit);
+
+    convert_position_to_world_space(object, point);
+    convert_normals_to_world_space(object, point);
 
     auto mat_index = mesh_data.materialIndex;
     const auto& material = modelRef.materials_[mat_index];
-    auto albedo_color = sample_albedo(material, modelRef.images_, uv);
-    return xyz(albedo_color);
+
+    bool exiting_volume = false;
+    if (hit.backface) {
+        if (material.doubleSided) {
+            point.normal *= -1.0f;
+        } else if (material.hasVolume) {  // according to glTF spec, volume is only for single-sided materials
+            exiting_volume = true;
+        }
+    }
+
+    auto albedo_color = sample_albedo(material, modelRef.images_, point.uv);
+    float alpha = albedo_color.w;
+    if (!material.alphaBlending) {
+        alpha = (alpha < material.alpha_cutoff) ? 0.0f : 1.0f;
+    }
+    if (alpha != 1.0f) {
+        ray_with_payload new_ray = ray_;
+        new_ray.origin =
+            point.position + (exiting_volume ? 1.0f : -1.0f) * point.normal * kEpsilon5;  // offset to avoid self-intersection
+        new_ray.payload *= (1.0f - alpha);
+        ray_collection.push_back(new_ray);
+    }
+
+    return ray_.payload * xyz(albedo_color) * alpha;
 }
 // RayCasterProgram
 

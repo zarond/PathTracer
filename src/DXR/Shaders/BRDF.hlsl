@@ -14,6 +14,18 @@ float3 ImportanceSampleCosDir(float2 xi) {
 
     return float3(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta);
 }
+float3 importanceSampleGGX(float2 xi, float a) {
+    // pdf(h) = D(h) * dot(n, h) : before conversion from half-vector to reflection vector
+    // pdf(l) = D(h) * dot(n, h) / (4.0 * dot(l, h)) : after conversion to reflection vector
+    float cos_theta2 = (1.0f - xi.x) / (1.0f + (a * a - 1.0f) * xi.x);
+    float cos_theta = sqrt(cos_theta2);
+    float sin_theta = sqrt(1.0f - cos_theta2);
+    float phi = 2.0f * xi.y * PI;
+
+    float cos_phi = cos(phi);
+    float sin_phi = sin(phi);
+    return float3(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta);
+}
 
 float fibonacci1D(int i) { return fmod((float(i) + 1.0f) * GOLDEN_RATIO, 1.0f); }
 float fibonacci1D(float i) { return fmod((i + 1.0f) * GOLDEN_RATIO, 1.0f); }

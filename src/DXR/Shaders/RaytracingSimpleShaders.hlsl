@@ -22,6 +22,8 @@ SamplerState EnvMapSampler : register(s0, space1);
 // Default sampler
 SamplerState Sampler : register(s1, space1);
 
+[shader("miss")] void MissEnvmap(inout HitInfo payload : SV_RayPayload);
+
 // Generate a ray in world space for a camera pixel corresponding to an index from the dispatched 2D grid.
 inline void GenerateCameraRay(uint2 index, uint2 dims, out float3 origin, out float3 direction) {
     float2 xy = index + 0.5f + g_rayGenCB.subpixel_offset;  // center in the middle of the pixel.
@@ -43,7 +45,7 @@ void RayGen() {
     // Initialize the ray payload
     HitInfo payload;
     payload.color = float3(0.0, 0.0, 0.0);
-    payload.depth = 1;
+    payload.depth = g_rayGenCB.maxRayBounces;
 
     // Get the location within the dispatched 2D grid of work items
     // (often maps to pixels, so this could represent a pixel coordinate).
@@ -66,7 +68,7 @@ void RayGen() {
 
     TraceRay(
         SceneBVH,                               // RaytracingAccelerationStructure
-        RAY_FLAG_FORCE_OPAQUE,                  // RayFlags
+        RAY_FLAG_NONE,                          // RayFlags
         ~0,                                     // InstanceInclusionMask
         0,                                      // RayContributionToHitGroupIndex
         1,                                      // MultiplierForGeometryContributionToShaderIndex
@@ -83,25 +85,33 @@ void RayGen() {
     gOutput[launchIndex] = float4(payload.color, 1.f);
 }
 
+inline uint3 GetIndices() {
+    const uint mesh_id = InstanceID();
+    const uint indices_offset = IndicesOffset[mesh_id];
+    const uint base = indices_offset + PrimitiveIndex() * 3;
+    return uint3(Indices[base], Indices[base + 1], Indices[base + 2]);
+}
+
 [shader("closesthit")] void ClosestHitAO(inout HitInfo payload, Attributes attr) {
     if (payload.depth <= 0) {
         return;
     }
+    payload.depth = 1;
+    const uint3 indices =  GetIndices();
 
     const uint mesh_id = InstanceID();
-    const uint indices_offset = IndicesOffset[mesh_id];
-    const uint base = indices_offset + PrimitiveIndex() * 3;
-    const uint3 indices = {Indices[base], Indices[base + 1], Indices[base + 2]};
+    Material material = Materials[mesh_id];
 
     float3 vertexNormals[3] = {Vertices[indices[0]].normal.xyz, Vertices[indices[1]].normal.xyz, Vertices[indices[2]].normal.xyz};
     float4 vertexTangent[3] = {Vertices[indices[0]].tangent, Vertices[indices[1]].tangent, Vertices[indices[2]].tangent};
+    float2 vertexUV[3] = {Vertices[indices[0]].uv.xy, Vertices[indices[1]].uv.xy, Vertices[indices[2]].uv.xy};
 
     float3 normal = HitAttribute(vertexNormals, attr);
     float4 tangent = HitAttribute(vertexTangent, attr);
+    float2 uv = HitAttribute(vertexUV, attr);
 
     if (HitKind() == HIT_KIND_TRIANGLE_BACK_FACE) {
-        // ray hits backside
-        normal *= -1.0f;
+        if (material.doubleSided) normal *= -1.0f;
     }
 
     float3 worldRayOrigin = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
@@ -112,6 +122,15 @@ void RayGen() {
     float3 worldTangent = mul(ModelMatrix, tangent.xyz);
     float3 worldBitangent = cross(worldNormal, worldTangent) * tangent.w;
     float3x3 TBN = construct_TBN(worldTangent, worldBitangent, worldNormal);
+
+    if (material.normalTextureIndex != -1) {
+        Texture2D<float4> normalTex = ResourceDescriptorHeap[material.normalTextureIndex];
+        float3 normal_map_color = normalTex.SampleLevel(Sampler, uv, 0).rgb;
+        float3 normal_vector = normal_map_color * 2.0f - 1.0f;
+        normal_vector.y *= -1;
+        normal_vector = Tangent2World(normal_vector, TBN);
+        TBN = construct_TBN(TBN[0], TBN[1], normal_vector);  // re-construct TBN with normal from normal map
+    }
 
     uint2 launchIndex = DispatchRaysIndex();
     uint3 seed = uint3(launchIndex.x, launchIndex.y, g_rayGenCB.frameID);
@@ -138,7 +157,7 @@ void RayGen() {
 
         TraceRay(
             SceneBVH,                             // RaytracingAccelerationStructure
-            RAY_FLAG_FORCE_OPAQUE,                // RayFlags
+            RAY_FLAG_FORCE_NON_OPAQUE,            // RayFlags
             ~0,                                   // InstanceInclusionMask
             0,                                    // RayContributionToHitGroupIndex
             1,                                    // MultiplierForGeometryContributionToShaderIndex
@@ -153,25 +172,74 @@ void RayGen() {
     payload.depth -= 1;
 }
 
+[shader("anyhit")] void AnyHitAO(inout HitInfo payload, Attributes attr) {
+    if (payload.depth <= 0) {
+        AcceptHitAndEndSearch();
+    }
+}
+
 [shader("closesthit")] void ClosestHitRC(inout HitInfo payload, Attributes attr) {
-    const uint mesh_id = InstanceID();
-    const uint indices_offset = IndicesOffset[mesh_id];
-    const uint base = indices_offset + PrimitiveIndex() * 3;
-    const uint3 indices = {Indices[base], Indices[base + 1], Indices[base + 2]};
+    const uint3 indices = GetIndices();
 
     float2 vertexUV[3] = {Vertices[indices[0]].uv.xy, Vertices[indices[1]].uv.xy, Vertices[indices[2]].uv.xy};
 
     float2 uv = HitAttribute(vertexUV, attr);
 
+    const uint mesh_id = InstanceID();
     Material mat = Materials[mesh_id];
     float4 color = mat.baseColorFactor;
     if (mat.baseColorTextureIndex != -1) {
         Texture2D<float4> albedoTex = ResourceDescriptorHeap[mat.baseColorTextureIndex];
         color *= albedoTex.SampleLevel(Sampler, uv, 0);
     }
+    float alpha = color.w; 
+    if (mat.alphaBlending == 0) {
+        alpha = (alpha < mat.alpha_cutoff) ? 0.0f : 1.0f;
+    }
+    payload.color = color.rgb;
+    if (alpha >= 1.0f - kEpsilon5) {
+        return;
+    }
+    // continue tracing
+    RayDesc nextRay;
+    nextRay.Origin = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
+    nextRay.Direction = WorldRayDirection();
+    nextRay.TMin = 0.001f;
+    nextRay.TMax = 10000.0f;
 
-    //payload.color = worldNormal;
-    payload.color = color;
+    HitInfo nextPayload = payload;
+    nextPayload.depth -= 1;
+
+    if (nextPayload.depth > 0) {
+        TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, nextRay, nextPayload);
+    } else {
+        MissEnvmap(nextPayload);
+    }
+    // Manual Blending
+    payload.color = lerp(nextPayload.color, color.rgb, alpha);
+}
+
+[shader("anyhit")] void AnyHitRC(inout HitInfo payload, Attributes attr) {
+    const uint3 indices = GetIndices();
+
+    float2 vertexUV[3] = {Vertices[indices[0]].uv.xy, Vertices[indices[1]].uv.xy, Vertices[indices[2]].uv.xy};
+
+    float2 uv = HitAttribute(vertexUV, attr);
+
+    const uint mesh_id = InstanceID();
+    Material mat = Materials[mesh_id];
+    float alpha = mat.baseColorFactor.w;
+    if (mat.baseColorTextureIndex != -1) {
+        Texture2D<float4> albedoTex = ResourceDescriptorHeap[mat.baseColorTextureIndex];
+        alpha *= albedoTex.SampleLevel(Sampler, uv, 0).w;
+    }
+    if (alpha < mat.alpha_cutoff) {
+        IgnoreHit();
+    }
+}
+
+[shader("closesthit")] void ClosestHitPBR(inout HitInfo payload, Attributes attr) { 
+    ClosestHitAO(payload, attr); 
 }
 
 [shader("miss")] 

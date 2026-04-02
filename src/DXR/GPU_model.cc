@@ -199,7 +199,7 @@ void GPU_mesh::create_bottom_level_AS() {
 
     D3D12_RAYTRACING_GEOMETRY_DESC geomDesc = { 
         .Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES,
-        .Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE, // ???
+        .Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE,
         .Triangles = {}
     };
 
@@ -215,7 +215,7 @@ void GPU_mesh::create_bottom_level_AS() {
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs;
     inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
     inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-    inputs.NumDescs = 1; // ???
+    inputs.NumDescs = 1;
     inputs.pGeometryDescs = &geomDesc;
     inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
 
@@ -416,17 +416,24 @@ void GPU_model::create_top_level_AS(const Model& cpu_model) {
 
         // Fill transform: D3D expects row-major 3x4 matrix. glm::mat4 is column-major,
         // so transpose when copying: inst.Transform[row][col] = mat[col][row]
-        const auto& mat = obj.ModelMatrix;
+        const auto& Mat = obj.ModelMatrix;
         for (int r = 0; r < 3; ++r) {
             for (int c = 0; c < 4; ++c) {
-                inst.Transform[r][c] = mat[c][r];
+                inst.Transform[r][c] = Mat[c][r];
             }
         }
+        const auto& cpu_mesh = cpu_model.meshes_[obj.meshIndex];
+        const auto& material = cpu_model.materials_[cpu_mesh.materialIndex];
+        bool doubleSided = material.doubleSided || material.hasVolume;
+        bool alphaBlending = material.alphaBlending;
+        bool alphaTest = (material.alpha_cutoff >= 0.0f);
 
         inst.InstanceID = objects[i].meshIndex;  // can be used to identify object in shaders
         inst.InstanceMask = 0xFF;
         inst.InstanceContributionToHitGroupIndex = 0;  // shader binding table offsets if used
-        inst.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE | D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE;
+        inst.Flags = 0;
+        if (doubleSided) inst.Flags |= D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE;
+        if (!alphaTest) inst.Flags |= D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE;
 
         // Set BLAS GPU address for the referenced mesh
         uint32_t meshIndex = obj.meshIndex;
@@ -646,6 +653,7 @@ void GPU_model::prepare_materials_array_buffer(const Model& cpu_model) {
     // I pack materials differently than in CPU for ease of use in shader. 
     // Here, I index material by meshID, that might lead to some redundant data
     // Todo: pack the same as CPU without redundancy
+    assert(sizeof(GPU_Material) == 112);
     data.reserve(cpu_model.meshes_.size());
     for (const auto& mesh : cpu_model.meshes_) {
         const auto& mat = cpu_model.materials_[mesh.materialIndex];
@@ -656,7 +664,7 @@ void GPU_model::prepare_materials_array_buffer(const Model& cpu_model) {
 
     ComPtr<ID3D12Resource2> mat_uploadBuffer;
 
-    uint32_t matCount = cpu_model.materials_.size();
+    uint32_t matCount = data.size();
 
     const UINT BufferSize = sizeof(GPU_Material) * matCount;
 

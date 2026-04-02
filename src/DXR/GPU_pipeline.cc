@@ -149,14 +149,17 @@ void GPU_pipeline::CreateRaytracingPipelines() {
         .BytecodeLength = shaderBlob->GetBufferSize(),
     };
 
-    CreateRaytracingPipeline(libdxil, c_closestHitRCShaderName, c_missEnvmapShaderName, m_dxrStateObjectRayCaster, 1);  // RayCaster
-    CreateRaytracingPipeline(libdxil, c_closestHitAOShaderName, c_missAOShaderName, m_dxrStateObjectAmbientOcclusion, 2);  // AO
-    CreateRaytracingPipeline(libdxil, c_closestHitAOShaderName, c_missEnvmapShaderName, m_dxrStateObjectPBR, 3);         // PBR
+    CreateRaytracingPipeline(libdxil, c_anyHitRCShaderName, c_closestHitRCShaderName, c_missEnvmapShaderName,
+        m_dxrStateObjectRayCaster, 10);  // RayCaster
+    CreateRaytracingPipeline(libdxil, c_anyHitAOShaderName, c_closestHitAOShaderName, c_missAOShaderName, 
+        m_dxrStateObjectAmbientOcclusion, 2);  // AO
+    CreateRaytracingPipeline(libdxil, nullptr, c_closestHitPBRShaderName, c_missEnvmapShaderName, m_dxrStateObjectPBR, 10);         // PBR
 
 }
 
-void GPU_pipeline::CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const wchar_t* c_closestHitShaderName,
-    const wchar_t* c_missShaderName, ComPtr<ID3D12StateObject>& m_dxrStateObject, UINT maxRecursionDepth) {
+void GPU_pipeline::CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const wchar_t* c_anyHitShaderName,
+    const wchar_t* c_closestHitShaderName, const wchar_t* c_missShaderName, ComPtr<ID3D12StateObject>& m_dxrStateObject, 
+    UINT maxRecursionDepth) {
     CD3DX12_STATE_OBJECT_DESC raytracingPipeline{ D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE };
     auto lib = raytracingPipeline.CreateSubobject<CD3DX12_DXIL_LIBRARY_SUBOBJECT>();
     lib->SetDXILLibrary(&libdxil);
@@ -167,6 +170,9 @@ void GPU_pipeline::CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const
         lib->DefineExport(c_raygenShaderName);
         lib->DefineExport(c_closestHitShaderName);
         lib->DefineExport(c_missShaderName);
+        if (c_anyHitShaderName) {
+            lib->DefineExport(c_anyHitShaderName);
+        }
     }
     
     // Triangle hit group
@@ -174,6 +180,9 @@ void GPU_pipeline::CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const
     // In this sample, we only use triangle geometry with a closest hit shader, so others are not set.
     auto hitGroup = raytracingPipeline.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
     hitGroup->SetClosestHitShaderImport(c_closestHitShaderName);
+    if (c_anyHitShaderName) {
+        hitGroup->SetAnyHitShaderImport(c_anyHitShaderName);
+    }
     hitGroup->SetHitGroupExport(c_hitGroupName);
     hitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
     
