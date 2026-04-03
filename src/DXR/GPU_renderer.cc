@@ -42,15 +42,16 @@ void GPURenderer::load_model(const Model& model, size_t ModelFenceValue) {
     if (ModelFenceValue == lastModelFenceValue) return;
     modelRef = &model;
     reload_acceleration_structure();
-    //reload_ray_program();
     lastModelFenceValue = ModelFenceValue;
 }
 
 void GPURenderer::reload_ray_program() {
+    if (envmapRef == nullptr) return;
     gpu_envmap_ = std::make_unique<GPU_texture>(*envmapRef);
     pipeline_.RaytracingMode = renderSettings_.programMode;
 }
 void GPURenderer::reload_acceleration_structure() {
+    if (modelRef == nullptr) return;
     auto start = std::chrono::high_resolution_clock::now();
 
     gpu_model_ = std::make_unique<GPU_model>(*modelRef);
@@ -114,7 +115,14 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
     }
 }
 
-void GPURenderer::set_render_settings(const RenderSettings& settings) { renderSettings_ = settings; }
+void GPURenderer::set_render_settings(const RenderSettings& settings) { 
+    const auto currentSettings = renderSettings_;
+    renderSettings_ = settings;
+
+    if (currentSettings.programMode != settings.programMode) {
+        reload_ray_program();
+    }
+}
 RenderSettings GPURenderer::get_render_settings() const { return renderSettings_; }
 
 BBox GPURenderer::get_scene_bound() const {

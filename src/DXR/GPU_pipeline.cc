@@ -150,11 +150,11 @@ void GPU_pipeline::CreateRaytracingPipelines() {
     };
 
     CreateRaytracingPipeline(libdxil, c_anyHitRCShaderName, c_closestHitRCShaderName, c_missEnvmapShaderName,
-        m_dxrStateObjectRayCaster, 10);  // RayCaster
+        m_dxrStateObjectRayCaster, PBR_DXR_RECURSION_DEPTH);  // RayCaster
     CreateRaytracingPipeline(libdxil, c_anyHitAOShaderName, c_closestHitAOShaderName, c_missAOShaderName, 
         m_dxrStateObjectAmbientOcclusion, 2);  // AO
     CreateRaytracingPipeline( libdxil, c_anyHitRCShaderName, c_closestHitPBRShaderName, c_missEnvmapShaderName, 
-        m_dxrStateObjectPBR, 10);  // PBR
+        m_dxrStateObjectPBR, PBR_DXR_RECURSION_DEPTH);  // PBR
 
 }
 

@@ -139,6 +139,7 @@ void CPUFrameBuffer::save_to_file(const std::filesystem::path& filePath, bool fr
     std::vector<hdr_pixel> gpu_data;
     std::span<const hdr_pixel> data_source;
 
+#ifndef NO_WINDOWS
     if (from_GPU_texture) {
         gpu_data = download_from_gpu();
         if (gpu_data.empty()) {
@@ -149,6 +150,9 @@ void CPUFrameBuffer::save_to_file(const std::filesystem::path& filePath, bool fr
     } else {
         data_source = data_;
     }
+#else
+    data_source = data_;
+#endif
     int ret = 0;
     if (filePath.extension() == ".png") {
         std::vector<unsigned char> rawData;
@@ -174,7 +178,7 @@ void CPUFrameBuffer::save_to_file(const std::filesystem::path& filePath, bool fr
 }
 
 #ifndef NO_WINDOWS
-void CPUFrameBuffer::upload_to_gpu(){
+void CPUFrameBuffer::create_texture_resource() {
     D3DContext& d3d_ctx = D3DContext::Get();
 
     if (pTexture == nullptr) {
@@ -227,7 +231,14 @@ void CPUFrameBuffer::upload_to_gpu(){
                 },
         };
         d3d_ctx.g_pd3dDevice->CreateUnorderedAccessView(pTexture.Get(), nullptr, &uavDesc, uav_cpu_handle);
+    }
+}
 
+void CPUFrameBuffer::upload_to_gpu(){
+    D3DContext& d3d_ctx = D3DContext::Get();
+
+    if (pTexture == nullptr) {
+        create_texture_resource();
     }
     
     HRESULT hr;

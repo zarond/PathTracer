@@ -2,13 +2,13 @@
 
 A small path-tracing renderer written in C++ 20 for educational purposes.
 
-At this time it only uses CPU computation. In the future, however, I will port the algorithms to GPU as well. I have CUDA and DirectX Raytracing (DXR) in mind.
+You can choose either a CPU Renderer or a DirectX Raytracing (DXR) GPU Renderer in GUI (it is available only from GUI mode).
 
 The program has GUI, but you can also run it in command-line mode to render images without opening a window.
 
-The program requires Windows OS due to usage of Windows API and DirectX for UI.
+The program requires Windows OS due to usage of Windows API and DirectX.
 
-You can use CMake option "NO_WINDOWS" to disable Windows-specific code and build it on Linux or MacOS, but GUI will be disabled in this case.
+You can use CMake option "NO_WINDOWS" to disable Windows-specific code and build it on Linux or MacOS, but GUI and DXR will be disabled in this case.
 
 ## Usage
 

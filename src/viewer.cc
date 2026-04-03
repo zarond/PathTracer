@@ -71,12 +71,17 @@ void Viewer::switch_to_cpu_renderer() {
 }
 #endif
 
-void Viewer::resize_window(const ivec2& newDimensions) {
+void Viewer::resize_window(const ivec2& newDimensions, bool createGPUTex) {
     windowDimensions_ = newDimensions;
 #ifndef NO_WINDOWS
     framebuffer_.release_gpu_resource();
 #endif
     framebuffer_ = CPUFrameBuffer(windowDimensions_.x, windowDimensions_.y);
+#ifndef NO_WINDOWS
+    if (createGPUTex) {
+        framebuffer_.create_texture_resource();
+    }
+#endif
 }
 
 ivec2 Viewer::get_window_dimensions() const { return windowDimensions_; }
@@ -152,17 +157,7 @@ bool Viewer::snap_to_camera(bool use_default) {
 int Viewer::get_number_of_cameras() const { return static_cast<int>(model_.cameras_.size()); }
 
 void Viewer::set_render_settings(const RenderSettings& settings) {
-    const auto currentSettings = renderer_->get_render_settings();
     renderer_->set_render_settings(settings);
-    if (currentSettings.accelStructType != settings.accelStructType ||
-        currentSettings.maxTrianglesPerBVHLeaf != settings.maxTrianglesPerBVHLeaf) {
-        renderer_->reload_acceleration_structure();
-    }
-    if (currentSettings.programMode != settings.programMode || 
-        currentSettings.envmapRotation != settings.envmapRotation ||
-        currentSettings.maxNewRaysPerBounce != settings.maxNewRaysPerBounce) {
-        renderer_->reload_ray_program();
-    }
 }
 RenderSettings Viewer::get_render_settings() const { return renderer_->get_render_settings(); }
 

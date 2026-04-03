@@ -8,7 +8,7 @@
 namespace {
 
 std::string_view no_arguments_message =
-    "A CPU PathTracer for .gltf files.\n"
+    "A PathTracer for .gltf files.\n"
     "Use -h or --help for usage info.";
 
 template <typename T>
@@ -28,7 +28,7 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
     argparse::ArgumentParser program("PathTracer", "1.0", argparse::default_arguments::help, false);
 
     program.add_description(
-        "A CPU PathTracer for .gltf files.\n"
+        "A PathTracer for .gltf files.\n"
         "Uses first camera in .gltf file to render image and save it as \"snapshot.hdr\" \n"
         "Choose between different rendering modes and ray intersection acceleration modes");
     program.add_epilog("It's an educational project, so it supports only a limited set of gltf features.");

@@ -16,7 +16,9 @@
 namespace app {
 
 using namespace glm;
+#ifndef NO_WINDOWS
 using Microsoft::WRL::ComPtr;
+#endif
 
 // init-time initialized LUT
 extern std::array<float, 256> SRGB8_TO_LINEAR_LUT;
@@ -207,6 +209,7 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
     void save_to_file(const std::filesystem::path& filePath, bool from_GPU_texture) const;
 
 #ifndef NO_WINDOWS
+    void create_texture_resource();
     void upload_to_gpu();
     void release_gpu_resource();
     D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu_handle;

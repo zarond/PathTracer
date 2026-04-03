@@ -63,6 +63,7 @@ void Renderer::load_model(const Model& model, size_t ModelFenceValue) {
 }
 
 void Renderer::reload_ray_program() {
+    if (modelRef == nullptr || envmapRef == nullptr) return;
     switch (renderSettings_.programMode) {
         case RayProgramMode::AmbientOcclusion:
             rayProgram = std::make_unique<AOProgram>(*modelRef, renderSettings_);
@@ -76,6 +77,7 @@ void Renderer::reload_ray_program() {
     }
 }
 void Renderer::reload_acceleration_structure() {
+    if (modelRef == nullptr) return;
     switch (renderSettings_.accelStructType) {
         case AccelerationStructureType::BVH:
             accelStruct = std::make_unique<BVH_AS>(*modelRef, renderSettings_.maxTrianglesPerBVHLeaf);
@@ -181,7 +183,19 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, bool i
     }
 }
 
-void Renderer::set_render_settings(const RenderSettings& settings) { renderSettings_ = settings; }
+void Renderer::set_render_settings(const RenderSettings& settings) { 
+    const auto currentSettings = renderSettings_;
+    renderSettings_ = settings;
+
+    if (currentSettings.accelStructType != settings.accelStructType ||
+        currentSettings.maxTrianglesPerBVHLeaf != settings.maxTrianglesPerBVHLeaf) {
+        reload_acceleration_structure();
+    }
+    if (currentSettings.programMode != settings.programMode || currentSettings.envmapRotation != settings.envmapRotation ||
+        currentSettings.maxNewRaysPerBounce != settings.maxNewRaysPerBounce) {
+        reload_ray_program();
+    }
+}
 RenderSettings Renderer::get_render_settings() const { return renderSettings_; }
 
 BBox Renderer::get_scene_bound() const {

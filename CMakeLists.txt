@@ -37,7 +37,7 @@ if(NOT NO_WINDOWS)
         src/DXR/GPU_pipeline.cc
     )
     list(APPEND SHADERS
-        src/DXR/Shaders/RaytracingSimpleShaders.hlsl
+        src/DXR/Shaders/RaytracingShaders.hlsl
     )
 else()
     add_definitions(-DNO_WINDOWS)
@@ -46,7 +46,6 @@ endif()
 # compile hlsl shaders to dxil
 if(NOT NO_WINDOWS)
     set(DXC dxc)
-    #set(XXD xxd)
 
     foreach(SHADER ${SHADERS})
         get_filename_component(FILE_NAME ${SHADER} NAME_WE)

@@ -305,8 +305,7 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
 
     float3 f0 = lerp(material.dielectric_f0, albedo_color.rgb, ORM.z);
     const float3 f90 = 1.0f;
-    //const float roughness = ORM.y;
-    const float roughness = max(ORM.y, 0.002f);
+    const float roughness = max(ORM.y, 0.002f); // trying to avoid numerical issues with very low roughness
     const float linear_roughness = roughness * roughness;
 
     int new_depth = payload.depth - 1;
@@ -319,7 +318,6 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
 
     const bool sample_diffuse = any(diffuse_color * (1.0f - transmission) != 0.0f);
     if (sample_diffuse) {  // diffuse
-        //float2 rand = pcg3d16(seed1).xy / float(0xFFFF);
         float2 rand = pcg3d(seed1).xy;
 
         float3 l = ImportanceSampleCosDir(rand);
@@ -345,19 +343,12 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
         new_payload.color = float3(0.0f, 0.0f, 0.0f);
         new_payload.depth = new_depth;
 
-        TraceRay(SceneBVH,              // RaytracingAccelerationStructure
-            RAY_FLAG_NONE,              // RayFlags
-            ~0,                         // InstanceInclusionMask
-            0,                          // RayContributionToHitGroupIndex
-            1,                          // MultiplierForGeometryContributionToShaderIndex
-            0,                          // MissShaderIndex
-            ray, new_payload);
+        TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, new_payload);
 
         payload.color += new_payload.color * MUL;
     }
     {
         // same micro-normal for both specular reflection and transmission
-        //float2 rand = float2(pcg3d16(seed2).xy) / float(0xFFFF);
         float2 rand = pcg3d(seed2).xy;
         float3 m = importanceSampleGGX(rand, linear_roughness);
 
@@ -412,13 +403,7 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
             new_payload.color = float3(0.0f, 0.0f, 0.0f);
             new_payload.depth = new_depth;
 
-            TraceRay(SceneBVH,  // RaytracingAccelerationStructure
-                RAY_FLAG_NONE,  // RayFlags
-                ~0,             // InstanceInclusionMask
-                0,              // RayContributionToHitGroupIndex
-                1,              // MultiplierForGeometryContributionToShaderIndex
-                0,              // MissShaderIndex
-                ray, new_payload);
+            TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, new_payload);
 
             payload.color += new_payload.color * MUL;
         }
@@ -450,13 +435,7 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
             new_payload.color = float3(0.0f, 0.0f, 0.0f);
             new_payload.depth = new_depth;
 
-            TraceRay(SceneBVH,              // RaytracingAccelerationStructure
-                RAY_FLAG_NONE,              // RayFlags
-                ~0,                         // InstanceInclusionMask
-                0,                          // RayContributionToHitGroupIndex
-                1,                          // MultiplierForGeometryContributionToShaderIndex
-                0,                          // MissShaderIndex
-                ray, new_payload);
+            TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, new_payload);
 
             payload.color += new_payload.color * MUL;
         }

@@ -21,7 +21,7 @@ class Viewer {
     Viewer(const Viewer&) = delete;
     Viewer& operator=(const Viewer&) = delete;
 
-    void resize_window(const ivec2& newDimensions);
+    void resize_window(const ivec2& newDimensions, bool createGPUTex = false);
     ivec2 get_window_dimensions() const;
 
     void render();

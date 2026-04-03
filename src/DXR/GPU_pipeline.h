@@ -13,6 +13,8 @@
 
 namespace app {
 
+constexpr int PBR_DXR_RECURSION_DEPTH = 11;
+
 using Microsoft::WRL::ComPtr;
 
 struct RayGenConstantBuffer {
@@ -56,7 +58,7 @@ class GPU_pipeline {
 
     void CreateConstantBuffers();
 
-    const wchar_t* c_dxilLibraryName = L"RaytracingSimpleShaders.dxil"; // DXIL library file name
+    const wchar_t* c_dxilLibraryName = L"RaytracingShaders.dxil"; // DXIL library file name
 
     const wchar_t* c_hitGroupName = L"MyHitGroup";
     const wchar_t* c_raygenShaderName = L"RayGen";

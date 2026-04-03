@@ -479,7 +479,7 @@ int main(int argc, char* argv[]) {
                             auto& framebuffer = viewer.get_framebuffer();
                             deferredDeletes.emplace_back(framebuffer.get_gpu_resource());
                             deferredDeletes.emplace_back(framebuffer.get_gpu_upload_resource());
-                            viewer.resize_window(ivec2(console_arguments.windowWidth, console_arguments.windowHeight));
+                            viewer.resize_window(ivec2(console_arguments.windowWidth, console_arguments.windowHeight), true);
                             viewer.snap_to_camera();
                             viewer.clear_framebuffer_black();
                             size_changed = false;
