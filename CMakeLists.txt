@@ -47,6 +47,17 @@ endif()
 if(NOT NO_WINDOWS)
     set(DXC dxc)
 
+    # Determine flags based on build type at configure-time
+    set(DXC_FLAGS "")
+
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        # Debug: Full info, no optimizations
+        set(DXC_FLAGS -Zi -Qembed_debug -Od)
+    elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+        # RelWithDebInfo: Full info, optimizations enabled
+        set(DXC_FLAGS -Zi -Qembed_debug)
+    endif()
+
     foreach(SHADER ${SHADERS})
         get_filename_component(FILE_NAME ${SHADER} NAME_WE)
 
@@ -54,9 +65,10 @@ if(NOT NO_WINDOWS)
         add_custom_command(
             OUTPUT  ${CMAKE_CURRENT_BINARY_DIR}/${FILE_NAME}.dxil
             COMMAND ${DXC}
-            -T lib_6_6
-            -Fo ${CMAKE_CURRENT_BINARY_DIR}/${FILE_NAME}.dxil
-            ${CMAKE_SOURCE_DIR}/${SHADER}
+                    -T lib_6_6
+                    ${DXC_FLAGS}
+                    -Fo ${CMAKE_CURRENT_BINARY_DIR}/${FILE_NAME}.dxil
+                    ${CMAKE_SOURCE_DIR}/${SHADER}
             DEPENDS ${SHADER}
         )
         list(APPEND COMPILED_SHADERS
