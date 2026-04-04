@@ -6,6 +6,7 @@ struct HitInfo
 {
     float3 color;
     int depth;
+    int iteration;
 };
 
 struct RayGenConstantBuffer {
@@ -15,6 +16,8 @@ struct RayGenConstantBuffer {
     unsigned int frameID;
     int iteration;
     float invIterationCount;
+    int samplesPerPixel;
+    float invSamplesPerPixel;
     int maxNewRaysPerBounce;
     float invMaxNewRaysPerBounce;
     int maxRayBounces;

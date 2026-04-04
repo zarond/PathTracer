@@ -25,8 +25,13 @@ SamplerState Sampler : register(s1, space1);
 [shader("miss")] void MissEnvmap(inout HitInfo payload : SV_RayPayload);
 
 // Generate a ray in world space for a camera pixel corresponding to an index from the dispatched 2D grid.
-inline void GenerateCameraRay(uint2 index, uint2 dims, out float3 origin, out float3 direction) {
-    float2 xy = index + 0.5f + g_rayGenCB.subpixel_offset;  // center in the middle of the pixel.
+inline void GenerateCameraRay(uint2 index, uint2 dims, out float3 origin, out float3 direction, int i) {
+    float2 xy = index + g_rayGenCB.subpixel_offset;  // center in the middle of the pixel.
+    if (g_rayGenCB.samplesPerPixel == 1) {
+        xy += 0.5f;
+    } else {
+        xy += fibonacci2D(i, g_rayGenCB.invSamplesPerPixel);
+    }
     float2 screenPos = ( xy / dims ) * 2.0f - 1.0f;
 
     // Invert Y for DirectX-style coordinates.
@@ -44,8 +49,6 @@ inline void GenerateCameraRay(uint2 index, uint2 dims, out float3 origin, out fl
 void RayGen() {
     // Initialize the ray payload
     HitInfo payload;
-    payload.color = float3(0.0, 0.0, 0.0);
-    payload.depth = g_rayGenCB.maxRayBounces;
 
     // Get the location within the dispatched 2D grid of work items
     // (often maps to pixels, so this could represent a pixel coordinate).
@@ -55,34 +58,42 @@ void RayGen() {
 
     float3 rayDir;
     float3 origin;
+    float3 accumulatedColor = float3(0.0f, 0.0f, 0.0f);
+    for (int i = 0; i < g_rayGenCB.samplesPerPixel; ++i) {
+        // use perspective projection from matrix
+        GenerateCameraRay(launchIndex, launchDim, origin, rayDir, i);
 
-    // use perspective projection from matrix
-    GenerateCameraRay(launchIndex, launchDim, origin, rayDir);
+        payload.color = float3(0.0, 0.0, 0.0);
+        payload.depth = g_rayGenCB.maxRayBounces;
+        payload.iteration = i;
 
-    // Set the ray's extents.
-    RayDesc ray;
-    ray.Origin = origin;
-    ray.Direction = rayDir;
-    ray.TMin = 0.001;
-    ray.TMax = 10000.0;
+        // Set the ray's extents.
+        RayDesc ray;
+        ray.Origin = origin;
+        ray.Direction = rayDir;
+        ray.TMin = 0.001;
+        ray.TMax = 10000.0;
 
-    TraceRay(
-        SceneBVH,                               // RaytracingAccelerationStructure
-        RAY_FLAG_NONE,                          // RayFlags
-        ~0,                                     // InstanceInclusionMask
-        0,                                      // RayContributionToHitGroupIndex
-        1,                                      // MultiplierForGeometryContributionToShaderIndex
-        0,                                      // MissShaderIndex
-        ray, 
-        payload
-    );
+        TraceRay(
+            SceneBVH,                               // RaytracingAccelerationStructure
+            RAY_FLAG_NONE,                          // RayFlags
+            ~0,                                     // InstanceInclusionMask
+            0,                                      // RayContributionToHitGroupIndex
+            1,                                      // MultiplierForGeometryContributionToShaderIndex
+            0,                                      // MissShaderIndex
+            ray, 
+            payload
+        );
+        accumulatedColor += payload.color;
+    }
+    accumulatedColor *= g_rayGenCB.invSamplesPerPixel;
 
     if (g_rayGenCB.iteration > 1) {
         float3 previousPixel = gOutput[launchIndex].xyz;
-        payload.color = lerp(previousPixel, payload.color, g_rayGenCB.invIterationCount);
+        accumulatedColor = lerp(previousPixel, accumulatedColor, g_rayGenCB.invIterationCount);
     }
 
-    gOutput[launchIndex] = float4(payload.color, 1.f);
+    gOutput[launchIndex] = float4(accumulatedColor, 1.f);
 }
 
 inline uint3 GetIndices() {
@@ -149,7 +160,7 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
     }
 
     uint2 launchIndex = DispatchRaysIndex();
-    uint3 seed = uint3(launchIndex.x, launchIndex.y, g_rayGenCB.frameID);
+    uint3 seed = uint3(launchIndex.x, launchIndex.y, payload.iteration + g_rayGenCB.frameID * g_rayGenCB.samplesPerPixel);
     float2 jitter = float2(pcg3d16(seed).xy) / float(0xFFFF);
 
     const int N = g_rayGenCB.maxNewRaysPerBounce;
@@ -170,6 +181,7 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
         HitInfo new_payload;
         new_payload.color = float3(0.0f, 0.0f, 0.0f);
         new_payload.depth = payload.depth - 1;
+        new_payload.iteration = payload.iteration;
 
         TraceRay(
             SceneBVH,                             // RaytracingAccelerationStructure
@@ -311,8 +323,8 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
     int new_depth = payload.depth - 1;
     
     uint2 launchIndex = DispatchRaysIndex();
-    uint3 seed1 = uint3(launchIndex.x, launchIndex.y, g_rayGenCB.frameID);
-    uint3 seed2 = uint3(launchIndex.x, launchIndex.y, g_rayGenCB.frameID + 1);
+    uint3 seed1 = uint3(launchIndex.x, launchIndex.y, payload.iteration + g_rayGenCB.frameID * g_rayGenCB.samplesPerPixel);
+    uint3 seed2 = uint3(launchIndex.x, launchIndex.y, payload.iteration + (g_rayGenCB.frameID + 1) * g_rayGenCB.samplesPerPixel);
 
     float3 worldHitPos = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
 
@@ -328,10 +340,7 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
 
         float3 F = 1.0f - fresnel_schlick(f0, f90, LdH);
         float3 new_pos = worldHitPos + worldNormal * kEpsilon5;  // offset to avoid self-intersection
-        //float3 new_payload = F * diffuse_color * (1.0f - transmission) * attenuation * ray_.payload * alpha;
         float3 MUL = F * diffuse_color * (1.0f - transmission) * attenuation * alpha;
-        //ray_with_payload new_ray{{new_pos, l}, new_payload, new_depth, false};
-        //ray_collection.push_back(new_ray);
 
         RayDesc ray;
         ray.Origin = new_pos;
@@ -342,6 +351,7 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
         HitInfo new_payload;
         new_payload.color = float3(0.0f, 0.0f, 0.0f);
         new_payload.depth = new_depth;
+        new_payload.iteration = payload.iteration;
 
         TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, new_payload);
 
@@ -389,9 +399,6 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
             float3 new_pos = worldHitPos - new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
             
             float3 MUL = diffuse_color * transmission * attenuation * brdf * alpha;
-            //float3 new_payload = diffuse_color * transmission * attenuation * brdf * ray_.payload * alpha;
-            //ray_with_payload new_ray{{new_pos, normalize(l)}, new_payload, new_depth, false};  // normalizing for better accuracy
-            //ray_collection.push_back(new_ray);
 
             RayDesc ray;
             ray.Origin = new_pos;
@@ -402,6 +409,7 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
             HitInfo new_payload;
             new_payload.color = float3(0.0f, 0.0f, 0.0f);
             new_payload.depth = new_depth;
+            new_payload.iteration = payload.iteration;
 
             TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, new_payload);
 
@@ -421,9 +429,6 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
             brdf = min(brdf, kMaxBRDF);                               // clamp to avoid fireflies
             float3 new_pos = worldHitPos + new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
             float3 MUL = attenuation * brdf * alpha;
-            //float3 new_payload = attenuation * brdf * ray_.payload * alpha;
-            //ray_with_payload new_ray{{new_pos, l}, new_payload, new_depth, false};
-            //ray_collection.push_back(new_ray);
 
             RayDesc ray;
             ray.Origin = new_pos;
@@ -434,6 +439,7 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
             HitInfo new_payload;
             new_payload.color = float3(0.0f, 0.0f, 0.0f);
             new_payload.depth = new_depth;
+            new_payload.iteration = payload.iteration;
 
             TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, new_payload);
 

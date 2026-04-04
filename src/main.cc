@@ -72,10 +72,24 @@ int main(int argc, char* argv[]) {
     viewer.snap_to_camera();
 
     auto render_lambda = [&viewer]() {
-        auto start = std::chrono::high_resolution_clock::now();
+        static auto start = std::chrono::high_resolution_clock::now();
+        const auto iteration_counter = viewer.get_iteration_counter();
+        if (!viewer.iterative_rendering || iteration_counter == 1) {
+            start = std::chrono::high_resolution_clock::now();
+        }
         viewer.render();
-        auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
-        std::cout << "rendered in " << diff.count() << " ms." << '\n';
+        if (!viewer.iterative_rendering) {
+            auto diff = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start);
+            float time_ms = static_cast<float>(diff.count()) / 1000.0f;
+            std::cout << "rendered in " << std::fixed << std::setprecision(2) << time_ms << " ms." << '\n';
+        }
+        if (viewer.iterative_rendering && viewer.continuous_rendering && (iteration_counter % 50 == 0)) {
+            auto diff = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start);
+            float time_ms = static_cast<float>(diff.count()) / 1000.0f;
+            float avg_time_ms = static_cast<float>(diff.count()) / (iteration_counter * 1000.0f);
+            std::cout << "rendered " << iteration_counter << " iteration in " << std::fixed << std::setprecision(2) << time_ms << " ms. ";
+            std::cout << "Average " << std::fixed << std::setprecision(2) << avg_time_ms << " ms. per iteration. " << '\n';
+        }
     };
 
     auto save_render_image_lambda = [&viewer](fs::path image_path) {
@@ -447,11 +461,8 @@ int main(int argc, char* argv[]) {
                 size_changed |= InputUInt("Height", &console_arguments.windowHeight);
 
                 static bool setings_changed = false;
-                if (viewer.is_using_gpu_renderer()) {
-                    ImGui::Text("samples per pixel is always = 1 for GPU raytracing, use Iterative Rendering");
-                } else {
-                    setings_changed |= SliderUInt("samples per pixel", &console_arguments.samplesPerPixel, 1, 128);
-                }
+                setings_changed |= SliderUInt("samples per pixel", &console_arguments.samplesPerPixel, 1, 128);               
+                HelpTooltip("For GPU raytracing best to use Iterative Rendering and set Samples per pixel = 1 ");
                 setings_changed |= SliderUInt("max ray bounces", &console_arguments.maxRayBounces, 0, 10);
                 setings_changed |= SliderUInt("max new rays per bounce", &console_arguments.maxNewRaysPerBounce, 0, 32);
                 HelpTooltip("For AmbientOcclusion mode only, set >= 1");

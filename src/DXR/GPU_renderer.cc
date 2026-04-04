@@ -61,7 +61,6 @@ void GPURenderer::reload_acceleration_structure() {
 }
 
 void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, bool iterative, int iteration_count) {
-    // atomic<bool>& instead of bool continuous?
     assert(modelRef);
     if (modelRef == nullptr || envmapRef == nullptr || gpu_model_ == nullptr) {
         throw std::runtime_error("One of components is nullptr in GPURenderer::render_frame()");
@@ -75,8 +74,7 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
         static std::minstd_rand gen = std::minstd_rand(std::random_device{}());
         static std::uniform_real_distribution<float> dist{-0.5f, 0.5f};
         jitter = fvec2{dist(gen), dist(gen)};
-        //float n_sqrt = sqrtf(renderSettings_.samplesPerPixel);
-        float n_sqrt = 1.0f;
+        float n_sqrt = sqrtf(renderSettings_.samplesPerPixel);
         jitter /= n_sqrt;
         inverse_iteration_count = 1.0f / static_cast<float>(iteration_count);
     }
@@ -87,6 +85,8 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
     pipeline_.m_rayGenCB.frameID = ++frameID;
     pipeline_.m_rayGenCB.iteration = iteration_count;
     pipeline_.m_rayGenCB.invIterationCount = inverse_iteration_count;
+    pipeline_.m_rayGenCB.samplesPerPixel = renderSettings_.samplesPerPixel;
+    pipeline_.m_rayGenCB.invSamplesPerPixel = 1.0f / static_cast<float>(renderSettings_.samplesPerPixel);
     pipeline_.m_rayGenCB.maxNewRaysPerBounce = renderSettings_.maxNewRaysPerBounce;
     pipeline_.m_rayGenCB.invMaxNewRaysPerBounce = 1.0f / renderSettings_.maxNewRaysPerBounce;
     pipeline_.m_rayGenCB.maxRayBounces = renderSettings_.maxRayBounces;
