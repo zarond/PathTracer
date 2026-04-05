@@ -26,9 +26,9 @@ SamplerState Sampler : register(s1, space1);
 
 // Generate a ray in world space for a camera pixel corresponding to an index from the dispatched 2D grid.
 inline void GenerateCameraRay(uint2 index, uint2 dims, out float3 origin, out float3 direction, int i) {
-    float2 xy = index + g_rayGenCB.subpixel_offset;  // center in the middle of the pixel.
+    float2 xy = index + g_rayGenCB.subpixel_offset;
     if (g_rayGenCB.samplesPerPixel == 1) {
-        xy += 0.5f;
+        xy += 0.5f;                                  // center in the middle of the pixel.
     } else {
         xy += fibonacci2D(i, g_rayGenCB.invSamplesPerPixel);
     }
@@ -62,6 +62,7 @@ void RayGen() {
         // Initialize the ray payload
         HitInfo payload;
         payload.color = float3(0.0, 0.0, 0.0);
+        payload.absorption = float3(1.0, 1.0, 1.0);
         payload.depth = g_rayGenCB.maxRayBounces;
         payload.iteration = i;
 
@@ -101,23 +102,21 @@ inline uint3 GetIndices() {
     return uint3(Indices[base], Indices[base + 1], Indices[base + 2]);
 }
 
-inline void ContinueTrace(inout HitInfo payload, float alpha) {
+inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3 old_payload_absorption, const int new_depth) {
     RayDesc ray;
     ray.Origin = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
     ray.Direction = WorldRayDirection();
     ray.TMin = 0.001f;
     ray.TMax = 10000.0f;
 
-    HitInfo newPayload = payload;
-    newPayload.depth -= 1;
+    payload.absorption = old_payload_absorption * (1.0f - alpha);
+    payload.depth = new_depth;
 
-    if (newPayload.depth > 0) {
-        TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, newPayload);
+    if (payload.depth > 0) {
+        TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, payload);
     } else {
-        MissEnvmap(newPayload);
+        MissEnvmap(payload);
     }
-    // Manual Blending
-    payload.color = lerp(newPayload.color, payload.color, alpha);
 }
 
 [shader("closesthit")] void ClosestHitAO(inout HitInfo payload, Attributes attr) {
@@ -161,10 +160,7 @@ inline void ContinueTrace(inout HitInfo payload, float alpha) {
     uint3 seed = uint3(launchIndex.x, launchIndex.y, payload.iteration + g_rayGenCB.frameID * g_rayGenCB.samplesPerPixel);
     float2 jitter = float2(pcg3d16(seed).xy) / float(0xFFFF);
 
-    HitInfo new_payload;
-    new_payload.color = float3(0.0f, 0.0f, 0.0f);
-    new_payload.depth = 0;
-    new_payload.iteration = payload.iteration;
+    payload.depth = 0;
 
     const int N = g_rayGenCB.maxNewRaysPerBounce;
     const float inv_aoSamples = g_rayGenCB.invMaxNewRaysPerBounce;
@@ -189,11 +185,10 @@ inline void ContinueTrace(inout HitInfo payload, float alpha) {
             1,                                    // MultiplierForGeometryContributionToShaderIndex
             0,                                    // MissShaderIndex
             ray, 
-            new_payload
+            payload
         );
     }
-    new_payload.color *= inv_aoSamples;
-    payload.color = new_payload.color;
+    payload.color *= inv_aoSamples;
 }
 
 [shader("anyhit")] void AnyHitAO(inout HitInfo payload, Attributes attr) {
@@ -216,7 +211,7 @@ inline void ContinueTrace(inout HitInfo payload, float alpha) {
     if (mat.alphaBlending == 0) {
         alpha = (alpha < mat.alpha_cutoff) ? 0.0f : 1.0f;
     }
-    payload.color += color.rgb * alpha;
+    payload.color += payload.absorption * color.rgb * alpha;
     if (alpha >= 1.0f - kEpsilon5) {
         return;
     }
@@ -227,16 +222,14 @@ inline void ContinueTrace(inout HitInfo payload, float alpha) {
     ray.TMin = 0.001f;
     ray.TMax = 10000.0f;
 
-    HitInfo newPayload;
-    newPayload.color = float3(0.0f, 0.0f, 0.0f);
-    newPayload.depth = payload.depth - 1;
+    payload.absorption *= (1.0f - alpha);
+    payload.depth -= 1;
 
-    if (newPayload.depth > 0) {
-        TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, newPayload);
+    if (payload.depth > 0) {
+        TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, payload);
     } else {
-        MissEnvmap(newPayload);
+        MissEnvmap(payload);
     }
-    payload.color += newPayload.color * (1.0f - alpha);
 }
 
 [shader("anyhit")] void AnyHitRC(inout HitInfo payload, Attributes attr) {
@@ -259,9 +252,6 @@ inline void ContinueTrace(inout HitInfo payload, float alpha) {
 }
 
 [shader("closesthit")] void ClosestHitPBR(inout HitInfo payload, Attributes attr) { 
-    if (payload.depth <= 0) {
-        return;
-    }
     const uint3 indices = GetIndices();
 
     const uint mesh_id = InstanceID();
@@ -286,13 +276,18 @@ inline void ContinueTrace(inout HitInfo payload, float alpha) {
         }
     }
 
+    float3 old_payload_absorption = payload.absorption;
+    int old_depth = payload.depth;
+
     float4 albedo_color = sample_albedo(material, uv, Sampler);
     float alpha = albedo_color.w;
     if (material.alphaBlending == 0) {
         alpha = (alpha < material.alpha_cutoff) ? 0.0f : 1.0f;
     }
+    if (alpha < 1.0f - kEpsilon5) {
+        ContinueTrace(payload, alpha, old_payload_absorption, old_depth - 1);
+    }
     if (alpha == 0.0f) {
-        ContinueTrace(payload, alpha);
         return;
     }
 
@@ -302,9 +297,8 @@ inline void ContinueTrace(inout HitInfo payload, float alpha) {
         exiting_volume ? min(exp(-material.attenuationFactor * RayTCurrent()), 1.0f) : 1.0f;  // Volume absorption
 
     float3 emissive = sample_emissive(material, uv, Sampler);
-    payload.color += emissive * attenuation * alpha;
-    if (payload.depth == 0) {
-        //return ray_.payload * emissive * attenuation * alpha;
+    payload.color += old_payload_absorption * emissive * attenuation * alpha;
+    if (old_depth == 0) {
         return;
     }
 
@@ -334,8 +328,6 @@ inline void ContinueTrace(inout HitInfo payload, float alpha) {
     const float roughness = max(ORM.x, 0.002f); // trying to avoid numerical issues with very low roughness
     const float linear_roughness = roughness * roughness;
 
-    int new_depth = payload.depth - 1;
-    
     uint2 launchIndex = DispatchRaysIndex();
     uint3 seed1 = uint3(launchIndex.x, launchIndex.y, payload.iteration + g_rayGenCB.frameID * g_rayGenCB.samplesPerPixel);
     uint3 seed2 = uint3(launchIndex.x, launchIndex.y, payload.iteration + (g_rayGenCB.frameID + 1) * g_rayGenCB.samplesPerPixel);
@@ -354,7 +346,7 @@ inline void ContinueTrace(inout HitInfo payload, float alpha) {
 
         float3 F = 1.0f - fresnel_schlick(f0, f90, LdH);
         float3 new_pos = worldHitPos + worldNormal * kEpsilon5;  // offset to avoid self-intersection
-        float3 MUL = F * diffuse_color * (1.0f - transmission) * attenuation * alpha;
+        float3 next_payload_absorption = old_payload_absorption * F * diffuse_color * (1.0f - transmission) * attenuation * alpha;
 
         RayDesc ray;
         ray.Origin = new_pos;
@@ -362,14 +354,10 @@ inline void ContinueTrace(inout HitInfo payload, float alpha) {
         ray.TMin = kEpsilon5;
         ray.TMax = 10000.0;
 
-        HitInfo new_payload;
-        new_payload.color = float3(0.0f, 0.0f, 0.0f);
-        new_payload.depth = new_depth;
-        new_payload.iteration = payload.iteration;
+        payload.absorption = next_payload_absorption;
+        payload.depth = old_depth - 1;
 
-        TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, new_payload);
-
-        payload.color += new_payload.color * MUL;
+        TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, payload);
     }
     {
         // same micro-normal for both specular reflection and transmission
@@ -412,7 +400,7 @@ inline void ContinueTrace(inout HitInfo payload, float alpha) {
             brdf = min(brdf, kMaxBRDF);                               // clamp to avoid fireflies
             float3 new_pos = worldHitPos - new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
             
-            float3 MUL = diffuse_color * transmission * attenuation * brdf * alpha;
+            float3 next_payload_absorption = old_payload_absorption * diffuse_color * transmission * attenuation * brdf * alpha;
 
             RayDesc ray;
             ray.Origin = new_pos;
@@ -420,14 +408,10 @@ inline void ContinueTrace(inout HitInfo payload, float alpha) {
             ray.TMin = kEpsilon5;
             ray.TMax = 10000.0;
 
-            HitInfo new_payload;
-            new_payload.color = float3(0.0f, 0.0f, 0.0f);
-            new_payload.depth = new_depth;
-            new_payload.iteration = payload.iteration;
+            payload.absorption = next_payload_absorption;
+            payload.depth = old_depth - 1;
 
-            TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, new_payload);
-
-            payload.color += new_payload.color * MUL;
+            TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, payload);
         }
         {   // specular reflection
             float3 h = m;
@@ -442,7 +426,7 @@ inline void ContinueTrace(inout HitInfo payload, float alpha) {
             float3 brdf = F * (G * LdN * LdH / NdH);
             brdf = min(brdf, kMaxBRDF);                               // clamp to avoid fireflies
             float3 new_pos = worldHitPos + new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
-            float3 MUL = attenuation * brdf * alpha;
+            float3 next_payload_absorption = old_payload_absorption * attenuation * brdf * alpha;
 
             RayDesc ray;
             ray.Origin = new_pos;
@@ -450,21 +434,12 @@ inline void ContinueTrace(inout HitInfo payload, float alpha) {
             ray.TMin = kEpsilon5;
             ray.TMax = 10000.0;
 
-            HitInfo new_payload;
-            new_payload.color = float3(0.0f, 0.0f, 0.0f);
-            new_payload.depth = new_depth;
-            new_payload.iteration = payload.iteration;
+            payload.absorption = next_payload_absorption;
+            payload.depth = old_depth - 1;
 
-            TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, new_payload);
-
-            payload.color += new_payload.color * MUL;
+            TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, payload);
         }
     }
-
-    if (alpha >= 1.0f - kEpsilon5) {
-        return;
-    }
-    ContinueTrace(payload, alpha);
 }
 
 [shader("miss")] 
@@ -480,5 +455,5 @@ void MissEnvmap(inout HitInfo payload : SV_RayPayload) {
     float2 uv = float2(atan2(-dir.z, -dir.x) + y_rotation, -2.0f * asin(dir.y)) * (1.0f / PI);
     uv = uv * 0.5f + 0.5f;
 
-    payload.color += EnvMap.SampleLevel(EnvMapSampler, uv, 0).rgb;
+    payload.color += payload.absorption * EnvMap.SampleLevel(EnvMapSampler, uv, 0).rgb;
 }

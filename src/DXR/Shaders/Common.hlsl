@@ -6,6 +6,7 @@ struct HitInfo
 {
     float3 color;
     int depth;
+    float3 absorption;
     int iteration;
 };
 
