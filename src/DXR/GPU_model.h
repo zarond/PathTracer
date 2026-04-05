@@ -66,7 +66,7 @@ struct GPU_Material { // enforce packing rules on CPU Material data
     int alphaBlending;
     int padding0;
 
-    GPU_Material(const Material& mat, const std::vector<int>& texture_id_conversion_table);
+    GPU_Material(const Material& mat, const std::vector<int>& texture_id_conversion_table, int default_texture);
 };
 
 class GPU_texture {
@@ -129,6 +129,8 @@ class GPU_model {
 
   private:
     std::vector<GPU_mesh> meshes_;
+    
+    GPU_texture default_white_texture = GPU_texture(CPUTexture<sdr_pixel>::create_white_texture(), false);
 
     void create_top_level_AS(const Model& cpu_model);
 

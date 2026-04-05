@@ -311,9 +311,13 @@ void GPU_mesh::release_gpu_resource() {
 
 // GPU_mesh
 
-GPU_Material::GPU_Material(const Material& mat, const std::vector<int>& texture_id_conversion_table) {
+GPU_Material::GPU_Material(
+    const Material& mat, const std::vector<int>& texture_id_conversion_table, int default_texture) {
     int size = texture_id_conversion_table.size();
-    const auto lambda = [&texture_id_conversion_table, size](int i) { 
+    const auto lambda = [&texture_id_conversion_table, size, default_texture](int i) { 
+        return (i >= 0 && i < size) ? texture_id_conversion_table[i] : default_texture;
+    };
+    const auto lambda_normal_map = [&texture_id_conversion_table, size](int i) { 
         return (i >= 0 && i < size) ? texture_id_conversion_table[i] : -1;
     };
     baseColorFactor = mat.baseColorFactor;
@@ -323,7 +327,7 @@ GPU_Material::GPU_Material(const Material& mat, const std::vector<int>& texture_
     roughnessFactor = mat.roughnessFactor;
     baseColorTextureIndex = lambda(mat.baseColorTextureIndex);
     metallicRoughnessTextureIndex = lambda(mat.metallicRoughnessTextureIndex);
-    normalTextureIndex = lambda(mat.normalTextureIndex);
+    normalTextureIndex = lambda_normal_map(mat.normalTextureIndex);
     ior = mat.ior;
     dielectric_f0 = mat.dielectric_f0;
     transmisionFactor = mat.transmisionFactor;
@@ -649,6 +653,7 @@ void GPU_model::prepare_materials_array_buffer(const Model& cpu_model) {
     std::transform(textures.begin(), textures.end(), std::back_inserter(texture_id_conversion_table), 
         [&heap_alloc](const auto& el) { return heap_alloc.GetIndex(el.GetSRVHandle()); }
     );
+    int default_white_texture_index = heap_alloc.GetIndex(default_white_texture.GetSRVHandle());
 
     // I pack materials differently than in CPU for ease of use in shader. 
     // Here, I index material by meshID, that might lead to some redundant data
@@ -657,7 +662,7 @@ void GPU_model::prepare_materials_array_buffer(const Model& cpu_model) {
     data.reserve(cpu_model.meshes_.size());
     for (const auto& mesh : cpu_model.meshes_) {
         const auto& mat = cpu_model.materials_[mesh.materialIndex];
-        data.emplace_back(mat, texture_id_conversion_table);
+        data.emplace_back(mat, texture_id_conversion_table, default_white_texture_index);
     }
 
     d3d_ctx.InitCopyCommandList();

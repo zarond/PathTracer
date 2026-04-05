@@ -100,18 +100,14 @@ float3 pcg3d(uint3 v) {
 
 float4 sample_albedo(const Material material, const float2 uv, const SamplerState Sampler) {
     float4 albedo_color = material.baseColorFactor;
-    if (material.baseColorTextureIndex != -1) {
-        Texture2D<float4> albedoTex = ResourceDescriptorHeap[material.baseColorTextureIndex];
-        albedo_color *= albedoTex.SampleLevel(Sampler, uv, 0);
-    }
+    Texture2D<float4> albedoTex = ResourceDescriptorHeap[material.baseColorTextureIndex];
+    albedo_color *= albedoTex.SampleLevel(Sampler, uv, 0);
     return albedo_color;
 }
 float2 sample_roughness_metallic(const Material material, const float2 uv, const SamplerState Sampler) {
     float2 sample = float2(material.roughnessFactor, material.metallicFactor);
-    if (material.metallicRoughnessTextureIndex != -1) {
-        Texture2D<float4> Tex = ResourceDescriptorHeap[material.metallicRoughnessTextureIndex];
-        sample *= Tex.SampleLevel(Sampler, uv, 0).gb;
-    }
+    Texture2D<float4> Tex = ResourceDescriptorHeap[material.metallicRoughnessTextureIndex];
+    sample *= Tex.SampleLevel(Sampler, uv, 0).gb;
     return sample;
 }
 float3 sample_normals(const Material material, const float2 uv, const SamplerState Sampler, out bool has_normal_map) {
@@ -126,17 +122,13 @@ float3 sample_normals(const Material material, const float2 uv, const SamplerSta
 }
 float3 sample_emissive(const Material material, const float2 uv, const SamplerState Sampler) {
     float3 sample = material.emissiveFactor.rgb * material.emissiveStrength;
-    if (material.emissiveTextureIndex != -1) {
-        Texture2D<float4> Tex = ResourceDescriptorHeap[material.emissiveTextureIndex];
-        sample *= Tex.SampleLevel(Sampler, uv, 0).rgb;
-    }
+    Texture2D<float4> Tex = ResourceDescriptorHeap[material.emissiveTextureIndex];
+    sample *= Tex.SampleLevel(Sampler, uv, 0).rgb;
     return sample;
 }
 float sample_transmission(const Material material, const float2 uv, const SamplerState Sampler) {
     float sample = material.transmisionFactor;
-    if (material.transmissionTextureIndex != -1) {
-        Texture2D<float4> Tex = ResourceDescriptorHeap[material.transmissionTextureIndex];
-        sample *= Tex.SampleLevel(Sampler, uv, 0).r;
-    }
+    Texture2D<float4> Tex = ResourceDescriptorHeap[material.transmissionTextureIndex];
+    sample *= Tex.SampleLevel(Sampler, uv, 0).r;
     return sample;
 }
