@@ -90,14 +90,13 @@ float3 normal_map_sample_to_world(const float3 normal_map_sample, const float3x3
     return Tangent2World(normal_vector, TBN);
 }
 
-float3x3 handle_TBN_creation(const float3x3 NormalMatrixTransposed, const float4 normal_map_color, const float3 w_tangent,
-    const float3 w_bitangent, const float3 w_normal,
+float3x3 handle_TBN_creation(const float3x3 NormalMatrixTransposed, const float3 normal_map_color, bool has_normal_map, 
+    const float3 w_tangent, const float3 w_bitangent, const float3 w_normal,
     const float3 view, const bool double_sided_material, const bool exiting_volume, const bool backface_hit, 
     const float3 p1, const float3 p2, const float3 p3) {
     // todo: potential problem with self-intersection from interpolated normal and geometry normal mismatch in certain
     // cases, unrelated to impossible normal angle (in relation to v)
     float3x3 TBN = construct_TBN(w_tangent, w_bitangent, w_normal);
-    const bool has_normal_map = (normal_map_color.w != 0.0f);
     float3 normal_vector = has_normal_map ? normal_map_sample_to_world(normal_map_color, TBN) : TBN[2];
     const bool impossible_normal_angle = (dot((!exiting_volume) ? view : -view, normal_vector) < 0.0);
     if (impossible_normal_angle) {

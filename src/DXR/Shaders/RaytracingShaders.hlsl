@@ -47,22 +47,20 @@ inline void GenerateCameraRay(uint2 index, uint2 dims, out float3 origin, out fl
 
 [shader("raygeneration")] 
 void RayGen() {
-    // Initialize the ray payload
-    HitInfo payload;
-
     // Get the location within the dispatched 2D grid of work items
     // (often maps to pixels, so this could represent a pixel coordinate).
     uint2 launchIndex = DispatchRaysIndex();
     uint2 launchDim = DispatchRaysDimensions();
-    float2 lerpValues = (float2)launchIndex / (float2)launchDim;
 
-    float3 rayDir;
-    float3 origin;
     float3 accumulatedColor = float3(0.0f, 0.0f, 0.0f);
     for (int i = 0; i < g_rayGenCB.samplesPerPixel; ++i) {
+        float3 rayDir;
+        float3 origin;
         // use perspective projection from matrix
         GenerateCameraRay(launchIndex, launchDim, origin, rayDir, i);
 
+        // Initialize the ray payload
+        HitInfo payload;
         payload.color = float3(0.0, 0.0, 0.0);
         payload.depth = g_rayGenCB.maxRayBounces;
         payload.iteration = i;
@@ -103,7 +101,7 @@ inline uint3 GetIndices() {
     return uint3(Indices[base], Indices[base + 1], Indices[base + 2]);
 }
 
-void ContinueTrace(inout HitInfo payload, float alpha) {
+inline void ContinueTrace(inout HitInfo payload, float alpha) {
     RayDesc ray;
     ray.Origin = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
     ray.Direction = WorldRayDirection();
@@ -123,10 +121,9 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
 }
 
 [shader("closesthit")] void ClosestHitAO(inout HitInfo payload, Attributes attr) {
-    if (payload.depth <= 0) {
+    if (payload.depth == 0) {
         return;
     }
-    payload.depth = 1;
     const uint3 indices =  GetIndices();
 
     const uint mesh_id = InstanceID();
@@ -153,15 +150,21 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
     float3 worldBitangent = cross(worldNormal, worldTangent) * tangent.w;
     float3x3 TBN = construct_TBN(worldTangent, worldBitangent, worldNormal);
 
-    float4 normal_map_color = sample_normals(material, uv, Sampler);
-    if (normal_map_color.w != 0.0f) {
-        float3 normal_vector = normal_map_sample_to_world(normal_map_color.rgb, TBN);
+    bool has_normal_map;
+    float3 normal_map_color = sample_normals(material, uv, Sampler, has_normal_map);
+    if (has_normal_map) {
+        float3 normal_vector = normal_map_sample_to_world(normal_map_color, TBN);
         TBN = construct_TBN(TBN[0], TBN[1], normal_vector);  // re-construct TBN with normal from normal map
     }
 
     uint2 launchIndex = DispatchRaysIndex();
     uint3 seed = uint3(launchIndex.x, launchIndex.y, payload.iteration + g_rayGenCB.frameID * g_rayGenCB.samplesPerPixel);
     float2 jitter = float2(pcg3d16(seed).xy) / float(0xFFFF);
+
+    HitInfo new_payload;
+    new_payload.color = float3(0.0f, 0.0f, 0.0f);
+    new_payload.depth = 0;
+    new_payload.iteration = payload.iteration;
 
     const int N = g_rayGenCB.maxNewRaysPerBounce;
     const float inv_aoSamples = g_rayGenCB.invMaxNewRaysPerBounce;
@@ -178,11 +181,6 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
         ray.TMin = kEpsilon5;
         ray.TMax = 10000.0;
 
-        HitInfo new_payload;
-        new_payload.color = float3(0.0f, 0.0f, 0.0f);
-        new_payload.depth = payload.depth - 1;
-        new_payload.iteration = payload.iteration;
-
         TraceRay(
             SceneBVH,                             // RaytracingAccelerationStructure
             RAY_FLAG_FORCE_NON_OPAQUE,            // RayFlags
@@ -193,15 +191,13 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
             ray, 
             new_payload
         );
-
-        payload.color += new_payload.color;
     }
-    payload.color *= inv_aoSamples;
-    payload.depth -= 1;
+    new_payload.color *= inv_aoSamples;
+    payload.color = new_payload.color;
 }
 
 [shader("anyhit")] void AnyHitAO(inout HitInfo payload, Attributes attr) {
-    if (payload.depth <= 0) {
+    if (payload.depth == 0) {
         AcceptHitAndEndSearch();
     }
 }
@@ -220,11 +216,27 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
     if (mat.alphaBlending == 0) {
         alpha = (alpha < mat.alpha_cutoff) ? 0.0f : 1.0f;
     }
-    payload.color = color.rgb;
+    payload.color += color.rgb * alpha;
     if (alpha >= 1.0f - kEpsilon5) {
         return;
     }
-    ContinueTrace(payload, alpha);
+    // Continue Trace
+    RayDesc ray;
+    ray.Origin = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
+    ray.Direction = WorldRayDirection();
+    ray.TMin = 0.001f;
+    ray.TMax = 10000.0f;
+
+    HitInfo newPayload;
+    newPayload.color = float3(0.0f, 0.0f, 0.0f);
+    newPayload.depth = payload.depth - 1;
+
+    if (newPayload.depth > 0) {
+        TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, newPayload);
+    } else {
+        MissEnvmap(newPayload);
+    }
+    payload.color += newPayload.color * (1.0f - alpha);
 }
 
 [shader("anyhit")] void AnyHitRC(inout HitInfo payload, Attributes attr) {
@@ -304,20 +316,22 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
     float3 worldTangent = mul(ModelMatrix, tangent.xyz);
     float3 worldBitangent = cross(worldNormal, worldTangent) * tangent.w;
 
-    float4 normal_map_color = sample_normals(material, uv, Sampler);
+    bool has_normal_map;
+    float3 normal_map_color = sample_normals(material, uv, Sampler, has_normal_map);
 
-    float3x3 TBN = handle_TBN_creation(NormalMatrixTransposed, normal_map_color, worldTangent, worldBitangent, worldNormal, v,
-        material.doubleSided, exiting_volume, backface_hit, vertexLocalPos[0], vertexLocalPos[1], vertexLocalPos[2]);
+    float3x3 TBN = handle_TBN_creation(NormalMatrixTransposed, normal_map_color, has_normal_map, 
+        worldTangent, worldBitangent, worldNormal, 
+        v, material.doubleSided, exiting_volume, backface_hit, vertexLocalPos[0], vertexLocalPos[1], vertexLocalPos[2]);
 
     worldNormal = normalize(worldNormal);
     
     float transmission = sample_transmission(material, uv, Sampler);
-    float3 ORM = sample_roughness_metallic(material, uv, Sampler);
-    float3 diffuse_color = (1.0f - ORM.z) * albedo_color.rgb;
+    float2 ORM = sample_roughness_metallic(material, uv, Sampler);
+    float3 diffuse_color = (1.0f - ORM.y) * albedo_color.rgb;
 
-    float3 f0 = lerp(material.dielectric_f0, albedo_color.rgb, ORM.z);
+    float3 f0 = lerp(material.dielectric_f0, albedo_color.rgb, ORM.y);
     const float3 f90 = 1.0f;
-    const float roughness = max(ORM.y, 0.002f); // trying to avoid numerical issues with very low roughness
+    const float roughness = max(ORM.x, 0.002f); // trying to avoid numerical issues with very low roughness
     const float linear_roughness = roughness * roughness;
 
     int new_depth = payload.depth - 1;
@@ -455,7 +469,7 @@ void ContinueTrace(inout HitInfo payload, float alpha) {
 
 [shader("miss")] 
 void MissAO(inout HitInfo payload : SV_RayPayload) {
-    payload.color = float3(1.0f, 1.0f, 1.0f);
+    payload.color += float3(1.0f, 1.0f, 1.0f);
 }
 
 [shader("miss")] 
@@ -466,5 +480,5 @@ void MissEnvmap(inout HitInfo payload : SV_RayPayload) {
     float2 uv = float2(atan2(-dir.z, -dir.x) + y_rotation, -2.0f * asin(dir.y)) * (1.0f / PI);
     uv = uv * 0.5f + 0.5f;
 
-    payload.color = EnvMap.SampleLevel(EnvMapSampler, uv, 0).rgb;
+    payload.color += EnvMap.SampleLevel(EnvMapSampler, uv, 0).rgb;
 }
