@@ -75,7 +75,7 @@ void RayGen() {
 
         TraceRay(
             SceneBVH,                               // RaytracingAccelerationStructure
-            RAY_FLAG_NONE,                          // RayFlags
+            RAY_FLAG_CULL_BACK_FACING_TRIANGLES,    // RayFlags
             ~0,                                     // InstanceInclusionMask
             0,                                      // RayContributionToHitGroupIndex
             1,                                      // MultiplierForGeometryContributionToShaderIndex
@@ -113,16 +113,13 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
     payload.depth = new_depth;
 
     if (payload.depth > 0) {
-        TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, payload);
+        TraceRay(SceneBVH, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
     } else {
         MissEnvmap(payload);
     }
 }
 
 [shader("closesthit")] void ClosestHitAO(inout HitInfo payload, Attributes attr) {
-    if (payload.depth == 0) {
-        return;
-    }
     const uint3 indices =  GetIndices();
 
     const uint mesh_id = InstanceID();
@@ -160,8 +157,6 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
     uint3 seed = uint3(launchIndex.x, launchIndex.y, payload.iteration + g_rayGenCB.frameID * g_rayGenCB.samplesPerPixel);
     float2 jitter = float2(pcg3d16(seed).xy) / float(0xFFFF);
 
-    payload.depth = 0;
-
     const int N = g_rayGenCB.maxNewRaysPerBounce;
     const float inv_aoSamples = g_rayGenCB.invMaxNewRaysPerBounce;
     for (int i = 0; i < N; ++i) {
@@ -177,9 +172,12 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
         ray.TMin = kEpsilon5;
         ray.TMax = 10000.0;
 
+        uint flags = RAY_FLAG_CULL_BACK_FACING_TRIANGLES | RAY_FLAG_FORCE_NON_OPAQUE | 
+            RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
+
         TraceRay(
             SceneBVH,                             // RaytracingAccelerationStructure
-            RAY_FLAG_FORCE_NON_OPAQUE,            // RayFlags
+            flags,                                // RayFlags
             ~0,                                   // InstanceInclusionMask
             0,                                    // RayContributionToHitGroupIndex
             1,                                    // MultiplierForGeometryContributionToShaderIndex
@@ -189,12 +187,6 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
         );
     }
     payload.color *= inv_aoSamples;
-}
-
-[shader("anyhit")] void AnyHitAO(inout HitInfo payload, Attributes attr) {
-    if (payload.depth == 0) {
-        AcceptHitAndEndSearch();
-    }
 }
 
 [shader("closesthit")] void ClosestHitRC(inout HitInfo payload, Attributes attr) {
@@ -226,7 +218,7 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
     payload.depth -= 1;
 
     if (payload.depth > 0) {
-        TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, payload);
+        TraceRay(SceneBVH, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
     } else {
         MissEnvmap(payload);
     }
@@ -294,7 +286,7 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
     // todo: now program can't apply absorption if ray was reflected of an object that is inside volume mesh
     // only applies absorption to part of path that directly exits (hits backface of) volume
     float3 attenuation =
-        exiting_volume ? min(exp(-material.attenuationFactor * RayTCurrent()), 1.0f) : 1.0f;  // Volume absorption
+        exiting_volume ? min(exp(-material.attenuationFactor.rgb * RayTCurrent()), 1.0f) : 1.0f;  // Volume absorption
 
     float3 emissive = sample_emissive(material, uv, Sampler);
     payload.color += old_payload_absorption * emissive * attenuation * alpha;
@@ -357,7 +349,7 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
         payload.absorption = next_payload_absorption;
         payload.depth = old_depth - 1;
 
-        TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, payload);
+        TraceRay(SceneBVH, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
     }
     {
         // same micro-normal for both specular reflection and transmission
@@ -411,7 +403,7 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
             payload.absorption = next_payload_absorption;
             payload.depth = old_depth - 1;
 
-            TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, payload);
+            TraceRay(SceneBVH, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
         }
         {   // specular reflection
             float3 h = m;
@@ -437,7 +429,7 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
             payload.absorption = next_payload_absorption;
             payload.depth = old_depth - 1;
 
-            TraceRay(SceneBVH, RAY_FLAG_NONE, ~0, 0, 1, 0, ray, payload);
+            TraceRay(SceneBVH, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
         }
     }
 }
