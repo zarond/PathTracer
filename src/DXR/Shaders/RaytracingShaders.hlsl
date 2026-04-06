@@ -321,8 +321,10 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
     const float linear_roughness = roughness * roughness;
 
     uint2 launchIndex = DispatchRaysIndex();
-    uint3 seed1 = uint3(launchIndex.x, launchIndex.y, payload.iteration + g_rayGenCB.frameID * g_rayGenCB.samplesPerPixel);
-    uint3 seed2 = uint3(launchIndex.x, launchIndex.y, payload.iteration + (g_rayGenCB.frameID + 1) * g_rayGenCB.samplesPerPixel);
+    uint3 seed1 = uint3(launchIndex.x, launchIndex.y,
+        old_depth + g_rayGenCB.maxRayBounces * (payload.iteration + g_rayGenCB.frameID * g_rayGenCB.samplesPerPixel));
+    uint3 seed2 = uint3(launchIndex.x, launchIndex.y,
+        old_depth + g_rayGenCB.maxRayBounces * (payload.iteration + (g_rayGenCB.frameID + 1) * g_rayGenCB.samplesPerPixel));
 
     float3 worldHitPos = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
 
