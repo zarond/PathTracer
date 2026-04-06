@@ -49,9 +49,11 @@ Try it by running this command in binary (build/Release) folder:
 
 This image was rendered in 199 seconds on Intel Core i7-11800H @ 2.30GHz; 
 
+And for DXR GPU rendering mode it took 6.9 seconds on NVIDIA GeForce RTX 3070 Laptop GPU.
+
 ![rendered image](example/render.png)
 
-Same scene took 110 seconds in Blender CPU rendering with similar parameters.
+Same scene took 110 seconds in Blender CPU rendering with similar parameters, and 7.25 seconds in Blender GPU OptiX rendering.
 
 Screenshot from GUI mode with AO rendering:
 
