@@ -19,6 +19,9 @@ float3 ImportanceSampleCosDir(float2 xi) {
 float3 importanceSampleGGX(float2 xi, float a) {
     // pdf(h) = D(h) * dot(n, h) : before conversion from half-vector to reflection vector
     // pdf(l) = D(h) * dot(n, h) / (4.0 * dot(l, h)) : after conversion to reflection vector
+    // pdf(l) = D(m) * dot(n, m) * dot(l, h) / (eta * dot(v, h) + dot(l, h))^2 : after conversion to refraction vector (l);
+    // m - microsurface normal, h - transmission half vector, l - refraction vector, eta - index of refraction from incoming to
+    // outgoing medium
     float cos_theta2 = clamp((1.0f - xi.x) / (1.0f + (a * a - 1.0f) * xi.x), 0.0f, 1.0f);
     float cos_theta = sqrt(cos_theta2);
     float sin_theta = sqrt(1.0f - cos_theta2);
