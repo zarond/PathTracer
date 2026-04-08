@@ -65,6 +65,11 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
     if (modelRef == nullptr || envmapRef == nullptr || gpu_model_ == nullptr) {
         throw std::runtime_error("One of components is nullptr in GPURenderer::render_frame()");
     }
+    if (gpu_model_->isEmpty()) {
+        std::cout << "Model has no vertices, skipping rendering" << '\n';
+        render_state_ = RenderingState::Idle;
+        return;
+    }
     progress_ = 0.0f;
     render_state_ = RenderingState::Rendering;
 

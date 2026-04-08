@@ -32,14 +32,14 @@ class GPU_mesh {
     ComPtr<ID3D12Resource2> vertexBuffer;
     ComPtr<ID3D12Resource2> indexBuffer;
 
-    bool positions_only_;
+    bool positions_only_ = false;
         
 private:
     ComPtr<ID3D12Resource> scratchBuffer;
     ComPtr<ID3D12Resource> blasBuffer;
 
-    UINT vertexCount;
-    UINT indexCount;
+    UINT vertexCount = 0;
+    UINT indexCount = 0;
 
     void release_gpu_resource();
 };
@@ -127,6 +127,8 @@ class GPU_model {
 
     std::vector<GPU_texture> textures;
 
+    bool isEmpty() const;
+
   private:
     std::vector<GPU_mesh> meshes_;
     
@@ -143,6 +145,8 @@ class GPU_model {
     GPU_mesh combinedMesh;
     ComPtr<ID3D12Resource> MeshIndicesOffsets;
     ComPtr<ID3D12Resource> MaterialsArray;
+
+    bool isEmpty_ = true;
 
     void prepare_combined_vertex_index_buffers(const Model& cpu_model);
     void prepare_materials_array_buffer(const Model& cpu_model);

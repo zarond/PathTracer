@@ -343,6 +343,9 @@ GPU_Material::GPU_Material(
 }
 
 GPU_model::GPU_model(const Model& cpu_model) {
+    if (cpu_model.meshes_.size() == 0) {
+        return;
+    }
     meshes_.reserve(cpu_model.meshes_.size());
     for (const auto& mesh : cpu_model.meshes_) {
         meshes_.emplace_back(mesh);
@@ -357,6 +360,7 @@ GPU_model::GPU_model(const Model& cpu_model) {
     prepare_combined_vertex_index_buffers(cpu_model);
     prepare_textures_array_buffer(cpu_model);
     prepare_materials_array_buffer(cpu_model);
+    isEmpty_ = false;
 }
 
 void GPU_model::prepare_textures_array_buffer(const Model& cpu_model) {
@@ -394,11 +398,15 @@ void GPU_model::release_gpu_resource() {
     instancesUploadBuffer.Reset();
     MaterialsArray.Reset();
 
+    if (isEmpty_) return;
+
     d3d_ctx.g_pd3dSrvDescHeapAlloc.Free(combined_mesh_indices.cpuDescriptorHandle, combined_mesh_indices.gpuDescriptorHandle);
     d3d_ctx.g_pd3dSrvDescHeapAlloc.Free(combined_mesh_vertices.cpuDescriptorHandle, combined_mesh_vertices.gpuDescriptorHandle);
     d3d_ctx.g_pd3dSrvDescHeapAlloc.Free(combined_mesh_offsets.cpuDescriptorHandle, combined_mesh_offsets.gpuDescriptorHandle);
     d3d_ctx.g_pd3dSrvDescHeapAlloc.Free(materials_array.cpuDescriptorHandle, materials_array.gpuDescriptorHandle);
 };
+
+bool GPU_model::isEmpty() const { return isEmpty_; }
 
 void GPU_model::create_top_level_AS(const Model& cpu_model) {
     D3DContext& d3d_ctx = D3DContext::Get();
