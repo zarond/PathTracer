@@ -2,6 +2,7 @@
 
 #include "ui.h"
 #include "d3d_context.h"
+#include "cpu_framebuffer.h"
 
 #include "imgui.h"
 #include "backends/imgui_impl_win32.h"
@@ -192,6 +193,25 @@ void ImDrawCallback_ImplDX12_SetSamplerNearest(const ImDrawList* parent_list, co
 void ImDrawCallback_ImplDX12_SetSamplerLinear(const ImDrawList* parent_list, const ImDrawCmd* cmd) {
     ImGui_ImplDX12_RenderState* state = (ImGui_ImplDX12_RenderState*)ImGui::GetPlatformIO().Renderer_RenderState;
     ImGui_ImplDX12_SetupSamplerLinear(state->CommandList);
+}
+
+void SetupImGuiStyle() {
+    float main_scale = ImGui_ImplWin32_GetDpiScaleForMonitor(::MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY));
+    ImGui::StyleColorsDark();
+
+    // Setup scaling
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.ScaleAllSizes(main_scale);  // Bake a fixed style scale. (until we have a solution for dynamic style scaling, changing
+                                      // this requires resetting Style + calling this again)
+    style.FontScaleDpi = main_scale;  // Set initial font scale. (using io.ConfigDpiScaleFonts=true makes this unnecessary. We
+                                      // leave both here for documentation purpose)
+    // Convert colors to be used in sRGB render target
+    auto& colors = style.Colors;
+    for (auto& col : colors) {
+        col.x = srgb_to_linear(col.x);
+        col.y = srgb_to_linear(col.y);
+        col.z = srgb_to_linear(col.z);
+    }
 }
 
 }

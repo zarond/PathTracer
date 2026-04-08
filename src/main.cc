@@ -134,7 +134,6 @@ int main(int argc, char* argv[]) {
 
     // Make process DPI aware and obtain main monitor scale
     ImGui_ImplWin32_EnableDpiAwareness();
-    float main_scale = ImGui_ImplWin32_GetDpiScaleForMonitor(::MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY));
 
     // Create application window
     DXWindow& dx_window = DXWindow::Get();
@@ -162,15 +161,7 @@ int main(int argc, char* argv[]) {
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;   // Enable Gamepad Controls
 
-    // Setup Dear ImGui style
-    ImGui::StyleColorsDark();
-
-    // Setup scaling
-    ImGuiStyle& style = ImGui::GetStyle();
-    style.ScaleAllSizes(main_scale);  // Bake a fixed style scale. (until we have a solution for dynamic style scaling, changing
-                                      // this requires resetting Style + calling this again)
-    style.FontScaleDpi = main_scale;  // Set initial font scale. (using io.ConfigDpiScaleFonts=true makes this unnecessary. We
-                                      // leave both here for documentation purpose)
+    SetupImGuiStyle();
 
     // Setup Platform/Renderer backends
     ImGui_ImplWin32_Init(dx_window.hwnd);
@@ -193,7 +184,7 @@ int main(int argc, char* argv[]) {
     };
     ImGui_ImplDX12_Init(&init_info);
 
-    const float clear_color[] = {0.45f, 0.55f, 0.60f, 1.00f};
+    const float clear_color[] = {0.17f, 0.27f, 0.33f, 1.00f};
 
     // Init time GPU instructions
     {
