@@ -254,6 +254,7 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
     float4 vertexTangent[3] = {Vertices[indices[0]].tangent, Vertices[indices[1]].tangent, Vertices[indices[2]].tangent};
     float2 vertexUV[3] = {Vertices[indices[0]].uv.xy, Vertices[indices[1]].uv.xy, Vertices[indices[2]].uv.xy};
 
+    float3 position = HitAttribute(vertexLocalPos, attr);
     float3 normal = HitAttribute(vertexNormals, attr);
     float4 tangent = HitAttribute(vertexTangent, attr);
     float2 uv = HitAttribute(vertexUV, attr);
@@ -299,6 +300,7 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
     float3x3 ModelMatrix = (float3x3)ObjectToWorld3x4();
     float3x3 NormalMatrixTransposed = (float3x3)WorldToObject3x4();
     float3 worldNormal = mul(normal, NormalMatrixTransposed);
+    float3 worldPosition = mul(ObjectToWorld3x4(), float4(position, 1.0f));
     float3 worldTangent = mul(ModelMatrix, tangent.xyz);
     float3 worldBitangent = cross(worldNormal, worldTangent) * tangent.w;
 
@@ -326,8 +328,6 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
     uint3 seed2 = uint3(launchIndex.x, launchIndex.y,
         old_depth + g_rayGenCB.maxRayBounces * (payload.iteration + (g_rayGenCB.frameID + 1) * g_rayGenCB.samplesPerPixel));
 
-    float3 worldHitPos = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
-
     const bool sample_diffuse = any(diffuse_color * (1.0f - transmission) != 0.0f);
     if (sample_diffuse) {  // diffuse
         float2 rand = pcg3d(seed1).xy;
@@ -339,13 +339,13 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
         float LdH = clamp(dot(l, h), 0.0f, 1.0f);
 
         float3 F = 1.0f - fresnel_schlick(f0, f90, LdH);
-        float3 new_pos = worldHitPos + worldNormal * kEpsilon5;  // offset to avoid self-intersection
+        float3 new_pos = worldPosition + worldNormal * kEpsilon5;  // offset to avoid self-intersection
         float3 next_payload_absorption = old_payload_absorption * F * diffuse_color * (1.0f - transmission) * attenuation * alpha;
 
         RayDesc ray;
         ray.Origin = new_pos;
         ray.Direction = l;
-        ray.TMin = kEpsilon5;
+        ray.TMin = 0.0;
         ray.TMax = 10000.0;
 
         payload.absorption = next_payload_absorption;
@@ -392,14 +392,14 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
 
             float3 brdf = (1.0f - F) * (G * VdH * LdN / NdM);
             brdf = min(brdf, kMaxBRDF);                               // clamp to avoid fireflies
-            float3 new_pos = worldHitPos - new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
+            float3 new_pos = worldPosition - new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
             
             float3 next_payload_absorption = old_payload_absorption * diffuse_color * transmission * attenuation * brdf * alpha;
 
             RayDesc ray;
             ray.Origin = new_pos;
             ray.Direction = normalize(l);
-            ray.TMin = kEpsilon5;
+            ray.TMin = 0.0;
             ray.TMax = 10000.0;
 
             payload.absorption = next_payload_absorption;
@@ -419,13 +419,13 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
             // auto G = V_Schlick(LdN, VdN, roughness);
             float3 brdf = F * (G * LdN * LdH / NdH);
             brdf = min(brdf, kMaxBRDF);                               // clamp to avoid fireflies
-            float3 new_pos = worldHitPos + new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
+            float3 new_pos = worldPosition + new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
             float3 next_payload_absorption = old_payload_absorption * attenuation * brdf * alpha;
 
             RayDesc ray;
             ray.Origin = new_pos;
             ray.Direction = l;
-            ray.TMin = kEpsilon5;
+            ray.TMin = 0.0;
             ray.TMax = 10000.0;
 
             payload.absorption = next_payload_absorption;

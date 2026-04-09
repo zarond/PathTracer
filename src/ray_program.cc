@@ -318,6 +318,8 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
     fmat3x3 TBN = handle_TBN_creation(
         object, normal_map_color, point, bitangent, v, material.doubleSided, exiting_volume, hit.backface, p1, p2, p3);
 
+    point.normal = normalize(point.normal);
+
     auto transmission = sample_transmission(material, modelRef.images_, point.uv);
     auto ORM = sample_roughness_metallic(material, modelRef.images_, point.uv);
     auto diffuse_color = (1.0f - ORM.z) * xyz(albedo_color);
