@@ -12,7 +12,7 @@ option(NO_WINDOWS "remove Windows specific dependencies, that leaves CPU mode on
 
 set(LIBS_DIR libs)
 
-set(SHADERS)
+set(SHADER_SOURCES)
 
 set(APP_SOURCES
     src/main.cc
@@ -36,12 +36,14 @@ if(NOT NO_WINDOWS)
         src/DXR/GPU_renderer.cc
         src/DXR/GPU_pipeline.cc
     )
-    list(APPEND SHADERS
+    list(APPEND SHADER_SOURCES
         src/DXR/Shaders/RaytracingShaders.hlsl
     )
 else()
     add_definitions(-DNO_WINDOWS)
 endif()
+
+add_executable(${PROJECT_NAME} ${APP_SOURCES})
 
 # compile hlsl shaders to dxil
 if(NOT NO_WINDOWS)
@@ -58,7 +60,7 @@ if(NOT NO_WINDOWS)
         set(DXC_FLAGS -Zi -Qembed_debug)
     endif()
 
-    foreach(SHADER ${SHADERS})
+    foreach(SHADER ${SHADER_SOURCES})
         get_filename_component(FILE_NAME ${SHADER} NAME_WE)
 
         # todo: better yet, compile into object file and link into executable, use extern const in code
@@ -77,9 +79,8 @@ if(NOT NO_WINDOWS)
     endforeach()
 
     add_custom_target(Shaders ALL DEPENDS ${COMPILED_SHADERS})
+    add_dependencies(${PROJECT_NAME} Shaders)
 endif()
-
-add_executable(${PROJECT_NAME} ${APP_SOURCES})
 
 # Warning options for compiler
 #target_compile_options(${PROJECT_NAME} PRIVATE -Wall)
