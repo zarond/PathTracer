@@ -277,7 +277,8 @@ int main(int argc, char* argv[]) {
             const auto texture_srv_gpu_handle = framebuffer.srv_gpu_handle;
             ImGui::SetCursorPos(
                 ImVec2(scale * offset.x + WorkSize.x * 0.5f, scale * offset.y + WorkSize.y * 0.5f));
-            if (framebuffer.nearest_filtering) {
+            // todo: hardware_ray_tracing_support check is a temporary fix for problem with integrated GPU and ImGui
+            if (framebuffer.nearest_filtering && d3d_ctx.hardware_ray_tracing_support) {
                 ImGui::GetWindowDrawList()->AddCallback(ImDrawCallback_ImplDX12_SetSamplerNearest, nullptr); // Set custom sampler
                 ImGui::Image((ImTextureID)texture_srv_gpu_handle.ptr, ImVec2(scale * (float)dims.x, scale * (float) dims.y));
                 ImGui::GetWindowDrawList()->AddCallback(ImDrawCallback_ImplDX12_SetSamplerLinear, nullptr);  // Restore sampler
