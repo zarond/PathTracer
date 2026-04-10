@@ -141,9 +141,12 @@ void GPU_pipeline::CreateRaytracingPipelines() {
     // DXIL library
     // This contains the shaders and their entrypoints for the state object.
     // Since shaders are not considered a subobject, they need to be passed in via DXIL library subobjects.
-    //D3D12_SHADER_BYTECODE libdxil = CD3DX12_SHADER_BYTECODE((void *)g_pRaytracing, ARRAYSIZE(g_pRaytracing));
     ComPtr<ID3DBlob> shaderBlob;
-    D3DReadFileToBlob(c_dxilLibraryName, &shaderBlob);
+    auto hr = D3DReadFileToBlob(c_dxilLibraryName, &shaderBlob);
+    if (FAILED(hr)) {
+        std::wcout << "Failed to read DXIL library: " << c_dxilLibraryName << std::endl;
+        throw HrException(hr);
+    }
     D3D12_SHADER_BYTECODE libdxil = {
         .pShaderBytecode = shaderBlob->GetBufferPointer(),
         .BytecodeLength = shaderBlob->GetBufferSize(),

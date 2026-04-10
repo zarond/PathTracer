@@ -40,7 +40,10 @@ void Viewer::InitGPURenderer() {
     if (renderers_.size() >= 2) {
         return;
     }
-    renderers_.push_back(std::make_shared<GPURenderer>());
+    D3DContext& d3d_ctx = D3DContext::Get();
+    if (d3d_ctx.hardware_ray_tracing_support) {
+        renderers_.push_back(std::make_shared<GPURenderer>());
+    }
 }
 
 void Viewer::switch_to_gpu_renderer() {

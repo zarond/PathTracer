@@ -374,6 +374,7 @@ int main(int argc, char* argv[]) {
         ImGui::Separator();
         if (rendering_state == Renderer::RenderingState::Idle)
         {
+            if (d3d_ctx.hardware_ray_tracing_support)
             {
                 static bool renderer_changed = false;
                 static int renderer_mode = 0;
@@ -385,6 +386,8 @@ int main(int argc, char* argv[]) {
                         viewer.switch_to_gpu_renderer();
                     }
                 }
+            } else {
+                ImGui::Text("GPU does not support raytracing, DXR rendering mode is unavailable");
             }
             if (!viewer.is_using_gpu_renderer()) {
                 if (ImGui::Button("Clear image with black")) {

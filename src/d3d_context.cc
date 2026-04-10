@@ -44,7 +44,7 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
     if (FAILED(CreateDXGIFactory2(0, IID_PPV_ARGS(&g_pdxgiFactory)))) return false;
 
     // Create device
-    D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_12_0; // check first for 11
+    D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
 
     ComPtr<IDXGIAdapter4> adapter;
     for (UINT i = 0; 
@@ -186,6 +186,10 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
     }
 
     hardware_ray_tracing_support = CheckRaytracingSupport();
+
+    if (!hardware_ray_tracing_support) {
+        std::cout << "WARNING: GPU does not support raytracing, DXR rendering mode is not available." << std::endl;
+    }
 
     CreateRenderTarget();
     return true;

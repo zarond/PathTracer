@@ -8,7 +8,7 @@ bool DXDebugLayer::Init() {
     if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&m_d3d12Debug)))) {
         m_d3d12Debug->EnableDebugLayer();
         // Init DXGI Debug
-        if (SUCCEEDED(DXGIGetDebugInterface1(9, IID_PPV_ARGS(&m_dxgiDebug)))){
+        if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&m_dxgiDebug)))){
             m_dxgiDebug->EnableLeakTrackingForThread();
             return true;
         }
