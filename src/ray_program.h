@@ -1,9 +1,8 @@
 #pragma once
 
-#include <glm/glm.hpp>
+#include <glm/fwd.hpp>
 #include <limits>
 #include <random>
-#include <type_traits>
 #include <vector>
 
 #include "cpu_framebuffer.h"

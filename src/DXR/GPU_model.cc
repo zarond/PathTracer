@@ -1,3 +1,5 @@
+#include "../cpu_framebuffer.h"
+#include "../d3d_context.h"
 #include "GPU_model.h"
 
 namespace {

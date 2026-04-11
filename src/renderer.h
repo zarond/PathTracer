@@ -1,13 +1,11 @@
 #pragma once
 
-#include <glm/glm.hpp>
+#include <atomic>
+#include <glm/fwd.hpp>
 #include <memory>
 #include <vector>
-#include <atomic>
-#include <functional>
 
 #include "acceleration_structure.h"
-#include "arguments.h"
 #include "cpu_framebuffer.h"
 #include "ray_program.h"
 #include "render_settings.h"

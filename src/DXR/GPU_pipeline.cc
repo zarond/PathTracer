@@ -1,10 +1,10 @@
-#include "GPU_pipeline.h"
+#include "../cpu_framebuffer.h"
 #include "../d3d_context.h"
+#include "GPU_pipeline.h"
 
 #include "helpers/DXSampleHelper.h"
 #include "helpers/DirectXRaytracingHelper.h"
 
-#include <exception>
 #include <iostream>
 
 #include <d3dcompiler.h>

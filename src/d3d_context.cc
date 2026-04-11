@@ -1,6 +1,6 @@
 #include "d3d_context.h"
-#include <iostream>
 #include <cassert>
+#include <iostream>
 
 namespace app {
 

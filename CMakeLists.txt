@@ -39,15 +39,20 @@ if(NOT NO_WINDOWS)
     list(APPEND SHADER_SOURCES
         src/DXR/Shaders/RaytracingShaders.hlsl
     )
-else()
-    add_definitions(-DNO_WINDOWS)
 endif()
 
 add_executable(${PROJECT_NAME} ${APP_SOURCES})
 
+if(NO_WINDOWS)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE NO_WINDOWS)
+endif()
+
 # compile hlsl shaders to dxil
 if(NOT NO_WINDOWS)
-    set(DXC dxc)
+    find_program(DXC dxc REQUIRED)
+    if(NOT DXC)
+        message(FATAL_ERROR "DXC compiler 'dxc' not found. Install DXC or add it to PATH.")
+    endif()
 
     # Determine flags based on build type at configure-time
     set(DXC_FLAGS "")
@@ -85,7 +90,7 @@ endif()
 # Warning options for compiler
 #target_compile_options(${PROJECT_NAME} PRIVATE -Wall)
 
-# doesn't work?
+# only works for Visual Studio Generators
 set_target_properties(${PROJECT_NAME} PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )

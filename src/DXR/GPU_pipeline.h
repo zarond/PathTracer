@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../cpu_framebuffer.h"
 #include "../arguments.h"
+#include "../cpu_framebuffer.h"
 #include "GPU_model.h"
 
 #include <d3d12.h>

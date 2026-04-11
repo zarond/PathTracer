@@ -2,7 +2,7 @@
 
 #include <fastgltf/types.hpp>
 #include <filesystem>
-#include <glm/glm.hpp>
+#include <glm/fwd.hpp>
 #include <vector>
 
 #include "cpu_framebuffer.h"

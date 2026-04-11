@@ -1,6 +1,6 @@
 #pragma once
+
 #include "../model_loader.h"
-#include "../d3d_context.h"
 
 #include <d3d12.h>
 

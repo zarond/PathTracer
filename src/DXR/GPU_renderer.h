@@ -1,8 +1,8 @@
 #pragma once
 
-#include <glm/glm.hpp>
-#include <memory>
 #include <fastgltf/types.hpp>
+#include <glm/fwd.hpp>
+#include <memory>
 
 #include "../renderer.h"
 #include "GPU_model.h"

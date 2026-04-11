@@ -1,7 +1,7 @@
 #include "arguments.h"
 
-#include <string>
 #include <iostream>
+#include <string>
 
 #include "argparse/argparse.hpp"
 

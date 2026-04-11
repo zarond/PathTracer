@@ -1,6 +1,7 @@
 #include "ray_program.h"
 
 #include <algorithm>
+#include <glm/gtc/constants.hpp>
 #include <tuple>
 #include <vector>
 

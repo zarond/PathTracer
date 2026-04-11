@@ -1,6 +1,5 @@
 #include "viewer.h"
 
-#include <algorithm>
 #include <stdexcept>
 #include <utility>
 #include <variant>
@@ -11,6 +10,7 @@
 
 #ifndef NO_WINDOWS
 #include "DXR/GPU_renderer.h"
+#include "d3d_context.h"
 #endif
 
 namespace app {

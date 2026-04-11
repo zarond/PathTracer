@@ -1,4 +1,5 @@
 #include "GPU_renderer.h"
+#include "../d3d_context.h"
 
 #include <glm/ext.hpp>
 #include <glm/glm.hpp>

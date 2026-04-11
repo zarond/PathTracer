@@ -1,8 +1,6 @@
 #pragma once
 
 #include <filesystem>
-#include <optional>
-#include <variant>
 
 namespace app {
 namespace fs = std::filesystem;

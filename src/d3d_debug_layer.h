@@ -4,7 +4,6 @@
 #include <dxgi1_6.h>
 
 #define NOMINMAX
-#include <windows.h>
 #include <wrl.h>
 
 #ifdef _DEBUG

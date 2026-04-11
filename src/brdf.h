@@ -1,7 +1,6 @@
 #pragma once
 
-#include <glm/glm.hpp>
-#include <glm/gtc/constants.hpp>
+#include <glm/fwd.hpp>
 #include <vector>
 
 #include "cpu_framebuffer.h"

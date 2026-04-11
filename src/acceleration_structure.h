@@ -2,7 +2,6 @@
 
 #include <limits>
 #include <numbers>
-#include <numeric>
 #include <span>
 #include <variant>
 #include <vector>

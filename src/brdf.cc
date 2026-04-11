@@ -1,5 +1,6 @@
 #include "brdf.h"
 
+#include <glm/gtc/constants.hpp>
 #include <vector>
 
 namespace {

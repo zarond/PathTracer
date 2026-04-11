@@ -2,10 +2,10 @@
 
 #include <algorithm>
 #include <glm/glm.hpp>
+#include <iostream>
 #include <string>
 #include <type_traits>
 #include <variant>
-#include <iostream>
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION

@@ -25,9 +25,6 @@
 
 #include "ui.h"
 
-#include "DXR/GPU_model.h"
-#include "DXR/GPU_pipeline.h"
-
 #endif
 
 int main(int argc, char* argv[]) {

@@ -1,10 +1,10 @@
 #pragma once
 
 #include <chrono>
-#include <glm/glm.hpp>
+#include <condition_variable>
+#include <glm/fwd.hpp>
 #include <memory>
 #include <optional>
-#include <condition_variable>
 
 #include "cpu_framebuffer.h"
 #include "model_loader.h"
