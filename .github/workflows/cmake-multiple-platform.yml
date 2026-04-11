@@ -42,6 +42,18 @@ jobs:
     - name: Update submodules
       run: git submodule update --init --recursive
 
+    - name: Add Windows SDK dir to PATH (for dxc)
+      if: runner.os == 'Windows'
+      shell: powershell
+      run: |
+        $dxcPath = 'C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64'
+        if (Test-Path $dxcPath) {
+          Write-Host "Adding $dxcPath to PATH for remaining steps"
+          Add-Content -Path $env:GITHUB_PATH -Value $dxcPath
+        } else {
+          Write-Host "Warning: $dxcPath not found; skipping PATH update"
+        }
+
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
