@@ -1,11 +1,15 @@
 #include "renderer.h"
 
 #include <algorithm>
+#include <cassert>
+#include <cmath>
+#include <cstdint>
 #include <execution>
 #include <glm/ext.hpp>
 #include <glm/glm.hpp>
 #include <random>
 #include <ranges>
+#include <stdexcept>
 #include <vector>
 
 #include "arguments.h"

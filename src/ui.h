@@ -6,6 +6,8 @@
 #include <windows.h>
 
 #include "imgui.h"
+#include <span>
+#include <type_traits>
 
 namespace app {
 

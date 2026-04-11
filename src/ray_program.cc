@@ -3,7 +3,10 @@
 #include <algorithm>
 #include <glm/gtc/constants.hpp>
 #include <tuple>
-#include <vector>
+#include <array>
+#include <cassert>
+#include <cmath>
+#include <cstdlib>
 
 #include "brdf.h"
 

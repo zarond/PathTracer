@@ -1,4 +1,5 @@
 #include "d3d_context.h"
+
 #include <cassert>
 #include <iostream>
 

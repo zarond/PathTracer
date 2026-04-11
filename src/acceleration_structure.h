@@ -1,5 +1,8 @@
 #pragma once
 
+#include <array>
+#include <cstdint>
+#include <glm/fwd.hpp>
 #include <limits>
 #include <numbers>
 #include <span>
@@ -10,6 +13,11 @@
 #include "ray_program.h"
 
 namespace app {
+
+using glm::fvec2;
+using glm::fvec3;
+using glm::fvec4;
+using glm::fmat4x4;
 
 struct BBox {
     fvec3 min, max;

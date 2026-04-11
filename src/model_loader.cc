@@ -1,6 +1,5 @@
 #include "model_loader.h"
 
-#include <algorithm>
 #include <fastgltf/core.hpp>
 #include <fastgltf/glm_element_traits.hpp>
 #include <fastgltf/tools.hpp>
@@ -13,6 +12,8 @@
 #include "compute_tangents.h"
 
 namespace app {
+
+using namespace glm;
 
 bool ModelLoader::loadFromFile(std::filesystem::path path) {
     if (!std::filesystem::exists(path)) {

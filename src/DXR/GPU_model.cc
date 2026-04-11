@@ -1,6 +1,6 @@
-#include "../cpu_framebuffer.h"
-#include "../d3d_context.h"
 #include "GPU_model.h"
+
+#include "../d3d_context.h"
 
 namespace {
 
@@ -35,6 +35,8 @@ void CreateBufferSRV(
 }  // namespace
 
 namespace app {
+
+using namespace glm;
 
 inline void ThrowIfFailed(HRESULT hr) {
     if (FAILED(hr)) {
@@ -391,7 +393,7 @@ void GPU_model::prepare_textures_array_buffer(const Model& cpu_model) {
 GPU_model::~GPU_model() { release_gpu_resource(); }
 
 void GPU_model::release_gpu_resource() {
-    D3DContext& d3d_ctx = D3DContext::Get();\
+    D3DContext& d3d_ctx = D3DContext::Get();
     if (d3d_ctx.g_pd3dCommandQueue != nullptr) {
         d3d_ctx.WaitForPendingOperations();
     }

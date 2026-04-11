@@ -1,13 +1,12 @@
-#include "../cpu_framebuffer.h"
-#include "../d3d_context.h"
 #include "GPU_pipeline.h"
 
+#include <d3dcompiler.h>
+#include <iostream>
+
+#include "../d3d_context.h"
 #include "helpers/DXSampleHelper.h"
 #include "helpers/DirectXRaytracingHelper.h"
 
-#include <iostream>
-
-#include <d3dcompiler.h>
 
 namespace GlobalRootSignatureParams {
     enum Value { 
@@ -31,6 +30,8 @@ namespace LocalRootSignatureParams {
 }
 
 namespace app {
+
+using namespace glm;
 
 void SerializeAndCreateRaytracingRootSignature(
     D3D12_ROOT_SIGNATURE_DESC& desc, ComPtr<ID3D12RootSignature>* rootSig) {

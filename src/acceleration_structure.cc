@@ -1,8 +1,14 @@
 #include "acceleration_structure.h"
 
 #include <algorithm>
+#include <cassert>
+#include <chrono>
+#include <cmath>
 #include <execution>
+#include <glm/glm.hpp>
 #include <iostream>
+#include <iterator>
+#include <numeric>
 #include <utility>
 
 namespace {

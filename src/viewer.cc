@@ -1,12 +1,10 @@
 #include "viewer.h"
 
+#include <fastgltf/util.hpp>
+#include <glm/ext.hpp>
 #include <stdexcept>
 #include <utility>
 #include <variant>
-
-#include "cpu_framebuffer.h"
-
-#include <glm/ext.hpp>
 
 #ifndef NO_WINDOWS
 #include "DXR/GPU_renderer.h"

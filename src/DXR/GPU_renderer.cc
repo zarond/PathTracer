@@ -1,11 +1,23 @@
 #include "GPU_renderer.h"
-#include "../d3d_context.h"
 
+#define NOMINMAX
+#include <cassert>
+#include <chrono>
+#include <cmath>
+#include <d3d12.h>
+#include <fastgltf/types.hpp>
 #include <glm/ext.hpp>
 #include <glm/glm.hpp>
 #include <iostream>
+#include <memory>
+#include <random>
+#include <stdexcept>
+
+#include "../d3d_context.h"
 
 namespace app {
+
+using namespace glm;
 
 void GPURenderer::update_camera_transform_state(
     fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams) {

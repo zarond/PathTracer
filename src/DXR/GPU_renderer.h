@@ -1,16 +1,23 @@
 #pragma once
 
+#include <atomic>
 #include <fastgltf/types.hpp>
 #include <glm/fwd.hpp>
 #include <memory>
 
+#include "../acceleration_structure.h"
+#include "../cpu_framebuffer.h"
+#include "../model_loader.h"
+#include "../render_settings.h"
 #include "../renderer.h"
 #include "GPU_model.h"
 #include "GPU_pipeline.h"
 
 namespace app {
 
-using namespace glm;
+using glm::fvec2;
+using glm::fvec3;
+using glm::fvec4;
 
 class GPURenderer : public IRenderer {
   public:

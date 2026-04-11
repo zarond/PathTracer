@@ -1,5 +1,13 @@
 #include <chrono>
 #include <iostream>
+#include <array>
+#include <cassert>
+#include <cmath>
+#include <cstdint>
+#include <filesystem>
+#include <optional>
+#include <utility>
+#include <vector>
 
 #ifndef NO_WINDOWS
 #include <thread>
@@ -13,6 +21,8 @@
 #include "cpu_framebuffer.h"
 #include "model_loader.h"
 #include "viewer.h"
+#include "renderer.h"
+#include "render_settings.h"
 
 #ifndef NO_WINDOWS
 #define NOMINMAX
@@ -262,7 +272,7 @@ int main(int argc, char* argv[]) {
             if (ImGui::IsWindowHovered()) {
                 if (io.MouseWheel != 0.0f){
                     zoom_scale += io.MouseWheel;
-                    zoom_scale = max(0.0f, zoom_scale);
+                    zoom_scale = std::max(0.0f, zoom_scale);
                     scale = std::exp(zoom_scale * scroll_speed);
                 }
                 if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {

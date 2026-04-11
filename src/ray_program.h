@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <glm/fwd.hpp>
 #include <limits>
 #include <random>
@@ -10,7 +11,9 @@
 #include "render_settings.h"
 
 namespace app {
-using namespace glm;
+using glm::fvec2;
+using glm::fvec3;
+using glm::fvec4;
 
 struct ray {
     fvec3 origin;

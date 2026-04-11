@@ -1,18 +1,28 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
+#include <fastgltf/types.hpp>
+#include <filesystem>
 #include <glm/fwd.hpp>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "cpu_framebuffer.h"
 #include "model_loader.h"
+#include "render_settings.h"
 #include "renderer.h"
 
 namespace app {
 
-using namespace glm;
+using glm::ivec2;
+using glm::fvec2;
+using glm::fvec3;
+using glm::fvec4;
+using glm::dvec2;
 
 class Viewer {
   public:

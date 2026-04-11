@@ -1,12 +1,14 @@
 #pragma once
 
 #include <atomic>
+#include <fastgltf/types.hpp>
 #include <glm/fwd.hpp>
 #include <memory>
 #include <vector>
 
 #include "acceleration_structure.h"
 #include "cpu_framebuffer.h"
+#include "model_loader.h"
 #include "ray_program.h"
 #include "render_settings.h"
 

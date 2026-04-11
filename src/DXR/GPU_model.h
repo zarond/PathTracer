@@ -1,11 +1,13 @@
 #pragma once
 
-#include "../model_loader.h"
-
-#include <d3d12.h>
-
 #define NOMINMAX
+#include <d3d12.h>
+#include <glm/fwd.hpp>
+#include <vector>
 #include <wrl.h>
+
+#include "../cpu_framebuffer.h"
+#include "../model_loader.h"
 
 namespace app {
 

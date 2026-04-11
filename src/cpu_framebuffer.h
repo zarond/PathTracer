@@ -15,7 +15,10 @@
 
 namespace app {
 
-using namespace glm;
+using glm::fvec2;
+using glm::fvec3;
+using glm::fvec4;
+
 #ifndef NO_WINDOWS
 using Microsoft::WRL::ComPtr;
 #endif

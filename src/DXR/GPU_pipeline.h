@@ -1,17 +1,22 @@
 #pragma once
 
+#define NOMINMAX
+#include <d3d12.h>
+#include <wrl.h>
+#include <cstdint>
+#include <glm/fwd.hpp>
+
 #include "../arguments.h"
 #include "../cpu_framebuffer.h"
 #include "GPU_model.h"
-
-#include <d3d12.h>
-
 #include "helpers/d3dx12.h"
 
-#define NOMINMAX
-#include <wrl.h>
-
 namespace app {
+
+using glm::fvec2;
+using glm::fvec3;
+using glm::fvec4;
+using glm::fmat4x4;
 
 constexpr int PBR_DXR_RECURSION_DEPTH = 11;
 

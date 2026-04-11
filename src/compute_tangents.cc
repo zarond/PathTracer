@@ -1,5 +1,9 @@
 #include "compute_tangents.h"
+
 #include <algorithm>
+#include <cassert>
+#include <cstring>
+#include <glm/fwd.hpp>
 
 #include "mikktspace.h"
 

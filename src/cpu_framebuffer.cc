@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <glm/glm.hpp>
 #include <iostream>
+#include <span>
 #include <string>
 #include <type_traits>
 #include <variant>

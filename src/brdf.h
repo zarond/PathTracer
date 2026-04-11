@@ -8,7 +8,9 @@
 
 namespace app {
 
-using namespace glm;
+using glm::fvec2;
+using glm::fvec3;
+using glm::fvec4;
 
 fvec4 sample_albedo(const Material& material, const std::vector<CPUTexture<sdr_pixel>>& images, const fvec2 uv);
 
