@@ -49,7 +49,8 @@ endif()
 
 # compile hlsl shaders to dxil
 if(NOT NO_WINDOWS)
-    find_program(DXC dxc REQUIRED)
+    #find_program(DXC dxc REQUIRED) # this just doesn't work for some reason in PowerShell and cmd, works only in Developer PowerShell for VS'
+    Set(DXC dxc) # in contrary, this works just fine
     if(NOT DXC)
         message(FATAL_ERROR "DXC compiler 'dxc' not found. Install DXC or add it to PATH.")
     endif()
@@ -68,18 +69,32 @@ if(NOT NO_WINDOWS)
     foreach(SHADER ${SHADER_SOURCES})
         get_filename_component(FILE_NAME ${SHADER} NAME_WE)
 
+        # compile into build dir (config-independent)
+        set(COMPILED_SHADER ${CMAKE_CURRENT_BINARY_DIR}/${FILE_NAME}.dxil)
+
         # todo: better yet, compile into object file and link into executable, use extern const in code
         add_custom_command(
-            OUTPUT  ${CMAKE_CURRENT_BINARY_DIR}/${FILE_NAME}.dxil
+            OUTPUT ${COMPILED_SHADER}
             COMMAND ${DXC}
                     -T lib_6_6
                     ${DXC_FLAGS}
-                    -Fo ${CMAKE_CURRENT_BINARY_DIR}/${FILE_NAME}.dxil
+                    -Fo ${COMPILED_SHADER}
                     ${CMAKE_SOURCE_DIR}/${SHADER}
             DEPENDS ${SHADER}
+            COMMENT "Compiling shader ${SHADER}"
         )
-        list(APPEND COMPILED_SHADERS
-            ${CMAKE_CURRENT_BINARY_DIR}/${FILE_NAME}.dxil
+        list(APPEND COMPILED_SHADERS ${COMPILED_SHADER})
+
+        # copy compiled shader next to the executable after the project is built
+        # $<TARGET_FILE_DIR:${PROJECT_NAME}> resolves per-config in multi-config generators
+        add_custom_command(
+            TARGET ${PROJECT_NAME}
+            POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${COMPILED_SHADER}
+                    $<TARGET_FILE_DIR:${PROJECT_NAME}>/${FILE_NAME}.dxil
+            COMMENT "Copying ${FILE_NAME}.dxil from ${COMPILED_SHADER} to target $<TARGET_FILE_DIR:${PROJECT_NAME}>/${FILE_NAME}.dxil"
+            VERBATIM
         )
     endforeach()
 
