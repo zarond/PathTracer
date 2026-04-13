@@ -384,15 +384,10 @@ int main(int argc, char* argv[]) {
         {
             if (d3d_ctx.hardware_ray_tracing_support)
             {
-                static bool renderer_changed = false;
-                static int renderer_mode = 0;
-                renderer_changed = imgui_combo("Choose Renderer:", std::array{"CPU renderer", "GPU renderer"}, renderer_mode);
+                static RendererMode renderer_mode = viewer.get_renderer_mode();
+                bool renderer_changed = imgui_combo("Choose Renderer:", std::array{"CPU renderer", "GPU renderer"}, renderer_mode);
                 if (renderer_changed) {
-                    if (renderer_mode == 0 && viewer.is_using_gpu_renderer()) {
-                        viewer.switch_to_cpu_renderer();
-                    } else if (renderer_mode == 1 && !viewer.is_using_gpu_renderer()) {
-                        viewer.switch_to_gpu_renderer();
-                    }
+                    viewer.switch_to_renderer(renderer_mode);
                 }
             } else {
                 ImGui::Text("GPU does not support raytracing, DXR rendering mode is unavailable");

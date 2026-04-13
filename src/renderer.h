@@ -36,6 +36,13 @@ struct SamplesAccumulator {
     T get_stddev(T variance) const { return sqrt(variance); }
 };
 
+enum RendererMode : int {
+    kCPURenderer,
+    kGPURenderer,
+
+    kNum
+};
+
 class IRenderer {
   public:
     virtual ~IRenderer() = default;

@@ -22,8 +22,10 @@ Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture, const 
     }
     framebuffer_ = CPUFrameBuffer(windowDimensions_.x, windowDimensions_.y);
 
-    renderers_.push_back(std::make_shared<Renderer>());
-    renderer_ = renderers_[0]; // chose CPU renderer by default
+    renderers_.resize(RendererMode::kNum);
+    renderers_[RendererMode::kCPURenderer] = std::make_shared<Renderer>();
+    renderer_ = renderers_[RendererMode::kCPURenderer];  // chose CPU renderer by default
+    activeRendererMode_ = RendererMode::kCPURenderer;
 
     ++lastModelFenceValue;
     ++lastEnvmapFenceValue;
@@ -35,40 +37,38 @@ Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture, const 
 
 #ifndef NO_WINDOWS
 void Viewer::InitGPURenderer() {
-    if (renderers_.size() >= 2) {
+    if (renderers_[RendererMode::kGPURenderer]) {
         return;
     }
     D3DContext& d3d_ctx = D3DContext::Get();
     if (d3d_ctx.hardware_ray_tracing_support) {
-        renderers_.push_back(std::make_shared<GPURenderer>());
+        renderers_[RendererMode::kGPURenderer] = std::make_shared<GPURenderer>();
     }
 }
 
-void Viewer::switch_to_gpu_renderer() {
-    if (renderers_.size() < 2) {
-        throw std::runtime_error("GPU renderer not initialized. Call InitGPURenderer() first.");
+void Viewer::switch_to_renderer(RendererMode mode) {
+    if (mode < 0 || mode >= RendererMode::kNum) {
+        throw std::runtime_error("Invalid Renderer Mode.");
+    }
+    if (!renderers_[mode]) {
+        throw std::runtime_error("Renderer not initialized. Try calling InitGPURenderer() first.");
     }
     if (renderer_->get_rendering_state() == Renderer::RenderingState::Rendering) {
-        throw std::runtime_error("Cannot switch GPU renderer while rendering is in progress");
+        throw std::runtime_error("Cannot switch renderer while rendering is in progress");
+    }
+    if (activeRendererMode_ == mode) {
+        return;
     }
     auto settings = get_render_settings();
-    renderer_ = renderers_[1]; // find by type instead?
+    renderer_ = renderers_[mode];
     renderer_->set_render_settings(settings);
     renderer_->load_scene(model_, environmentTexture_, lastModelFenceValue, lastEnvmapFenceValue);
     snap_to_camera(false);
-    GPU_renderer_active = true;
+    activeRendererMode_ = mode;
 }
 
-void Viewer::switch_to_cpu_renderer() {
-    if (renderer_->get_rendering_state() == Renderer::RenderingState::Rendering) {
-        throw std::runtime_error("Cannot switch GPU renderer while rendering is in progress");
-    }
-    auto settings = get_render_settings();
-    renderer_ = renderers_[0];  // find by type instead?
-    renderer_->set_render_settings(settings);
-    renderer_->load_scene(model_, environmentTexture_, lastModelFenceValue, lastEnvmapFenceValue);
-    snap_to_camera(false);
-    GPU_renderer_active = false;
+RendererMode Viewer::get_renderer_mode() const { 
+    return activeRendererMode_; 
 }
 #endif
 
@@ -211,6 +211,6 @@ fvec3 Viewer::get_euler_angles_camera() const {
     return glm::eulerAngles(quat);
 }
 
-bool Viewer::is_using_gpu_renderer() const { return GPU_renderer_active; }
+bool Viewer::is_using_gpu_renderer() const { return (activeRendererMode_ == RendererMode::kGPURenderer); }
 
 }  // namespace app

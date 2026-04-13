@@ -76,8 +76,8 @@ class Viewer {
 
 #ifndef NO_WINDOWS
     void InitGPURenderer();
-    void switch_to_gpu_renderer();
-    void switch_to_cpu_renderer();
+    void switch_to_renderer(RendererMode mode);
+    RendererMode get_renderer_mode() const;
 #endif
 
   private:
@@ -92,7 +92,7 @@ class Viewer {
 
     std::shared_ptr<IRenderer> renderer_; // currently chosen renderer
     std::vector<std::shared_ptr<IRenderer>> renderers_;  // initialize all renderers
-    bool GPU_renderer_active = false;
+    RendererMode activeRendererMode_;
 
     CPUFrameBuffer framebuffer_;
 
