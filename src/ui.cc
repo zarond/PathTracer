@@ -4,6 +4,7 @@
 
 #include "cpu_framebuffer.h"
 #include "d3d_context.h"
+#include "brdf.h"
 
 #include "backends/imgui_impl_dx12.h"
 #include "backends/imgui_impl_win32.h"
@@ -212,6 +213,49 @@ void SetupImGuiStyle() {
         col.x = srgb_to_linear(col.x);
         col.y = srgb_to_linear(col.y);
         col.z = srgb_to_linear(col.z);
+    }
+}
+
+void MaterialsSettingsUI(Viewer& viewer) {
+    auto& model = viewer.get_model();
+    const int materials_size = model.materials_.size();
+    static int current_material_index = 0;
+    if (current_material_index >= materials_size) {
+        current_material_index = 0;
+    }
+    bool settings_changed = false;
+    imgui_combo("Choose Material:", model.materials_names_, current_material_index);
+    Material& current_material = model.materials_[current_material_index];
+    settings_changed |= ImGui::ColorEdit4(
+        "BaseColor F.", reinterpret_cast<float*>(&current_material.baseColorFactor), ImGuiColorEditFlags_Float);
+    settings_changed |= ImGui::ColorEdit3(
+        "Emissive F.", reinterpret_cast<float*>(&current_material.emissiveFactor), ImGuiColorEditFlags_Float);
+    settings_changed |= ImGui::ColorEdit3(
+        "Attenuation F.", reinterpret_cast<float*>(&current_material.attenuationFactor), ImGuiColorEditFlags_Float);
+    settings_changed |= ImGui::SliderFloat(
+        "Metallic F.", &current_material.metallicFactor, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
+    settings_changed |= ImGui::SliderFloat(
+        "Roughness F.", &current_material.roughnessFactor, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
+    settings_changed |= ImGui::SliderFloat("IOR", &current_material.ior, 0.001f, 5.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
+    if (ImGui::Button("Reset Dielectric F0 from IOR")) {
+        current_material.dielectric_f0 = f0_dielectric(current_material.ior);
+        settings_changed = true;
+    }
+    settings_changed |= ImGui::SliderFloat(
+        "Dielectric F0", &current_material.dielectric_f0, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
+    settings_changed |= ImGui::SliderFloat(
+        "Transmission F.", &current_material.transmisionFactor, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
+    settings_changed |= ImGui::SliderFloat("Emissive Strength F.", &current_material.emissiveStrength, 0.0f, 10.0f, "%.3f");
+    settings_changed |= ImGui::Checkbox("Double Sided", &current_material.doubleSided);
+    settings_changed |= ImGui::Checkbox("Has Volume", &current_material.hasVolume);
+    settings_changed |= ImGui::Checkbox("Alpha Blending", &current_material.alphaBlending);
+    settings_changed |= ImGui::SliderFloat("Alpha Cutoff F.", &current_material.alpha_cutoff, -1.0f, 1.0f, "%.3f");
+    if (ImGui::Button("Reset to original material")) {
+        current_material = viewer.get_materials_backup()[current_material_index];
+        settings_changed = true;
+    }
+    if (settings_changed) {
+        viewer.set_materials_updated();
     }
 }
 

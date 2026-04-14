@@ -9,6 +9,8 @@
 #include <span>
 #include <type_traits>
 
+#include "viewer.h"
+
 namespace app {
 
 struct DXWindow {
@@ -66,6 +68,31 @@ bool imgui_combo(const char* label, std::span<const char* const> items, auto& cu
     return changed;
 }
 
+bool imgui_combo(const char* label, std::span<std::string> items, auto& current_index) {
+    bool changed = false;
+
+    const auto current_index_size_t = static_cast<std::size_t>(current_index);
+    const auto preview_value = current_index_size_t < items.size() ? items[current_index_size_t] : "---";
+
+    if (ImGui::BeginCombo(label, preview_value.c_str())) {
+        for (size_t index = 0; const auto& item : items) {
+            bool is_selected = (current_index_size_t == index);
+            if (ImGui::Selectable(item.c_str(), is_selected)) {
+                changed = true;
+                current_index = static_cast<std::decay_t<decltype(current_index)>>(index);
+            }
+            if (is_selected) {
+                ImGui::SetItemDefaultFocus();
+            }
+
+            ++index;
+        }
+        ImGui::EndCombo();
+    }
+
+    return changed;
+}
+
 bool SliderUInt(const char* label, unsigned int* v, unsigned int v_min, unsigned int v_max, const char* format = (const char*)0,
     ImGuiSliderFlags flags = 0);
 
@@ -77,4 +104,7 @@ void ImDrawCallback_ImplDX12_SetSamplerNearest(const ImDrawList* parent_list, co
 void ImDrawCallback_ImplDX12_SetSamplerLinear(const ImDrawList* parent_list, const ImDrawCmd* cmd);
 
 void SetupImGuiStyle();
+
+void MaterialsSettingsUI(Viewer& viewer);
+
 }

@@ -657,32 +657,14 @@ void GPU_model::prepare_materials_array_buffer(const Model& cpu_model) {
     D3DContext& d3d_ctx = D3DContext::Get();
     const auto& heap_alloc = d3d_ctx.g_pd3dSrvDescHeapAlloc;
 
-    std::vector<GPU_Material> data;
-
     // convert from cpu image_id into indices within GPU SRV Heap
-    std::vector<int> texture_id_conversion_table;
     texture_id_conversion_table.reserve(textures.size());
     std::transform(textures.begin(), textures.end(), std::back_inserter(texture_id_conversion_table), 
         [&heap_alloc](const auto& el) { return heap_alloc.GetIndex(el.GetSRVHandle()); }
     );
-    int default_white_texture_index = heap_alloc.GetIndex(default_white_texture.GetSRVHandle());
+    default_white_texture_index = heap_alloc.GetIndex(default_white_texture.GetSRVHandle());
 
-    // I pack materials differently than in CPU for ease of use in shader. 
-    // Here, I index material by meshID, that might lead to some redundant data
-    // Todo: pack the same as CPU without redundancy
-    assert(sizeof(GPU_Material) == 112);
-    data.reserve(cpu_model.meshes_.size());
-    for (const auto& mesh : cpu_model.meshes_) {
-        const auto& mat = cpu_model.materials_[mesh.materialIndex];
-        data.emplace_back(mat, texture_id_conversion_table, default_white_texture_index);
-    }
-
-    d3d_ctx.InitCopyCommandList();
-
-    ComPtr<ID3D12Resource2> mat_uploadBuffer;
-
-    uint32_t matCount = data.size();
-
+    uint32_t matCount = cpu_model.meshes_.size();
     const UINT BufferSize = sizeof(GPU_Material) * matCount;
 
     const D3D12_HEAP_PROPERTIES def_props{
@@ -692,6 +674,46 @@ void GPU_model::prepare_materials_array_buffer(const Model& cpu_model) {
         .CreationNodeMask = 1,
         .VisibleNodeMask = 1,
     };
+
+    const D3D12_RESOURCE_DESC upload_desc{
+        .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
+        .Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+        .Width = BufferSize,
+        .Height = 1,
+        .DepthOrArraySize = 1,
+        .MipLevels = 1,
+        .Format = DXGI_FORMAT_UNKNOWN,
+        .SampleDesc = {1, 0},
+        .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+        .Flags = D3D12_RESOURCE_FLAG_NONE,
+    };
+
+    ThrowIfFailed(d3d_ctx.g_pd3dDevice->CreateCommittedResource(
+        &def_props, D3D12_HEAP_FLAG_NONE, &upload_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&MaterialsArray)));
+    CreateBufferSRV(d3d_ctx, MaterialsArray, matCount, sizeof(GPU_Material), materials_array);
+    
+    update_materials_array_buffer(cpu_model);
+}
+
+void GPU_model::update_materials_array_buffer(const Model& cpu_model) { 
+    // I pack materials differently than in CPU for ease of use in shader.
+    // Here, I index material by meshID, that might lead to some redundant data
+    // Todo: pack the same as CPU without redundancy
+    std::vector<GPU_Material> data;
+    assert(sizeof(GPU_Material) == 112);
+    data.reserve(cpu_model.meshes_.size());
+    for (const auto& mesh : cpu_model.meshes_) {
+        const auto& mat = cpu_model.materials_[mesh.materialIndex];
+        data.emplace_back(mat, texture_id_conversion_table, default_white_texture_index);
+    }
+
+    D3DContext& d3d_ctx = D3DContext::Get();
+    d3d_ctx.InitCopyCommandList();
+
+    ComPtr<ID3D12Resource2> mat_uploadBuffer;
+
+    uint32_t matCount = data.size();
+    const UINT BufferSize = sizeof(GPU_Material) * matCount;
 
     const D3D12_HEAP_PROPERTIES upload_props{
         .Type = D3D12_HEAP_TYPE_UPLOAD,
@@ -716,8 +738,6 @@ void GPU_model::prepare_materials_array_buffer(const Model& cpu_model) {
 
     ThrowIfFailed(d3d_ctx.g_pd3dDevice->CreateCommittedResource(&upload_props, D3D12_HEAP_FLAG_NONE, &upload_desc,
         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&mat_uploadBuffer)));
-    ThrowIfFailed(d3d_ctx.g_pd3dDevice->CreateCommittedResource(
-        &def_props, D3D12_HEAP_FLAG_NONE, &upload_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&MaterialsArray)));
 
     void* pDataBegin;
     ThrowIfFailed(mat_uploadBuffer->Map(0, nullptr, &pDataBegin));
@@ -728,8 +748,6 @@ void GPU_model::prepare_materials_array_buffer(const Model& cpu_model) {
 
     d3d_ctx.DispatchCopyCommandList();
     d3d_ctx.WaitForPendingCopy();
-
-    CreateBufferSRV(d3d_ctx, MaterialsArray, matCount, sizeof(GPU_Material), materials_array);
 }
 
 const std::vector<GPU_mesh>& GPU_model::get_meshes() const { return meshes_; }

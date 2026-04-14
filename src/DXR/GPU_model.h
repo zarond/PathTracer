@@ -131,10 +131,14 @@ class GPU_model {
 
     bool isEmpty() const;
 
+    void update_materials_array_buffer(const Model& cpu_model);
+
   private:
     std::vector<GPU_mesh> meshes_;
-    
+
+    std::vector<int> texture_id_conversion_table;
     GPU_texture default_white_texture = GPU_texture(CPUTexture<sdr_pixel>::create_white_texture(), false);
+    int default_white_texture_index;
 
     void create_top_level_AS(const Model& cpu_model);
 

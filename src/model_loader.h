@@ -6,6 +6,7 @@
 #include <glm/fwd.hpp>
 #include <variant>
 #include <vector>
+#include <string>
 
 #include "cpu_framebuffer.h"
 
@@ -67,6 +68,7 @@ struct Model {
     std::vector<Mesh> meshes_;
     std::vector<Object> objects_;
     std::vector<CPUTexture<sdr_pixel>> images_;
+    std::vector<std::string> materials_names_;
 };
 
 class ModelLoader {

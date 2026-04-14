@@ -73,6 +73,12 @@ void GPURenderer::reload_acceleration_structure() {
     std::cout << "GPU DXR model Acceleration Structure created in " << diff.count() << " ms." << '\n';
 }
 
+void GPURenderer::reload_materials() {
+    if (modelRef == nullptr) return;
+    D3DContext& d3d_ctx = D3DContext::Get();
+    gpu_model_->update_materials_array_buffer(*modelRef);
+}
+
 void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, bool iterative, int iteration_count) {
     assert(modelRef);
     if (modelRef == nullptr || envmapRef == nullptr || gpu_model_ == nullptr) {

@@ -63,6 +63,7 @@ class IRenderer {
     virtual void load_model(const Model& model, size_t ModelFenceValue) = 0;
     virtual void reload_ray_program() = 0;
     virtual void reload_acceleration_structure() = 0;
+    virtual void reload_materials() = 0;
 
     virtual void render_frame(CPUFrameBuffer& framebuffer, bool continuous, bool iterative, int iteration_count) = 0;
     virtual void set_render_settings(const RenderSettings& settings) = 0;
@@ -93,6 +94,7 @@ class Renderer : public IRenderer {
     void load_model(const Model& model, size_t ModelFenceValue);
     void reload_ray_program();
     void reload_acceleration_structure();
+    void reload_materials();
 
     void render_frame(CPUFrameBuffer& framebuffer, bool continuous, bool iterative, int iteration_count);
     void set_render_settings(const RenderSettings& settings);

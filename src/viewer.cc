@@ -32,6 +32,8 @@ Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture, const 
     renderer_->set_render_settings(settings);
     renderer_->load_scene(model_, environmentTexture_, lastModelFenceValue, lastEnvmapFenceValue);
 
+    materials_backups_ = model_.materials_;
+
     snap_to_camera();
 }
 
@@ -87,7 +89,11 @@ void Viewer::resize_window(const ivec2& newDimensions, bool createGPUTex) {
 
 ivec2 Viewer::get_window_dimensions() const { return windowDimensions_; }
 
-void Viewer::render() { 
+void Viewer::render() {
+    if (need_materials_update_) {
+        renderer_->reload_materials();
+        need_materials_update_ = false;
+    }
     renderer_->render_frame(framebuffer_, continuous_rendering, iterative_rendering, iterations_counter);
     if (iterative_rendering) {
         ++iterations_counter;
@@ -178,9 +184,16 @@ void Viewer::load_model(Model&& model) {
     }
     ++lastModelFenceValue;
     renderer_->load_model(model_, lastModelFenceValue);
+
+    materials_backups_ = model_.materials_;
 }
 
 const Model& Viewer::get_model() const { return model_; }
+Model& Viewer::get_model() { return model_; }
+const std::vector<Material>& Viewer::get_materials_backup() const { return materials_backups_; }
+void Viewer::set_materials_updated() {
+    need_materials_update_ = true;
+}
 
 CPUFrameBuffer& Viewer::get_framebuffer() { return framebuffer_; }
 

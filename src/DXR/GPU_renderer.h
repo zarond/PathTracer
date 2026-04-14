@@ -37,6 +37,7 @@ class GPURenderer : public IRenderer {
     void load_model(const Model& model, size_t ModelFenceValue);
     void reload_ray_program();
     void reload_acceleration_structure();
+    void reload_materials();
 
     void render_frame(CPUFrameBuffer& framebuffer, bool continuous, bool iterative, int iteration_count);
     void set_render_settings(const RenderSettings& settings);

@@ -58,6 +58,9 @@ class Viewer {
     void load_envmap(CPUTexture<hdr_pixel>&& environmentTexture);
     void load_model(Model&& model);
     const Model& get_model() const;
+    Model& get_model();
+    const std::vector<Material>& get_materials_backup() const;
+    void set_materials_updated();
 
     std::condition_variable cv_render;
     std::atomic<bool> continuous_rendering = false;
@@ -84,6 +87,9 @@ class Viewer {
   private:
     Model model_;
     CPUTexture<hdr_pixel> environmentTexture_;
+    std::vector<Material> materials_backups_;
+    bool need_materials_update_ = false;
+
     size_t lastModelFenceValue = 0;
     size_t lastEnvmapFenceValue = 0;
 

@@ -59,6 +59,7 @@ Model ModelLoader::constructModel() const {
     model.meshes_.reserve(asset_.meshes.size());
     model.objects_.reserve(asset_.nodes.size());
     model.images_.reserve(asset_.images.size());
+    model.materials_names_.reserve(asset_.materials.size() + 1);
 
     for (const auto& image : asset_.images) {
         model.images_.emplace_back(image, asset_);
@@ -123,8 +124,10 @@ Model ModelLoader::constructModel() const {
             .alphaBlending = (material.alphaMode == fastgltf::AlphaMode::Blend),
             .alpha_cutoff = (material.alphaMode == fastgltf::AlphaMode::Mask) ? material.alphaCutoff : -1.0f};
         model.materials_.push_back(mat);
+        model.materials_names_.emplace_back(material.name);
     }
     model.materials_.emplace_back();  // default material at last index
+    model.materials_names_.emplace_back("Gltf Default Material");
 
     // vector of span-like structures { index in model.meshes_, size } to map gltf primitives to our model meshes
     // one gltf mesh (mesh_ids[i]) can be multiple gltf primitives

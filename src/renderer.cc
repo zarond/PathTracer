@@ -93,6 +93,8 @@ void Renderer::reload_acceleration_structure() {
     }
 }
 
+void Renderer::reload_materials() {}
+
 ray_with_payload Renderer::generate_camera_ray(int x, int y, float inv_width, float inv_height, int sampleIndex, fvec2 jitter) const noexcept {
     fvec2 pixel_coords = fvec2{static_cast<float>(x), static_cast<float>(y)} + subsamplesPositions[sampleIndex] + jitter;
     auto ndc_coords = ndc_from_pixel(pixel_coords.x, pixel_coords.y, inv_width, inv_height);

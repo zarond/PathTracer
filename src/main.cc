@@ -364,7 +364,7 @@ int main(int argc, char* argv[]) {
                 auto& yfov = viewer.get_yfov();
                 auto euler_angles = glm::degrees(viewer.get_euler_angles_camera()); 
                 static float camera_speed = 1.0f;
-                static float camera_rotation_speed = 1.0f;
+                static float camera_rotation_speed = 10.0f;
                 bool transform_changed = false;
                 transform_changed |= ImGui::DragFloat3("Camera Position", &viewer.position_.x, camera_speed * 0.001f, 0.0f, 0.0f, "%.4f");
                 transform_changed |= ImGui::DragFloat3("Camera Euler", &euler_angles.x, 0.1f, -180.0f, 180.0f, nullptr, ImGuiSliderFlags_WrapAround);
@@ -412,6 +412,14 @@ int main(int argc, char* argv[]) {
                     viewer.up_ = quat * fvec3(0.0f, 1.0f, 0.0f);
                     viewer.snap_to_camera(false);
                 }
+            }
+            ImGui::TreePop();
+        }
+        ImGui::Separator();
+        static bool show_material_settings = false;
+        if (ImGui::TreeNode("Materials")) {
+            if (ImGui::Button("Edit Materials")) {
+                show_material_settings = true;
             }
             ImGui::TreePop();
         }
@@ -537,6 +545,12 @@ int main(int argc, char* argv[]) {
             ImGui::Text("Stop rendering process to access rendering options");
         }
         ImGui::End();
+        // Show materials settings window
+        if (show_material_settings) {
+            ImGui::Begin("Materials Options", &show_material_settings, ImGuiWindowFlags_AlwaysAutoResize);
+            MaterialsSettingsUI(viewer);
+            ImGui::End();
+        }
         // Rendering ImGui
         ImGui::Render();
 
