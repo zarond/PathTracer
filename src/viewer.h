@@ -68,6 +68,7 @@ class Viewer {
     fvec3 position_ = fvec3(0.0f);                // camera position
     fvec3 direction_ = fvec3(0.0f, 0.0f, -1.0f);  // center view direction
     fvec3 up_ = fvec3(0.0f, 1.0f, 0.0f);          // up view direction
+    fvec3 right_() const;
 
     float& get_yfov();
     fvec3 get_euler_angles_camera() const;

@@ -364,11 +364,47 @@ int main(int argc, char* argv[]) {
                 auto& yfov = viewer.get_yfov();
                 auto euler_angles = glm::degrees(viewer.get_euler_angles_camera()); 
                 static float camera_speed = 1.0f;
+                static float camera_rotation_speed = 1.0f;
                 bool transform_changed = false;
                 transform_changed |= ImGui::DragFloat3("Camera Position", &viewer.position_.x, camera_speed * 0.001f, 0.0f, 0.0f, "%.4f");
                 transform_changed |= ImGui::DragFloat3("Camera Euler", &euler_angles.x, 0.1f, -180.0f, 180.0f, nullptr, ImGuiSliderFlags_WrapAround);
                 transform_changed |= ImGui::SliderFloat("Camera Y fov", &yfov, 0.01f, 3.1415f, nullptr, ImGuiSliderFlags_ClampOnInput);
-                ImGui::SliderFloat("Camera Speed", &camera_speed, 0.01f, 10.0f);
+                ImGui::SliderFloat("Camera Speed", &camera_speed, 0.01f, 20.0f);
+                ImGui::SliderFloat("Camera Rotation Speed", &camera_rotation_speed, 0.01f, 50.0f);
+                {
+                    static bool fps_free_camera = false;
+                    ImGui::Checkbox("Use First Person free camera", &fps_free_camera);
+                    HelpTooltip("Use WASD and QE to move, Right Mouse button to rotate");
+                    if (fps_free_camera) {
+                        float dT = io.DeltaTime;
+                        if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
+                            transform_changed |= true;
+                            ImVec2 drag_delta = io.MouseDelta;
+                            euler_angles.x -= drag_delta.y * camera_rotation_speed * dT;
+                            euler_angles.y -= drag_delta.x * camera_rotation_speed * dT;
+                            euler_angles.x = glm::clamp(euler_angles.x, -85.0f, 85.0f);
+                            euler_angles.z = 0.0;
+                        }
+                        if (ImGui::IsKeyDown(ImGuiKey_W)) {
+                            viewer.position_ += viewer.direction_ * camera_speed * dT; transform_changed |= true;
+                        }
+                        if (ImGui::IsKeyDown(ImGuiKey_A)) {
+                            viewer.position_ -= viewer.right_() * camera_speed * dT; transform_changed |= true;
+                        }
+                        if (ImGui::IsKeyDown(ImGuiKey_S)) {
+                            viewer.position_ -= viewer.direction_ * camera_speed * dT; transform_changed |= true;
+                        }
+                        if (ImGui::IsKeyDown(ImGuiKey_D)) {
+                            viewer.position_ += viewer.right_() * camera_speed * dT; transform_changed |= true;
+                        }
+                        if (ImGui::IsKeyDown(ImGuiKey_E)) {
+                            viewer.position_ += viewer.up_ * camera_speed * dT; transform_changed |= true;
+                        }
+                        if (ImGui::IsKeyDown(ImGuiKey_Q)) {
+                            viewer.position_ -= viewer.up_ * camera_speed * dT; transform_changed |= true;
+                        }
+                    }
+                }
                 if (transform_changed) {
                     euler_angles = glm::radians(euler_angles);
                     auto quat = glm::quat(euler_angles);
@@ -548,6 +584,9 @@ int main(int argc, char* argv[]) {
             deferredDeletes.erase(deferredDeletes.begin());
         }
     }
+    finish_worker_thread_source.request_stop();
+    viewer.cancel_rendering();
+    worker_thread.join();
 
     d3d_ctx.WaitForPendingOperations();
     d3d_ctx.WaitForPendingCopy();
@@ -562,11 +601,6 @@ int main(int argc, char* argv[]) {
     dx_window.ShutDown();
 
     DXDebugLayer::Get().Shutdown();
-
-    finish_worker_thread_source.request_stop();
-    viewer.cancel_rendering();
-    worker_thread.join();
-
 #endif  // #ifndef NO_WINDOWS
     return 0;
 }

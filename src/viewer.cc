@@ -204,11 +204,19 @@ void Viewer::set_up_default_camera_transforms() {
     position_ = center + offset;
 }
 
+fvec3 Viewer::right_() const { return cross(direction_, up_); }
+
 float& Viewer::get_yfov() { return cam_params_.yfov; }
 
 fvec3 Viewer::get_euler_angles_camera() const { 
     glm::quat quat = glm::quatLookAt(direction_, up_);
-    return glm::eulerAngles(quat);
+    const glm::quat q_shfl{quat.w, quat.y, quat.x, quat.z}; // To overcome GLM's gimbal lock issue
+    const glm::vec3 euler{
+        glm::yaw(q_shfl),    // Pitch
+        glm::pitch(q_shfl),  // Yaw
+        glm::roll(q_shfl)    // Roll
+    };
+    return euler;
 }
 
 bool Viewer::is_using_gpu_renderer() const { return (activeRendererMode_ == RendererMode::kGPURenderer); }
