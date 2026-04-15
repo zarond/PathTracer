@@ -17,6 +17,27 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 extern void ImGui_ImplDX12_SetupSamplerLinear(ID3D12GraphicsCommandList* command_list);
 extern void ImGui_ImplDX12_SetupSamplerNearest(ID3D12GraphicsCommandList* command_list);
 
+namespace {
+using namespace app;
+
+bool useTextureCheckbox(const char* text, int& texture, int original_texture_value) {
+    bool use_texture = (texture >= 0);
+    bool changed = ImGui::Checkbox(text, &use_texture);
+    if (changed) {
+        if (use_texture) {
+            texture = original_texture_value;
+            if (original_texture_value < 0) {
+                changed = false;
+            }
+        } else {
+            texture = -1;
+        }
+    }
+    return changed;
+}
+
+}
+
 namespace app {
 
 bool DXWindow::Init() {
@@ -226,6 +247,19 @@ void MaterialsSettingsUI(Viewer& viewer) {
     bool settings_changed = false;
     imgui_combo("Choose Material:", model.materials_names_, current_material_index);
     Material& current_material = model.materials_[current_material_index];
+    const Material& original_material = viewer.get_materials_backup()[current_material_index];
+
+    settings_changed |= 
+        useTextureCheckbox("Use Albedo Texture", current_material.baseColorTextureIndex, original_material.baseColorTextureIndex);
+    settings_changed |=
+        useTextureCheckbox("Use Metallic-Roughness Texture", current_material.metallicRoughnessTextureIndex, original_material.metallicRoughnessTextureIndex);
+    settings_changed |= 
+        useTextureCheckbox("Use Normal Texture", current_material.normalTextureIndex, original_material.normalTextureIndex);
+    settings_changed |=
+        useTextureCheckbox("Use Transmission Texture", current_material.transmissionTextureIndex, original_material.transmissionTextureIndex);
+    settings_changed |= 
+        useTextureCheckbox("Use Emissive Texture", current_material.emissiveTextureIndex, original_material.emissiveTextureIndex);
+
     settings_changed |= ImGui::ColorEdit4(
         "BaseColor F.", reinterpret_cast<float*>(&current_material.baseColorFactor), ImGuiColorEditFlags_Float);
     settings_changed |= ImGui::ColorEdit3(
@@ -251,7 +285,7 @@ void MaterialsSettingsUI(Viewer& viewer) {
     settings_changed |= ImGui::Checkbox("Alpha Blending", &current_material.alphaBlending);
     settings_changed |= ImGui::SliderFloat("Alpha Cutoff F.", &current_material.alpha_cutoff, -1.0f, 1.0f, "%.3f");
     if (ImGui::Button("Reset to original material")) {
-        current_material = viewer.get_materials_backup()[current_material_index];
+        current_material = original_material;
         settings_changed = true;
     }
     if (settings_changed) {
