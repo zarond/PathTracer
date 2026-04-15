@@ -119,4 +119,9 @@ struct D3DContext {
     bool CheckRaytracingSupport();
 };
 
+struct PendingDelete {
+    ComPtr<ID3D12Resource> resource;
+    // UINT64 fenceValue;
+};
+
 }

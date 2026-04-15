@@ -121,4 +121,6 @@ class Viewer {
     void set_up_default_camera_transforms();
 };
 
+void save_render_image_timed_action(const Viewer& viewer, const fs::path& image_path);
+
 }  // namespace app

@@ -8,8 +8,11 @@
 #include "imgui.h"
 #include <span>
 #include <type_traits>
+#include <vector>
 
 #include "viewer.h"
+#include "d3d_context.h"
+#include "arguments.h"
 
 namespace app {
 
@@ -105,6 +108,9 @@ void ImDrawCallback_ImplDX12_SetSamplerLinear(const ImDrawList* parent_list, con
 
 void SetupImGuiStyle();
 
-void MaterialsSettingsUI(Viewer& viewer);
+void RenderedImageUI(Viewer& viewer, const bool hardware_raytracing_support);
+
+void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector<PendingDelete>& deferredDeletes,
+    const bool hardware_raytracing_support);
 
 }

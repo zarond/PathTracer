@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <utility>
 #include <variant>
+#include <iostream>
 
 #ifndef NO_WINDOWS
 #include "DXR/GPU_renderer.h"
@@ -233,5 +234,12 @@ fvec3 Viewer::get_euler_angles_camera() const {
 }
 
 bool Viewer::is_using_gpu_renderer() const { return (activeRendererMode_ == RendererMode::kGPURenderer); }
+
+void save_render_image_timed_action(const Viewer& viewer, const fs::path& image_path) {
+    auto start = std::chrono::high_resolution_clock::now();
+    viewer.take_snapshot(image_path);
+    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+    std::cout << "output saved in " << diff.count() << " ms." << '\n';
+}
 
 }  // namespace app
