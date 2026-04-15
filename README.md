@@ -59,7 +59,7 @@ Screenshot from GUI mode with AO rendering:
 
 ![gui_screen](example/gui_screenshot.png)
 
-Check out this [Video on LinkedIn](https://www.linkedin.com/posts/artur-makoev-85755a2b3_hello-friends-i-would-like-to-show-you-my-activity-7419366989909045249-WOIP) to see how the program works in action.
+Check out this [Video on LinkedIn](https://www.linkedin.com/posts/artur-makoev-85755a2b3_hello-friends-i-would-like-to-show-you-my-activity-7419366989909045249-WOIP) or [this post](https://www.linkedin.com/posts/artur-makoev-85755a2b3_hello-everyone-i-want-to-give-an-update-ugcPost-7447220869531324416-5zeT/) (both are not the latest version of the program) to see how it works in action.
 
 ## Features
 
