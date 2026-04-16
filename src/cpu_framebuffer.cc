@@ -25,13 +25,13 @@ namespace app {
 namespace {
 using namespace app;
 
-std::vector<hdr_pixel> from_raw_data(const float* data, size_t width, size_t height, size_t channels) {
+std::vector<hdr_pixel> from_raw_data(const float* data, size_t width, size_t height) {
     std::vector<hdr_pixel> vec(width * height);
     std::memcpy(vec.data(), data, width * height * sizeof(hdr_pixel));
     return vec;
 }
 
-std::vector<sdr_pixel> from_raw_data(const unsigned char* data, size_t width, size_t height, size_t channels) {
+std::vector<sdr_pixel> from_raw_data(const unsigned char* data, size_t width, size_t height) {
     std::vector<sdr_pixel> vec(width * height);
     std::memcpy(vec.data(), data, width * height * sizeof(sdr_pixel));
     return vec;
@@ -57,7 +57,7 @@ CPUTexture<sdr_pixel>::CPUTexture(const fastgltf::Image& image, const fastgltf::
                 if (data == nullptr) {
                     throw std::runtime_error("Unable to load image: " + path);
                 }
-                data_ = from_raw_data(data, width_, height_, channels_);
+                data_ = from_raw_data(data, width_, height_);
                 stbi_image_free(data);
             },
             [&](const fastgltf::sources::Array& vector) {
@@ -66,7 +66,7 @@ CPUTexture<sdr_pixel>::CPUTexture(const fastgltf::Image& image, const fastgltf::
                 if (data == nullptr) {
                     throw std::runtime_error("Unable to load image from memory");
                 }
-                data_ = from_raw_data(data, width_, height_, channels_);
+                data_ = from_raw_data(data, width_, height_);
                 stbi_image_free(data);
             },
             [&](const fastgltf::sources::BufferView& view) {
@@ -80,7 +80,7 @@ CPUTexture<sdr_pixel>::CPUTexture(const fastgltf::Image& image, const fastgltf::
                         if (data == nullptr) {
                             throw std::runtime_error("Unable to load image from memory");
                         }
-                        data_ = from_raw_data(data, width_, height_, channels_);
+                        data_ = from_raw_data(data, width_, height_);
                         stbi_image_free(data);
                     },
                     [](const auto& arg) {}},
@@ -100,7 +100,7 @@ CPUTexture<hdr_pixel>::CPUTexture(const std::filesystem::path& filePath) {
     if (data == nullptr) {
         throw std::runtime_error("Unable to load image: " + path);
     }
-    data_ = from_raw_data(data, width_, height_, channels_);
+    data_ = from_raw_data(data, width_, height_);
     stbi_image_free(data);
 
     assert(width_ > 0 && height_ > 0 && channels_ > 0 && channels_ <= 4 && !data_.empty());

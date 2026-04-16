@@ -105,14 +105,14 @@ void Viewer::render() {
 
 void Viewer::cancel_rendering() {
     renderer_->cancel_rendering(); 
-    cv_render.notify_one();
+    cv_render_.notify_one();
 }
 
 Renderer::RenderingState Viewer::get_rendering_state() const { return renderer_->get_rendering_state(); }
 
 void Viewer::async_start_render() { 
     renderer_->set_render_starting_state();
-    cv_render.notify_one();
+    cv_render_.notify_one();
 }
 
 void Viewer::clear_framebuffer_black() { framebuffer_.clear(); }
@@ -225,7 +225,7 @@ float& Viewer::get_yfov() { return cam_params_.yfov; }
 fvec3 Viewer::get_euler_angles_camera() const { 
     glm::quat quat = glm::quatLookAt(direction_, up_);
     const glm::quat q_shfl{quat.w, quat.y, quat.x, quat.z}; // To overcome GLM's gimbal lock issue
-    const glm::vec3 euler{
+    const glm::fvec3 euler{
         glm::yaw(q_shfl),    // Pitch
         glm::pitch(q_shfl),  // Yaw
         glm::roll(q_shfl)    // Roll
@@ -235,7 +235,12 @@ fvec3 Viewer::get_euler_angles_camera() const {
 
 bool Viewer::is_using_gpu_renderer() const { return (activeRendererMode_ == RendererMode::kGPURenderer); }
 
-void save_render_image_timed_action(const Viewer& viewer, const fs::path& image_path) {
+void Viewer::wait_for_render_start(std::stop_token stop) {
+    std::unique_lock<std::mutex> lock(mtx_render_);
+    cv_render_.wait(lock, [&]() { return stop.stop_requested() || (get_rendering_state() == Renderer::ReadyToStart); });
+}
+
+void save_render_image_timed_action(const Viewer& viewer, const std::filesystem::path& image_path) {
     auto start = std::chrono::high_resolution_clock::now();
     viewer.take_snapshot(image_path);
     auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);

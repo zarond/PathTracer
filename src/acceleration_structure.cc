@@ -132,7 +132,7 @@ float BBox::surface_area() const noexcept {
     return dim.x * dim.y + dim.x * dim.z + dim.y * dim.z;  // leave *2.0f
 }
 
-BBox object_to_ws_bbox(const Object& obj, const Mesh& mesh) {
+BBox object_to_ws_bbox(const Object& obj, const Mesh& mesh) noexcept {
     auto combine = [](BBox a, const BBox& b) {
         a.expand(b);
         return a;
@@ -172,7 +172,7 @@ void DOP::expand(const DOP& dop) noexcept {
         axis_min_max.y = std::max(axis_min_max.y, dop.min_max[i].y);
     }
 }
-BBox DOP::to_bbox() {
+BBox DOP::to_bbox() const noexcept {
     return BBox{fvec3{min_max[0].x, min_max[1].x, min_max[2].x}, fvec3{min_max[0].y, min_max[1].y, min_max[2].y}};
 }
 
@@ -210,7 +210,7 @@ ray_volume_hit_info DOP::ray_volume_intersection(const std::array<fvec2, 7>& pro
     return {true, t_min, t_max};
 }
 
-DOP object_to_ws_dop(const Object& obj, const Mesh& mesh) {
+DOP object_to_ws_dop(const Object& obj, const Mesh& mesh) noexcept {
     auto combine = [](DOP a, const DOP& b) {
         a.expand(b);
         return a;
@@ -690,7 +690,7 @@ ray_triangle_hit_info BVH_AS::mesh_ray_intersection(
             auto distance_l = volume_hit_l.forward_hit_distance();
             auto distance_r = volume_hit_r.forward_hit_distance();
 
-            if (distance_l < volume_hit_r.forward_hit_distance()) {
+            if (distance_l < distance_r) {
                 if (volume_hit_r.hit && hit.t > distance_r) bvh_stack.push_back(children.right_child_index);
                 if (volume_hit_l.hit && hit.t > distance_l) bvh_stack.push_back(children.left_child_index);
             } else {

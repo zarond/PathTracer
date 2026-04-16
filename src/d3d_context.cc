@@ -22,6 +22,7 @@ void ExampleDescriptorHeapAllocator::Destroy() {
 }
 void ExampleDescriptorHeapAllocator::Alloc(
     D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle) {
+    if (!out_cpu_desc_handle || !out_gpu_desc_handle) return;
     assert(FreeIndices.size() > 0);
     int idx = FreeIndices.back();
     FreeIndices.pop_back();
@@ -47,6 +48,7 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
     // Create device
     D3D_FEATURE_LEVEL featureLevel = D3D_FEATURE_LEVEL_11_0;
 
+    bool deviceCreated = false;
     ComPtr<IDXGIAdapter4> adapter;
     for (UINT i = 0; 
         g_pdxgiFactory->EnumAdapterByGpuPreference(i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&adapter)) 
@@ -55,11 +57,13 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
         adapter->GetDesc3(&desc);
         if (desc.Flags & DXGI_ADAPTER_FLAG3_SOFTWARE) continue;
         if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), featureLevel, IID_PPV_ARGS(&g_pd3dDevice)))) {
+            deviceCreated = true;
             break;
         } else {
-            return false;
+            adapter.Reset();
         }
     }
+    if (!deviceCreated) return false;
 
     // Create command queue
     {
@@ -328,7 +332,8 @@ void D3DContext::CleanupRenderTarget() {
 FrameContext* D3DContext::WaitForNextFrameContext() {
     FrameContext* frame_context = &g_frameContext[g_frameIndex % APP_NUM_FRAMES_IN_FLIGHT];
     if (g_fence->GetCompletedValue() < frame_context->FenceValue) {
-        g_fence->SetEventOnCompletion(frame_context->FenceValue, g_fenceEvent);
+        auto HR = g_fence->SetEventOnCompletion(frame_context->FenceValue, g_fenceEvent);
+        if (FAILED(HR)) std::exit(-1);
         HANDLE waitableObjects[] = {g_hSwapChainWaitableObject, g_fenceEvent};
         ::WaitForMultipleObjects(2, waitableObjects, TRUE, INFINITE);
     } else

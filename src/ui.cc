@@ -21,6 +21,7 @@ extern void ImGui_ImplDX12_SetupSamplerNearest(ID3D12GraphicsCommandList* comman
 
 namespace {
 using namespace app;
+namespace fs = std::filesystem;
 
 bool useTextureCheckbox(const char* text, int& texture, int original_texture_value) {
     bool use_texture = (texture >= 0);
@@ -164,7 +165,7 @@ std::string OpenFileDialog() {     // todo: modernize with IFileDialog
     ofn.lpstrFilter = 
         "All Files\0*.*\0"
         "Gltf Files (*.gltf;*.glb)\0*.gltf;*.glb\0"
-        "HDR Files (*.hdr)\0*.hdr\0";
+        "HDR Files (*.hdr)\0*.hdr\0\0";
     ofn.lpstrFile = fileName;
     ofn.nMaxFile = max_path;
     ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
@@ -184,7 +185,7 @@ std::string SaveFileDialog() {     // todo: modernize with IFileDialog
     ofn.lpstrFilter =
         "All Files\0*.*\0"
         "PNG File (*.png)\0*.png\0"
-        "HDR File (*.hdr)\0*.hdr\0";
+        "HDR File (*.hdr)\0*.hdr\0\0";
     ofn.lpstrFile = fileName;
     ofn.nMaxFile = max_path;
     ofn.lpstrDefExt = "png";
@@ -212,11 +213,13 @@ void HelpTooltip(const char* msg) {
 // For DX12 backend: Callback to modify current sampler
 void ImDrawCallback_ImplDX12_SetSamplerNearest(const ImDrawList* parent_list, const ImDrawCmd* cmd) {
     ImGui_ImplDX12_RenderState* state = (ImGui_ImplDX12_RenderState*)ImGui::GetPlatformIO().Renderer_RenderState;
+    if (!state) return;
     ImGui_ImplDX12_SetupSamplerNearest(state->CommandList);
 }
 
 void ImDrawCallback_ImplDX12_SetSamplerLinear(const ImDrawList* parent_list, const ImDrawCmd* cmd) {
     ImGui_ImplDX12_RenderState* state = (ImGui_ImplDX12_RenderState*)ImGui::GetPlatformIO().Renderer_RenderState;
+    if (!state) return;
     ImGui_ImplDX12_SetupSamplerLinear(state->CommandList);
 }
 
@@ -403,18 +406,18 @@ static void CameraUI(Viewer& viewer) {
         int cameras_N = viewer.get_number_of_cameras();
         auto active_camera = viewer.get_active_camera();
         bool use_camera = active_camera.has_value();
-        bool setings_changed = false;
+        bool settings_changed = false;
         if (cameras_N != 0) {
-            setings_changed = ImGui::Checkbox("Use Camera from Gltf file", &use_camera);
+            settings_changed = ImGui::Checkbox("Use Camera from Gltf file", &use_camera);
         }
         if (use_camera) {
             int new_acive_camera_index = active_camera.has_value() ? static_cast<int>(active_camera.value()) : 0;
             bool camera_changed = ImGui::SliderInt("Active Camera", &new_acive_camera_index, 0, cameras_N - 1, nullptr,
                 ImGuiSliderFlags_ClampOnInput | ImGuiSliderFlags_NoInput);
-            if (camera_changed || setings_changed) {
+            if (camera_changed || settings_changed) {
                 viewer.set_active_camera(static_cast<uint32_t>(new_acive_camera_index));
             }
-        } else if (setings_changed) {
+        } else if (settings_changed) {
             viewer.set_active_camera(std::nullopt);
         }
         if (!use_camera) {
@@ -559,31 +562,31 @@ static void RenderSettingsUI(Viewer& viewer, ConsoleArgs& console_arguments, std
         size_changed |= InputUInt("Width", &console_arguments.windowWidth);
         size_changed |= InputUInt("Height", &console_arguments.windowHeight);
 
-        static bool setings_changed = false;
-        setings_changed |= SliderUInt("samples per pixel", &console_arguments.samplesPerPixel, 1, 128);
+        static bool settings_changed = false;
+        settings_changed |= SliderUInt("samples per pixel", &console_arguments.samplesPerPixel, 1, 128);
         HelpTooltip("For GPU raytracing best to use Iterative Rendering and set Samples per pixel = 1 ");
-        setings_changed |= SliderUInt("max ray bounces", &console_arguments.maxRayBounces, 0, 10);
-        setings_changed |= SliderUInt("max new rays per bounce", &console_arguments.maxNewRaysPerBounce, 0, 32);
+        settings_changed |= SliderUInt("max ray bounces", &console_arguments.maxRayBounces, 0, 10);
+        settings_changed |= SliderUInt("max new rays per bounce", &console_arguments.maxNewRaysPerBounce, 0, 32);
         HelpTooltip("For AmbientOcclusion mode only, set >= 1");
         if (!viewer.is_using_gpu_renderer()) {
-            setings_changed |= SliderUInt("max triangles per BVH leaf", &console_arguments.maxTrianglesPerBVHLeaf, 1, 32);
+            settings_changed |= SliderUInt("max triangles per BVH leaf", &console_arguments.maxTrianglesPerBVHLeaf, 1, 32);
         }
-        setings_changed |= ImGui::DragInt("environment rotation", &console_arguments.envmapRotation, 1.0f, 0, 360);
+        settings_changed |= ImGui::DragInt("environment rotation", &console_arguments.envmapRotation, 1.0f, 0, 360);
         HelpTooltip("environment rotation in degrees around UP axis.");
-        setings_changed |= imgui_combo(
+        settings_changed |= imgui_combo(
             "Ray Program Mode:", std::array{"RayCaster", "AmbientOcclusion", "PBR"}, console_arguments.programMode);
         if (!viewer.is_using_gpu_renderer()) {
-            setings_changed |=
+            settings_changed |=
                 imgui_combo("Acceleration Struct Type:", std::array{"Naive", "BVH"}, console_arguments.accelStructType);
         }
 
-        if (setings_changed || size_changed) {
+        if (settings_changed || size_changed) {
             ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.0f, 0.6f, 0.6f));
             if (ImGui::Button("Update render settings")) {
-                if (setings_changed) {
+                if (settings_changed) {
                     auto new_render_settings = RenderSettings{console_arguments};
                     viewer.set_render_settings(new_render_settings);
-                    setings_changed = false;
+                    settings_changed = false;
                 }
                 if (size_changed) {
                     auto& framebuffer = viewer.get_framebuffer();

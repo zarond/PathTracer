@@ -19,8 +19,8 @@ namespace app {
 struct DXWindow {
     ATOM wndClass = 0;
     HWND hwnd = nullptr;
-    bool close_window;
-    bool is_fullscreen;
+    bool close_window = false;
+    bool is_fullscreen = false;
 
     static LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 

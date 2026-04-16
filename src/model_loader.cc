@@ -17,7 +17,7 @@ using namespace glm;
 
 bool ModelLoader::loadFromFile(std::filesystem::path path) {
     if (!std::filesystem::exists(path)) {
-        std::cout << "Failed to find " << path << '\n';
+        std::cerr << "Failed to find " << path << '\n';
         return false;
     }
 

@@ -1,20 +1,14 @@
-#include <chrono>
-#include <iostream>
-#include <array>
 #include <cassert>
-#include <cmath>
-#include <cstdint>
+#include <chrono>
 #include <filesystem>
-#include <optional>
+#include <iomanip>.
+#include <iostream>
 #include <utility>
 #include <vector>
 
 #ifndef NO_WINDOWS
 #include <thread>
 #include <stop_token>
-#include <atomic>
-#include <mutex>
-#include <glm/ext.hpp>
 #endif
 
 #include "arguments.h"
@@ -39,6 +33,7 @@
 
 int main(int argc, char* argv[]) {
     using namespace app;
+    namespace fs = std::filesystem;
 
     ConsoleArgs console_arguments = parse_args(argc, argv, fs::current_path());
     if (console_arguments.exitImmediately) {
@@ -112,8 +107,6 @@ int main(int argc, char* argv[]) {
     std::stop_source finish_worker_thread_source;
     std::stop_token finish_worker_thread_token = finish_worker_thread_source.get_token();
     auto render_worker_lambda = [&render_lambda, &viewer](std::stop_token stop) {
-        std::mutex mtx_render;
-        std::unique_lock<std::mutex> lock(mtx_render);
         while (!stop.stop_requested()) {
             if (viewer.get_rendering_state() == Renderer::ReadyToStart) {
                 render_lambda();
@@ -121,8 +114,7 @@ int main(int argc, char* argv[]) {
                     continue;
                 }
             }
-            viewer.cv_render.wait(lock, [&stop, &viewer]() 
-                { return stop.stop_requested() || (viewer.get_rendering_state() == Renderer::ReadyToStart); });
+            viewer.wait_for_render_start(stop);
         }
     };
 
@@ -157,7 +149,7 @@ int main(int argc, char* argv[]) {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    io.IniFilename = NULL;
+    io.IniFilename = nullptr;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;   // Enable Gamepad Controls
 

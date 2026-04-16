@@ -5,8 +5,6 @@
 #include <cstring>
 #include <glm/fwd.hpp>
 
-#include "mikktspace.h"
-
 namespace {
 using namespace app;
 
@@ -69,7 +67,7 @@ void TangentSpaceHelper::compute_tangents_no_uv(Mesh& mesh) {
     std::for_each(mesh.vertices.begin(), mesh.vertices.end(), [](auto& vertex) {
         auto diff = (vertex.normal - fvec3{0.0f, 1.0f, 0.0f});
         auto up = (dot(diff, diff) > 1e-4f) ? fvec3{0.0f, 1.0f, 0.0f} : fvec3{0.0f, -1.0f, 0.0f};
-        vertex.tangent = xyz1(cross(vertex.normal, up));
+        vertex.tangent = xyz1(normalize(cross(vertex.normal, up)));
     });
 }
 }  // namespace app

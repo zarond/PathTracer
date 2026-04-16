@@ -35,7 +35,7 @@ struct BBox {
     float surface_area() const noexcept;
 };
 
-BBox object_to_ws_bbox(const Object& obj, const Mesh& mesh);
+BBox object_to_ws_bbox(const Object& obj, const Mesh& mesh) noexcept;
 
 struct DOP {
     DOP() noexcept;
@@ -44,7 +44,7 @@ struct DOP {
     bool is_empty() const noexcept;
     void expand(const fvec3& ws_point) noexcept;
     void expand(const DOP& dop) noexcept;
-    BBox to_bbox();
+    BBox to_bbox() const noexcept;
 
     ray_volume_hit_info ray_volume_intersection(const ray& ray) const noexcept;
     ray_volume_hit_info ray_volume_intersection(const std::array<fvec2, 7>& projections) const noexcept;
@@ -65,7 +65,7 @@ struct DOP {
     };
 };
 
-DOP object_to_ws_dop(const Object& obj, const Mesh& mesh);
+DOP object_to_ws_dop(const Object& obj, const Mesh& mesh) noexcept;
 
 class IAccelerationStructure {
   public:

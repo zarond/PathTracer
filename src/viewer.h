@@ -10,6 +10,8 @@
 #include <memory>
 #include <optional>
 #include <vector>
+#include <mutex>
+#include <stop_token>
 
 #include "cpu_framebuffer.h"
 #include "model_loader.h"
@@ -62,7 +64,6 @@ class Viewer {
     const std::vector<Material>& get_materials_backup() const;
     void set_materials_updated();
 
-    std::condition_variable cv_render;
     std::atomic<bool> continuous_rendering = false;
     std::atomic<bool> iterative_rendering = false;
     void reset_iteration_counter();
@@ -84,11 +85,16 @@ class Viewer {
     RendererMode get_renderer_mode() const;
 #endif
 
+    void wait_for_render_start(std::stop_token stop);
+
   private:
     Model model_;
     CPUTexture<hdr_pixel> environmentTexture_;
     std::vector<Material> materials_backups_;
     bool need_materials_update_ = false;
+    
+    std::mutex mtx_render_;
+    std::condition_variable cv_render_;
 
     size_t lastModelFenceValue = 0;
     size_t lastEnvmapFenceValue = 0;
@@ -121,6 +127,6 @@ class Viewer {
     void set_up_default_camera_transforms();
 };
 
-void save_render_image_timed_action(const Viewer& viewer, const fs::path& image_path);
+void save_render_image_timed_action(const Viewer& viewer, const std::filesystem::path& image_path);
 
 }  // namespace app
