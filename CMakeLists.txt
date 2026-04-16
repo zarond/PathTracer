@@ -137,6 +137,19 @@ set(FASTGLTF_COMPILE_AS_CPP20 True)
 #set(FASTGLTF_USE_CUSTOM_SMALLVECTOR True)
 add_subdirectory(${LIBS_DIR}/fastgltf)
 
+# add ASAN for Debug and Release-with-debug-info builds
+if(CMAKE_BUILD_TYPE MATCHES "Debug|RelWithDebInfo")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${PROJECT_NAME} PRIVATE -fsanitize=address -fno-omit-frame-pointer)
+        target_link_options(${PROJECT_NAME} PRIVATE -fsanitize=address)
+        target_compile_options(fastgltf PRIVATE -fsanitize=address -fno-omit-frame-pointer)
+        target_link_options(fastgltf PRIVATE -fsanitize=address)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+        target_compile_options(${PROJECT_NAME} PRIVATE /fsanitize=address)
+        target_compile_options(fastgltf PRIVATE /fsanitize=address)
+    endif()
+endif()
+
 add_library(mikktspace STATIC 
     ${LIBS_DIR}/MikkTSpace/mikktspace.c
 )

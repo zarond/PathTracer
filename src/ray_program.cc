@@ -242,7 +242,7 @@ fvec3 AOProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_inf
 
     auto jitter_value_x = dist(gen);
     auto jitter_value_y = dist(gen);
-    for (unsigned int i = 0; i < aoSamples; ++i) {
+    for (int i = 0; i < aoSamples; ++i) {
         fvec2 rand = fibonacci2D(i, inv_aoSamples);         // quasi-random sampling
         rand.x = std::fmod(rand.x + jitter_value_x, 1.0f);  // jitter
         rand.y = std::fmod(rand.y + jitter_value_y, 1.0f);  // jitter
@@ -336,7 +336,7 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
     std::uint8_t new_depth = ray_.depth - 1;
 
     std::array<float, 4> random_values;
-    std::generate(random_values.begin(), random_values.end(), [this]() { return dist(gen); });
+    std::generate(random_values.begin(), random_values.end(), []() { return dist(gen); });
 
     const bool sample_diffuse = (diffuse_color * (1.0f - transmission) != fvec3(0.0f));
     if (sample_diffuse) {  // diffuse

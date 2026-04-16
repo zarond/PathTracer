@@ -489,8 +489,6 @@ std::vector<hdr_pixel> CPUFrameBuffer::download_from_gpu() const {
     void* mappedData = nullptr;
     readbackBuffer->Map(0, nullptr, &mappedData);
 
-    uint8_t* srcData = reinterpret_cast<uint8_t*>(mappedData);
-
     for (int y = 0; y < height_; y++)
         memcpy(
             readback_data.data() + y * width_,

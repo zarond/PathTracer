@@ -6,7 +6,7 @@ namespace {
 
 using namespace app;
 // Create SRV description for a buffer.
-D3D12_SHADER_RESOURCE_VIEW_DESC CreatSRVDescription(UINT numElements, UINT elementSize) {
+D3D12_SHADER_RESOURCE_VIEW_DESC CreateSRVDescription(UINT numElements, UINT elementSize) {
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -28,7 +28,7 @@ void CreateBufferSRV(
     GPU_model::D3D_Handle_Pair& handles) 
 {
     d3d_ctx.g_pd3dSrvDescHeapAlloc.Alloc(&handles.cpuDescriptorHandle, &handles.gpuDescriptorHandle);
-    const auto srvDesc = CreatSRVDescription(numElements, elementSize);
+    const auto srvDesc = CreateSRVDescription(numElements, elementSize);
     d3d_ctx.g_pd3dDevice->CreateShaderResourceView(buffer.Get(), &srvDesc, handles.cpuDescriptorHandle);
 }
 

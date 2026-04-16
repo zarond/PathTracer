@@ -98,9 +98,9 @@ class NaiveAS : public IAccelerationStructure {
     explicit NaiveAS(const Model& model);
     virtual ~NaiveAS() override = default;
 
-    ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const noexcept;
+    ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const noexcept override;
 
-    BBox get_scene_bounds() const noexcept;
+    BBox get_scene_bounds() const noexcept override;
 
   private:
     struct MeshData {
@@ -121,9 +121,9 @@ class BVH_AS : public IAccelerationStructure {
     explicit BVH_AS(const Model& model, int max_triangles_per_leaf);
     virtual ~BVH_AS() override = default;
 
-    ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const noexcept;
+    ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const noexcept override;
 
-    BBox get_scene_bounds() const noexcept;
+    BBox get_scene_bounds() const noexcept override;
 
   private:
     struct MeshBVHNode {

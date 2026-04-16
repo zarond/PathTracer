@@ -1,6 +1,6 @@
+#define NOMINMAX
 #include "GPU_renderer.h"
 
-#define NOMINMAX
 #include <cassert>
 #include <chrono>
 #include <cmath>
@@ -74,7 +74,7 @@ void GPURenderer::reload_acceleration_structure() {
 }
 
 void GPURenderer::reload_materials() {
-    if (modelRef == nullptr) return;
+    if (modelRef == nullptr || gpu_model_ == nullptr) return;
     D3DContext& d3d_ctx = D3DContext::Get();
     gpu_model_->update_materials_array_buffer(*modelRef);
 }
