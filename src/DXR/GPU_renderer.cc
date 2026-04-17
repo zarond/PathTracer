@@ -158,16 +158,16 @@ BBox GPURenderer::get_scene_bound() const {
 float GPURenderer::get_progress() const { return progress_; }
 
 void GPURenderer::cancel_rendering() {
-    if (render_state_ == Rendering) {
-        render_state_ = Cancelling;
+    if (render_state_ == RenderingState::Rendering) {
+        render_state_ = RenderingState::Cancelling;
     }
 }
 
-GPURenderer::RenderingState GPURenderer::get_rendering_state() const { return render_state_; }
+RenderingState GPURenderer::get_rendering_state() const { return render_state_; }
 
 void GPURenderer::set_render_starting_state() {
-    if (render_state_ == Idle) {
-        render_state_ = ReadyToStart;
+    if (render_state_ == RenderingState::Idle) {
+        render_state_ = RenderingState::ReadyToStart;
     }
 }
 

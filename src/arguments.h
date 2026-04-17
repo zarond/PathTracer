@@ -10,14 +10,14 @@ enum class RayProgramMode {
     AmbientOcclusion,
     PBR,
 
-    kNum
+    Count
 };
 
 enum class AccelerationStructureType {
     Naive,
     BVH,
 
-    kNum
+    Count
 };
 
 enum class DefaultEnvironment { Black, White };

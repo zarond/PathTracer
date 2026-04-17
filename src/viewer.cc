@@ -23,10 +23,10 @@ Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture, const 
     }
     framebuffer_ = CPUFrameBuffer(windowDimensions_.x, windowDimensions_.y);
 
-    renderers_.resize(RendererMode::kNum);
-    renderers_[RendererMode::kCPURenderer] = std::make_shared<Renderer>();
-    renderer_ = renderers_[RendererMode::kCPURenderer];  // chose CPU renderer by default
-    activeRendererMode_ = RendererMode::kCPURenderer;
+    renderers_.resize((int)RendererMode::Count);
+    renderers_[(int)RendererMode::CPURenderer] = std::make_shared<Renderer>();
+    renderer_ = renderers_[(int)RendererMode::CPURenderer];  // chose CPU renderer by default
+    activeRendererMode_ = RendererMode::CPURenderer;
 
     ++lastModelFenceValue;
     ++lastEnvmapFenceValue;
@@ -40,30 +40,30 @@ Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture, const 
 
 #ifndef NO_WINDOWS
 void Viewer::InitGPURenderer() {
-    if (renderers_[RendererMode::kGPURenderer]) {
+    if (renderers_[(int)RendererMode::GPURenderer]) {
         return;
     }
     D3DContext& d3d_ctx = D3DContext::Get();
     if (d3d_ctx.hardware_ray_tracing_support) {
-        renderers_[RendererMode::kGPURenderer] = std::make_shared<GPURenderer>();
+        renderers_[(int)RendererMode::GPURenderer] = std::make_shared<GPURenderer>();
     }
 }
 
 void Viewer::switch_to_renderer(RendererMode mode) {
-    if (mode < 0 || mode >= RendererMode::kNum) {
+    if ((int)mode < 0 || mode >= RendererMode::Count) {
         throw std::runtime_error("Invalid Renderer Mode.");
     }
-    if (!renderers_[mode]) {
+    if (!renderers_[(int)mode]) {
         throw std::runtime_error("Renderer not initialized. Try calling InitGPURenderer() first.");
     }
-    if (renderer_->get_rendering_state() == Renderer::RenderingState::Rendering) {
+    if (renderer_->get_rendering_state() == RenderingState::Rendering) {
         throw std::runtime_error("Cannot switch renderer while rendering is in progress");
     }
     if (activeRendererMode_ == mode) {
         return;
     }
     auto settings = get_render_settings();
-    renderer_ = renderers_[mode];
+    renderer_ = renderers_[(int)mode];
     renderer_->set_render_settings(settings);
     renderer_->load_scene(model_, environmentTexture_, lastModelFenceValue, lastEnvmapFenceValue);
     snap_to_camera(false);
@@ -108,7 +108,7 @@ void Viewer::cancel_rendering() {
     cv_render_.notify_one();
 }
 
-Renderer::RenderingState Viewer::get_rendering_state() const { return renderer_->get_rendering_state(); }
+RenderingState Viewer::get_rendering_state() const { return renderer_->get_rendering_state(); }
 
 void Viewer::async_start_render() { 
     renderer_->set_render_starting_state();
@@ -233,11 +233,12 @@ fvec3 Viewer::get_euler_angles_camera() const {
     return euler;
 }
 
-bool Viewer::is_using_gpu_renderer() const { return (activeRendererMode_ == RendererMode::kGPURenderer); }
+bool Viewer::is_using_gpu_renderer() const { return (activeRendererMode_ == RendererMode::GPURenderer); }
 
 void Viewer::wait_for_render_start(std::stop_token stop) {
     std::unique_lock<std::mutex> lock(mtx_render_);
-    cv_render_.wait(lock, [&]() { return stop.stop_requested() || (get_rendering_state() == Renderer::ReadyToStart); });
+    cv_render_.wait(
+        lock, [&]() { return stop.stop_requested() || (get_rendering_state() == RenderingState::ReadyToStart); });
 }
 
 void save_render_image_timed_action(const Viewer& viewer, const std::filesystem::path& image_path) {

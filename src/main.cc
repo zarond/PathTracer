@@ -108,7 +108,7 @@ int main(int argc, char* argv[]) {
     std::stop_token finish_worker_thread_token = finish_worker_thread_source.get_token();
     auto render_worker_lambda = [&render_lambda, &viewer](std::stop_token stop) {
         while (!stop.stop_requested()) {
-            if (viewer.get_rendering_state() == Renderer::ReadyToStart) {
+            if (viewer.get_rendering_state() == RenderingState::ReadyToStart) {
                 render_lambda();
                 if (viewer.continuous_rendering) {
                     continue;

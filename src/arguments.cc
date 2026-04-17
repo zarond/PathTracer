@@ -14,12 +14,11 @@ std::string_view no_arguments_message =
 
 template <typename T>
 T int_to_enum(int v) {
-    if (v < 0 || v >= static_cast<int>(T::kNum)) return static_cast<T>(0);
+    if (v < 0 || v >= static_cast<int>(T::Count)) return static_cast<T>(0);
     return static_cast<T>(v);
 }
 
 }  // namespace
-// namespace
 
 namespace app {
 

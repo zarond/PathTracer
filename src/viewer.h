@@ -39,7 +39,7 @@ class Viewer {
     void render();
     void async_start_render();
     void cancel_rendering();
-    Renderer::RenderingState get_rendering_state() const;
+    RenderingState get_rendering_state() const;
 
     void clear_framebuffer_black();
 

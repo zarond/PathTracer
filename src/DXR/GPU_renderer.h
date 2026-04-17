@@ -26,8 +26,6 @@ class GPURenderer : public IRenderer {
     GPURenderer(const GPURenderer&) = delete;
     GPURenderer& operator=(const GPURenderer&) = delete;
 
-    using IRenderer::RenderingState;
-
     void update_camera_transform_state(
         fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams);
 
@@ -62,7 +60,7 @@ class GPURenderer : public IRenderer {
     fvec3 origin_ = fvec3{0.0f};
 
     float progress_ = 0.0f;
-    std::atomic<RenderingState> render_state_ = Idle;
+    std::atomic<RenderingState> render_state_ = RenderingState::Idle;
 
   private:
     GPU_pipeline pipeline_;

@@ -214,16 +214,16 @@ BBox Renderer::get_scene_bound() const {
 float Renderer::get_progress() const { return progress_; }
 
 void Renderer::cancel_rendering() {
-    if (render_state_ == Rendering) {
-        render_state_ = Cancelling;
+    if (render_state_ == RenderingState::Rendering) {
+        render_state_ = RenderingState::Cancelling;
     }
 }
 
-Renderer::RenderingState Renderer::get_rendering_state() const { return render_state_; }
+RenderingState Renderer::get_rendering_state() const { return render_state_; }
 
 void Renderer::set_render_starting_state() {
-    if (render_state_ == Idle) {
-        render_state_ = ReadyToStart; 
+    if (render_state_ == RenderingState::Idle) {
+        render_state_ = RenderingState::ReadyToStart; 
     }
 }
 

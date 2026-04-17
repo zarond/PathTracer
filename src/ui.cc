@@ -366,11 +366,11 @@ static void RenderingProgressUI(Viewer& viewer) {
     ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
     ImGui::Text("Render progress %.1f percent.", 100.f * progress);
     ImGui::ProgressBar(progress);
-    if (rendering_state == Renderer::RenderingState::Idle) {
+    if (rendering_state == RenderingState::Idle) {
         if (ImGui::Button("Render")) {
             viewer.async_start_render();
         }
-    } else if (rendering_state == Renderer::RenderingState::Rendering) {
+    } else if (rendering_state == RenderingState::Rendering) {
         if (ImGui::Button("Stop Rendering")) {
             viewer.cancel_rendering();
         }
@@ -623,7 +623,7 @@ void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector
         ImGui::TreePop();
     }
     ImGui::Separator();
-    if (viewer.get_rendering_state() == Renderer::RenderingState::Idle) {
+    if (viewer.get_rendering_state() == RenderingState::Idle) {
         RenderSettingsUI(viewer, console_arguments, deferredDeletes, hardware_raytracing_support);
     } else {
         ImGui::Text("Stop rendering process to access rendering options");

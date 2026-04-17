@@ -36,23 +36,25 @@ struct SamplesAccumulator {
     T get_stddev(T variance) const { return sqrt(variance); }
 };
 
-enum RendererMode : int {
-    kCPURenderer,
-    kGPURenderer,
+enum class RendererMode : int {
+    CPURenderer = 0,
+    GPURenderer = 1,
 
-    kNum
+    Count = 2,
+};
+
+enum class RenderingState { 
+    Idle, 
+    ReadyToStart,
+    Rendering, 
+    Cancelling,
+
+    Count,
 };
 
 class IRenderer {
   public:
     virtual ~IRenderer() = default;
-
-    enum RenderingState { 
-        Idle, 
-        ReadyToStart,
-        Rendering, 
-        Cancelling
-    };
 
     virtual void update_camera_transform_state(
         fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams) = 0;
@@ -82,8 +84,6 @@ class Renderer : public IRenderer {
     ~Renderer() = default;
     Renderer(const Renderer&) = delete;
     Renderer& operator=(const Renderer&) = delete;
-
-    using IRenderer::RenderingState;
 
     void update_camera_transform_state(
         fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams);
@@ -119,7 +119,7 @@ class Renderer : public IRenderer {
     fvec3 origin_ = fvec3{0.0f};
 
     float progress_ = 0.0f;
-    std::atomic<RenderingState> render_state_ = Idle;
+    std::atomic<RenderingState> render_state_ = RenderingState::Idle;
 
   private:
     ray_with_payload generate_camera_ray(

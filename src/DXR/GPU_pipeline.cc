@@ -9,7 +9,7 @@
 
 
 namespace GlobalRootSignatureParams {
-    enum Value { 
+    enum Value : int { 
         OutputViewSlot = 0,
         AccelerationStructureSlot, 
         SceneConstantSlot,
@@ -18,13 +18,15 @@ namespace GlobalRootSignatureParams {
         IndicesOffsetBufferSlot,
         MaterialsBufferSlot,
         EnvmapTex,
+        
         Count 
     };
 }
 
 namespace LocalRootSignatureParams {
-    enum Value {
+    enum Value : int {
         ViewportConstantSlot = 0,
+        
         Count 
     };
 }
