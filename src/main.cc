@@ -1,7 +1,7 @@
 #include <cassert>
 #include <chrono>
 #include <filesystem>
-#include <iomanip>.
+#include <iomanip>
 #include <iostream>
 #include <utility>
 #include <vector>

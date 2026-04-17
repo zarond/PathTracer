@@ -144,7 +144,7 @@ void CPUFrameBuffer::save_to_file(const std::filesystem::path& filePath, bool fr
     if (from_GPU_texture) {
         gpu_data = download_from_gpu();
         if (gpu_data.empty()) {
-            std::cout << "Failed to download data from GPU for saving." << std::endl;
+            std::cout << "Failed to download data from GPU for saving.\n";
             return;
         }
         data_source = gpu_data;

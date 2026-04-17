@@ -195,7 +195,7 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
     hardware_ray_tracing_support = CheckRaytracingSupport();
 
     if (!hardware_ray_tracing_support) {
-        std::cout << "WARNING: GPU does not support raytracing, DXR rendering mode is not available." << std::endl;
+        std::cout << "WARNING: GPU does not support raytracing, DXR rendering mode is not available.\n";
     }
 
     CreateRenderTarget();

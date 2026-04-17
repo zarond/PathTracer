@@ -154,11 +154,11 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         if (program.is_used("-h")) {
             args.exitImmediately = true;
         } else if (args.modelPath == "") {
-            std::cout << no_arguments_message << std::endl;
+            std::cout << no_arguments_message << "\n";
             args.exitImmediately = true;
         }
     } else if (args.modelPath == "") {
-        std::cout << no_arguments_message << std::endl;
+        std::cout << no_arguments_message << "\n";
     }
 
     return args;

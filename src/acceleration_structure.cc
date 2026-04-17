@@ -571,7 +571,7 @@ void BVH_AS::MeshBVHData::collect_tree_info() const noexcept {
               << "\n"
               << " Total leaves: " << info.total_leaves << "\n"
               << " Total tris: " << data_storage.size() << "\n";
-    std::cout << std::endl;
+    std::cout << "\n";
 }
 
 BBox BVH_AS::MeshBVHNode::triangles_to_bbox(const std::span<MeshBVHNode::triangle> tris) noexcept {

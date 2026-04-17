@@ -96,8 +96,8 @@ class GPU_texture {
     void upload_texture_to_gpu(int width_, int height_, const auto& data_, size_t sizeofpixel, DXGI_FORMAT format);
 
     ComPtr<ID3D12Resource> pTexture;
-    D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu_handle;
-    D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle;
+    D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu_handle{};
+    D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle{};
     // ComPtr<ID3D12Resource> uploadBuffer;
     void release_gpu_resource();
 };
@@ -118,15 +118,15 @@ class GPU_model {
     D3D12_GPU_VIRTUAL_ADDRESS GetGPUVirtualAddress() const;
 
     struct D3D_Handle_Pair {
-        D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle;
-        D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle;
+        D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle{};
+        D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle{};
     };
 
-    D3D_Handle_Pair combined_mesh_indices;
-    D3D_Handle_Pair combined_mesh_vertices;
-    D3D_Handle_Pair combined_mesh_offsets;
+    D3D_Handle_Pair combined_mesh_indices{};
+    D3D_Handle_Pair combined_mesh_vertices{};
+    D3D_Handle_Pair combined_mesh_offsets{};
 
-    D3D_Handle_Pair materials_array;
+    D3D_Handle_Pair materials_array{};
 
     std::vector<GPU_texture> textures;
 
@@ -139,7 +139,7 @@ class GPU_model {
 
     std::vector<int> texture_id_conversion_table;
     GPU_texture default_white_texture = GPU_texture(CPUTexture<sdr_pixel>::create_white_texture(), false);
-    int default_white_texture_index;
+    int default_white_texture_index = 0;
 
     void create_top_level_AS(const Model& cpu_model);
 

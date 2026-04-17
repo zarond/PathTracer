@@ -73,7 +73,7 @@ struct Model {
 
 class ModelLoader {
   public:
-    bool loadFromFile(std::filesystem::path path);
+    bool loadFromFile(const std::filesystem::path& path);
     Model constructModel() const;
 
   private:

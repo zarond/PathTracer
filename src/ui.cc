@@ -514,13 +514,13 @@ static void RenderSettingsUI(Viewer& viewer, ConsoleArgs& console_arguments, std
         fs::path filepath = OpenFileDialog();
         std::cout << "Selected file: " << filepath << '\n';
         if (filepath.extension() == ".hdr") {
-            std::cout << "Loading new environment map file " << std::endl;
+            std::cout << "Loading new environment map file \n";
             CPUTexture<hdr_pixel> new_environment_texture = CPUTexture<hdr_pixel>(filepath);
             viewer.load_envmap(std::move(new_environment_texture));
             console_arguments.useDefaultEnv = false;
             console_arguments.environmentPath = filepath;
         } else if (filepath.extension() == ".gltf" || filepath.extension() == ".glb") {
-            std::cout << "Loading Gltf model file " << std::endl;
+            std::cout << "Loading Gltf model file \n";
             ModelLoader loader{};
             bool success = loader.loadFromFile(filepath);
             if (success) {
@@ -532,9 +532,9 @@ static void RenderSettingsUI(Viewer& viewer, ConsoleArgs& console_arguments, std
                 std::cout << "Failed to load model from " << filepath << '\n';
             }
         } else if (filepath.empty()) {
-            std::cout << "No file selected." << std::endl;
+            std::cout << "No file selected.\n";
         } else {
-            std::cout << "Unsupported file format: " << filepath.extension() << std::endl;
+            std::cout << "Unsupported file format: " << filepath.extension() << "\n";
         }
     }
     bool use_def_envmap_check_changed = ImGui::Checkbox("Use default Envmap", &console_arguments.useDefaultEnv);

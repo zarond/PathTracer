@@ -15,13 +15,13 @@ namespace app {
 
 using namespace glm;
 
-bool ModelLoader::loadFromFile(std::filesystem::path path) {
+bool ModelLoader::loadFromFile(const std::filesystem::path& path) {
     if (!std::filesystem::exists(path)) {
         std::cerr << "Failed to find " << path << '\n';
         return false;
     }
 
-    static constexpr auto supportedExtensions =
+    constexpr auto supportedExtensions =
         fastgltf::Extensions::KHR_lights_punctual | 
         fastgltf::Extensions::KHR_materials_specular |
         fastgltf::Extensions::KHR_materials_ior | 

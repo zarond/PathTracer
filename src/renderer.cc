@@ -154,7 +154,7 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, bool i
                 }
                 SamplesAccumulator<fvec3> final_color;
 
-                for (unsigned int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
+                for (int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
                     fvec3 sample_col{};
 
                     rays.push_back(generate_camera_ray(x, y, inv_width, inv_height, i, jitter));
@@ -244,7 +244,7 @@ void Renderer::generate_subsample_positions() {
     } else {
         // samplesperpixel is not a perfect square
         float inv_samples = 1.0f / static_cast<float>(renderSettings_.samplesPerPixel);
-        for (unsigned int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
+        for (int i = 0; i < renderSettings_.samplesPerPixel; ++i) {
             subsamplesPositions[i] = fibonacci2D(i, inv_samples);
         }
     }
