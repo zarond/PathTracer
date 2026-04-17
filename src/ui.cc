@@ -168,7 +168,7 @@ std::string OpenFileDialog() {     // todo: modernize with IFileDialog
         "HDR Files (*.hdr)\0*.hdr\0\0";
     ofn.lpstrFile = fileName;
     ofn.nMaxFile = max_path;
-    ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST;
+    ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
 
     if (GetOpenFileNameA(&ofn)) return fileName;
 
@@ -189,7 +189,7 @@ std::string SaveFileDialog() {     // todo: modernize with IFileDialog
     ofn.lpstrFile = fileName;
     ofn.nMaxFile = max_path;
     ofn.lpstrDefExt = "png";
-    ofn.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT;
+    ofn.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT | OFN_NOCHANGEDIR;
 
     if (GetSaveFileNameA(&ofn)) return fileName;
 

@@ -9,6 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 # application
 option(NO_WINDOWS "remove Windows specific dependencies, that leaves CPU mode only and no GUI" OFF)
+option(ASAN "Turn On Address Sanitizer" OFF)
 
 set(LIBS_DIR libs)
 
@@ -137,8 +138,8 @@ set(FASTGLTF_COMPILE_AS_CPP20 True)
 #set(FASTGLTF_USE_CUSTOM_SMALLVECTOR True)
 add_subdirectory(${LIBS_DIR}/fastgltf)
 
-# add ASAN for Debug and Release-with-debug-info builds
-if(CMAKE_BUILD_TYPE MATCHES "Debug|RelWithDebInfo")
+# add ASAN for builds if ASAN option is enabled
+if(ASAN)
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(${PROJECT_NAME} PRIVATE -fsanitize=address -fno-omit-frame-pointer)
         target_link_options(${PROJECT_NAME} PRIVATE -fsanitize=address)
