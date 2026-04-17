@@ -23,10 +23,8 @@ D3D12_SHADER_RESOURCE_VIEW_DESC CreateSRVDescription(UINT numElements, UINT elem
     return srvDesc;
 }
 
-void CreateBufferSRV(
-    D3DContext& d3d_ctx, const ComPtr<ID3D12Resource>& buffer, UINT numElements, UINT elementSize, 
-    GPU_model::D3D_Handle_Pair& handles) 
-{
+void CreateBufferSRV(D3DContext& d3d_ctx, const ComPtr<ID3D12Resource>& buffer, UINT numElements, UINT elementSize,
+    GPU_model::D3D_Handle_Pair& handles) {
     d3d_ctx.g_pd3dSrvDescHeapAlloc.Alloc(&handles.cpuDescriptorHandle, &handles.gpuDescriptorHandle);
     const auto srvDesc = CreateSRVDescription(numElements, elementSize);
     d3d_ctx.g_pd3dDevice->CreateShaderResourceView(buffer.Get(), &srvDesc, handles.cpuDescriptorHandle);
@@ -44,7 +42,7 @@ inline void ThrowIfFailed(HRESULT hr) {
     }
 }
 
-GPU_mesh::GPU_mesh(const Mesh& cpu_mesh, bool positions_only) : positions_only_(positions_only) { 
+GPU_mesh::GPU_mesh(const Mesh& cpu_mesh, bool positions_only) : positions_only_(positions_only) {
     D3DContext& d3d_ctx = D3DContext::Get();
 
     d3d_ctx.InitCopyCommandList();
@@ -195,13 +193,12 @@ void GPU_mesh::transition_from_copy_to_usage() {
     d3d_ctx.g_pd3dCommandList->ResourceBarrier(_countof(barriers), barriers);
 }
 
-D3D12_GPU_VIRTUAL_ADDRESS GPU_mesh::get_blas_gpu_va() const 
-{ return blasBuffer ? blasBuffer->GetGPUVirtualAddress() : 0; }
+D3D12_GPU_VIRTUAL_ADDRESS GPU_mesh::get_blas_gpu_va() const { return blasBuffer ? blasBuffer->GetGPUVirtualAddress() : 0; }
 
 void GPU_mesh::create_bottom_level_AS() {
     D3DContext& d3d_ctx = D3DContext::Get();
 
-    D3D12_RAYTRACING_GEOMETRY_DESC geomDesc = { 
+    D3D12_RAYTRACING_GEOMETRY_DESC geomDesc = {
         .Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES,
         .Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_NONE,
         .Triangles = {}
@@ -307,7 +304,7 @@ void GPU_mesh::release_gpu_resource() {
         d3d_ctx.WaitForPendingOperations();
         d3d_ctx.WaitForPendingCopy();
     }
-    vertexBuffer.Reset(); 
+    vertexBuffer.Reset();
     indexBuffer.Reset();
     scratchBuffer.Reset();
     blasBuffer.Reset();
@@ -315,8 +312,7 @@ void GPU_mesh::release_gpu_resource() {
 
 // GPU_mesh
 
-GPU_Material::GPU_Material(
-    const Material& mat, const std::vector<int>& texture_id_conversion_table, int default_texture) {
+GPU_Material::GPU_Material(const Material& mat, const std::vector<int>& texture_id_conversion_table, int default_texture) {
     int size = texture_id_conversion_table.size();
     const auto lambda = [&texture_id_conversion_table, size, default_texture](int i) { 
         return (i >= 0 && i < size) ? texture_id_conversion_table[i] : default_texture;
@@ -587,7 +583,8 @@ void GPU_model::prepare_combined_vertex_index_buffers(const Model& cpu_model) {
     }
 
     // upload combinedVertices and combinedIndices to GPU buffers (via GPU_mesh constructor)
-    combinedMesh = GPU_mesh(Mesh{.indices = std::move(combinedIndices), .vertices = std::move(combinedVertices), .materialIndex = 0}, false);
+    combinedMesh =
+        GPU_mesh(Mesh{.indices = std::move(combinedIndices), .vertices = std::move(combinedVertices), .materialIndex = 0}, false);
     combinedMesh.transition_from_copy_to_usage();
     // Note: we don't need BLAS for the combined mesh, so we won't call create_bottom_level_AS() on it
 
@@ -642,7 +639,8 @@ void GPU_model::prepare_combined_vertex_index_buffers(const Model& cpu_model) {
     offsets_uploadBuffer->Unmap(0, nullptr);
 
     // Copy call
-    d3d_ctx.g_pd3dCopyCommandList->CopyBufferRegion(MeshIndicesOffsets.Get(), 0, offsets_uploadBuffer.Get(), 0, offsetsBufferSize);
+    d3d_ctx.g_pd3dCopyCommandList->CopyBufferRegion(
+        MeshIndicesOffsets.Get(), 0, offsets_uploadBuffer.Get(), 0, offsetsBufferSize);
 
     d3d_ctx.DispatchCopyCommandList();
     d3d_ctx.WaitForPendingCopy();
@@ -659,7 +657,7 @@ void GPU_model::prepare_materials_array_buffer(const Model& cpu_model) {
 
     // convert from cpu image_id into indices within GPU SRV Heap
     texture_id_conversion_table.reserve(textures.size());
-    std::transform(textures.begin(), textures.end(), std::back_inserter(texture_id_conversion_table), 
+    std::transform(textures.begin(), textures.end(), std::back_inserter(texture_id_conversion_table),
         [&heap_alloc](const auto& el) { return heap_alloc.GetIndex(el.GetSRVHandle()); }
     );
     default_white_texture_index = heap_alloc.GetIndex(default_white_texture.GetSRVHandle());
@@ -691,11 +689,11 @@ void GPU_model::prepare_materials_array_buffer(const Model& cpu_model) {
     ThrowIfFailed(d3d_ctx.g_pd3dDevice->CreateCommittedResource(
         &def_props, D3D12_HEAP_FLAG_NONE, &upload_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&MaterialsArray)));
     CreateBufferSRV(d3d_ctx, MaterialsArray, matCount, sizeof(GPU_Material), materials_array);
-    
+
     update_materials_array_buffer(cpu_model);
 }
 
-void GPU_model::update_materials_array_buffer(const Model& cpu_model) { 
+void GPU_model::update_materials_array_buffer(const Model& cpu_model) {
     // I pack materials differently than in CPU for ease of use in shader.
     // Here, I index material by meshID, that might lead to some redundant data
     // Todo: pack the same as CPU without redundancy
@@ -752,13 +750,11 @@ void GPU_model::update_materials_array_buffer(const Model& cpu_model) {
 
 const std::vector<GPU_mesh>& GPU_model::get_meshes() const { return meshes_; }
 
-D3D12_GPU_VIRTUAL_ADDRESS GPU_model::GetGPUVirtualAddress() const {
-    return tlasBuffer->GetGPUVirtualAddress();
-}
+D3D12_GPU_VIRTUAL_ADDRESS GPU_model::GetGPUVirtualAddress() const { return tlasBuffer->GetGPUVirtualAddress(); }
 
 // GPU_texture
 
-GPU_texture::GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture) : HDR(true) { 
+GPU_texture::GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture) : HDR(true) {
     create_texture_resource(cpu_texture.width(), cpu_texture.height(), DXGI_FORMAT_R32G32B32A32_FLOAT);
     upload_texture_to_gpu(
         cpu_texture.width(), cpu_texture.height(), cpu_texture.data(), sizeof(hdr_pixel), DXGI_FORMAT_R32G32B32A32_FLOAT);
@@ -770,12 +766,10 @@ GPU_texture::GPU_texture(const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_) :
     upload_texture_to_gpu(cpu_texture.width(), cpu_texture.height(), cpu_texture.data(), sizeof(sdr_pixel), format);
 }
 
-GPU_texture::~GPU_texture() { 
-    release_gpu_resource();
-}
+GPU_texture::~GPU_texture() { release_gpu_resource(); }
 
 void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT format) {
-    D3DContext& d3d_ctx = D3DContext::Get(); 
+    D3DContext& d3d_ctx = D3DContext::Get();
     if (pTexture == nullptr) {
         const D3D12_RESOURCE_DESC tex_desc{
             .Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D,

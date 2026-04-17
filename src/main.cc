@@ -7,25 +7,26 @@
 #include <vector>
 
 #ifndef NO_WINDOWS
-#include <thread>
 #include <stop_token>
+#include <thread>
 #endif
 
 #include "arguments.h"
 #include "cpu_framebuffer.h"
 #include "model_loader.h"
-#include "viewer.h"
-#include "renderer.h"
 #include "render_settings.h"
+#include "renderer.h"
+#include "viewer.h"
 
 #ifndef NO_WINDOWS
 #define NOMINMAX
 #include <imgui.h>
-#include "backends/imgui_impl_win32.h"
-#include "backends/imgui_impl_dx12.h"
 
-#include "d3d_debug_layer.h"
+#include "backends/imgui_impl_dx12.h"
+#include "backends/imgui_impl_win32.h"
+
 #include "d3d_context.h"
+#include "d3d_debug_layer.h"
 
 #include "ui.h"
 
@@ -45,7 +46,7 @@ int main(int argc, char* argv[]) {
     {
         ModelLoader loader{};
         bool success = loader.loadFromFile(console_arguments.modelPath);
-        if (success ) {
+        if (success) {
             model = loader.constructModel();
         } else {
             std::cerr << "Failed to load model from " << console_arguments.modelPath << '\n';
@@ -183,7 +184,7 @@ int main(int argc, char* argv[]) {
         start = std::chrono::high_resolution_clock::now();
 
         d3d_ctx.InitDXRCommandList();
-        
+
         viewer.InitGPURenderer();
 
         d3d_ctx.DispatchDXRCommandList();
@@ -242,10 +243,10 @@ int main(int argc, char* argv[]) {
             d3d_ctx.g_mainRenderTargetDescriptor[backBufferIdx], clear_color, 0, nullptr);
 
         d3d_ctx.g_pd3dCommandList->OMSetRenderTargets(1, &d3d_ctx.g_mainRenderTargetDescriptor[backBufferIdx], false, nullptr);
-        
+
         // Render Dear ImGui graphics
         ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), d3d_ctx.g_pd3dCommandList.Get());
-        
+
         // end frame, change resource state
         barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
         barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;

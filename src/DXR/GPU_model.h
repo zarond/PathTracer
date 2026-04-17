@@ -2,9 +2,10 @@
 
 #define NOMINMAX
 #include <d3d12.h>
+#include <wrl.h>
+
 #include <glm/fwd.hpp>
 #include <vector>
-#include <wrl.h>
 
 #include "../cpu_framebuffer.h"
 #include "../model_loader.h"
@@ -35,8 +36,8 @@ class GPU_mesh {
     ComPtr<ID3D12Resource2> indexBuffer;
 
     bool positions_only_ = false;
-        
-private:
+
+  private:
     ComPtr<ID3D12Resource> scratchBuffer;
     ComPtr<ID3D12Resource> blasBuffer;
 
@@ -46,7 +47,7 @@ private:
     void release_gpu_resource();
 };
 
-struct GPU_Material { // enforce packing rules on CPU Material data
+struct GPU_Material {  // enforce packing rules on CPU Material data
     fvec4 baseColorFactor;
     fvec4 emissiveFactor;
     fvec4 attenuationFactor;

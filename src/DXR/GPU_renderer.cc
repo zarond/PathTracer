@@ -1,10 +1,11 @@
 #define NOMINMAX
 #include "GPU_renderer.h"
 
+#include <d3d12.h>
+
 #include <cassert>
 #include <chrono>
 #include <cmath>
-#include <d3d12.h>
 #include <fastgltf/types.hpp>
 #include <glm/ext.hpp>
 #include <glm/glm.hpp>
@@ -115,7 +116,7 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
     pipeline_.m_rayGenCB.invMaxNewRaysPerBounce = 1.0f / renderSettings_.maxNewRaysPerBounce;
     pipeline_.m_rayGenCB.maxRayBounces = renderSettings_.maxRayBounces;
     pipeline_.m_rayGenCB.envmapRotation = renderSettings_.envmapRotation;
-    
+
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
 
@@ -139,7 +140,7 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
     }
 }
 
-void GPURenderer::set_render_settings(const RenderSettings& settings) { 
+void GPURenderer::set_render_settings(const RenderSettings& settings) {
     const auto currentSettings = renderSettings_;
     renderSettings_ = settings;
 

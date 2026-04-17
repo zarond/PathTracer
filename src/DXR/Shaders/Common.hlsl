@@ -2,8 +2,7 @@
 // Note that the payload should be kept as small as possible,
 // and that its size must be declared in the corresponding
 // D3D12_RAYTRACING_SHADER_CONFIG pipeline subobjet.
-struct HitInfo
-{
+struct HitInfo {
     float3 color;
     int depth;
     float3 absorption;
@@ -50,7 +49,7 @@ struct Material {
 
 typedef BuiltInTriangleIntersectionAttributes Attributes;
 
-struct vertex { // I am using float4 because of the memory alignement on the CPU side, I know it's not ideal
+struct vertex {  // I am using float4 because of the memory alignement on the CPU side, I know it's not ideal
     float4 position;
     float4 normal;
     float4 tangent;

@@ -3,6 +3,7 @@
 #define NOMINMAX
 #include <d3d12.h>
 #include <wrl.h>
+
 #include <cstdint>
 #include <glm/fwd.hpp>
 
@@ -13,10 +14,10 @@
 
 namespace app {
 
+using glm::fmat4x4;
 using glm::fvec2;
 using glm::fvec3;
 using glm::fvec4;
-using glm::fmat4x4;
 
 constexpr int PBR_DXR_RECURSION_DEPTH = 11;
 
@@ -53,19 +54,19 @@ class GPU_pipeline {
 
     void CreateRaytracingPipelines();
 
-    void CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil,
-        const wchar_t* c_anyHitShaderName, const wchar_t* c_closestHitShaderName,
-        const wchar_t* c_missShaderName, ComPtr<ID3D12StateObject>& m_dxrStateObject, UINT maxRecursionDepth);
+    void CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const wchar_t* c_anyHitShaderName,
+        const wchar_t* c_closestHitShaderName, const wchar_t* c_missShaderName, ComPtr<ID3D12StateObject>& m_dxrStateObject,
+        UINT maxRecursionDepth);
 
     void BuildAllShaderTables();
 
-    void BuildShaderTables(
-        const wchar_t* c_closestHitShaderName, const wchar_t* c_missShaderName, ComPtr<ID3D12StateObject>& m_dxrStateObject, 
-        ComPtr<ID3D12Resource>& m_missShaderTable, ComPtr<ID3D12Resource>& m_hitGroupShaderTable);
+    void BuildShaderTables(const wchar_t* c_closestHitShaderName, const wchar_t* c_missShaderName,
+        ComPtr<ID3D12StateObject>& m_dxrStateObject, ComPtr<ID3D12Resource>& m_missShaderTable,
+        ComPtr<ID3D12Resource>& m_hitGroupShaderTable);
 
     void CreateConstantBuffers();
 
-    const wchar_t* c_dxilLibraryName = L"RaytracingShaders.dxil"; // DXIL library file name
+    const wchar_t* c_dxilLibraryName = L"RaytracingShaders.dxil";  // DXIL library file name
 
     const wchar_t* c_hitGroupName = L"MyHitGroup";
     const wchar_t* c_raygenShaderName = L"RayGen";
@@ -88,7 +89,7 @@ class GPU_pipeline {
 
     // Shader table for RayGen (common)
     ComPtr<ID3D12Resource> m_rayGenShaderTable;
-    
+
     // Shader tables RC
     ComPtr<ID3D12Resource> m_RC_missShaderTable;
     ComPtr<ID3D12Resource> m_RC_hitGroupShaderTable;
@@ -114,8 +115,8 @@ class GPU_pipeline {
 
     void DoRaytracing(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer);
 
-private:
+  private:
     void release_gpu_resources();
 };
 
-}
+}  // namespace app

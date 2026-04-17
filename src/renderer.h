@@ -43,10 +43,10 @@ enum class RendererMode : int {
     Count = 2,
 };
 
-enum class RenderingState { 
-    Idle, 
+enum class RenderingState {
+    Idle,
     ReadyToStart,
-    Rendering, 
+    Rendering,
     Cancelling,
 
     Count,

@@ -1,12 +1,12 @@
 #include "ray_program.h"
 
 #include <algorithm>
-#include <glm/gtc/constants.hpp>
-#include <tuple>
 #include <array>
 #include <cassert>
 #include <cmath>
 #include <cstdlib>
+#include <glm/gtc/constants.hpp>
+#include <tuple>
 
 #include "brdf.h"
 
@@ -85,8 +85,7 @@ inline std::tuple<vertex, vertex, vertex> get_vertex_data(const Mesh& mesh_data,
     auto p3 = mesh_data.indices[hit.triangleIndex + 2];
     return std::tuple{mesh_data.vertices[p1], mesh_data.vertices[p2], mesh_data.vertices[p3]};
 }
-inline vertex interpolate_vertex_data(
-    const vertex& p1, const vertex& p2, const vertex& p3, const ray_triangle_hit_info& hit) {
+inline vertex interpolate_vertex_data(const vertex& p1, const vertex& p2, const vertex& p3, const ray_triangle_hit_info& hit) {
     auto C = hit.C();
     auto os_position = p1.position * hit.A + p2.position * hit.B + p3.position * C;
     auto os_normal = p1.normal * hit.A + p2.normal * hit.B + p3.normal * C;
@@ -106,8 +105,8 @@ inline fvec3 convert_normals_to_world_space(const Object& object, vertex& point)
     point.normal = xyz(object.NormalMatrix * xyz0(point.normal));
     return cross(point.normal, xyz(point.tangent)) * tangent_sign;
 }
-inline fvec3 get_geometric_normal(const vertex& p1, const vertex& p2, const vertex& p3,
-    const bool double_sided_material = false, const bool backface_hit = false) {
+inline fvec3 get_geometric_normal(const vertex& p1, const vertex& p2, const vertex& p3, const bool double_sided_material = false,
+    const bool backface_hit = false) {
     auto geometric_normal = normalize(cross(p2.position - p1.position, p3.position - p1.position));
     if (double_sided_material && backface_hit) {
         geometric_normal *= -1.0f;
@@ -139,7 +138,8 @@ fmat3x3 handle_TBN_creation(
     fvec3 normal_vector = has_normal_map ? normal_map_sample_to_world(normal_map_color, TBN) : TBN[2];
     const bool impossible_normal_angle = (dot((!exiting_volume) ? v : -v, normal_vector) < 0.0);
     if (impossible_normal_angle) {
-        normal_vector = get_geometric_normal(p1, p2, p3, double_sided_material, backface_hit);  // todo: somehow incorporate normal map into geometric normal?
+        normal_vector = get_geometric_normal(
+            p1, p2, p3, double_sided_material, backface_hit);  // todo: somehow incorporate normal map into geometric normal?
         normal_vector = xyz(object.NormalMatrix * xyz0(normal_vector));
     }
     if (has_normal_map || impossible_normal_angle) {
@@ -297,8 +297,8 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
     }
     if (alpha != 1.0f) {
         ray_with_payload new_ray = ray_;
-        new_ray.origin = point.position +
-                         (exiting_volume ? 1.0f : -1.0f) * point.normal * kEpsilon5;  // offset to avoid self-intersection
+        new_ray.origin =
+            point.position + (exiting_volume ? 1.0f : -1.0f) * point.normal * kEpsilon5;  // offset to avoid self-intersection
         new_ray.payload *= (1.0f - alpha);
         ray_collection.push_back(new_ray);
     }
@@ -396,11 +396,10 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
             float VdH = clamp(dot((!exiting_volume) ? v : -v, h), 0.0f, 1.0f);
 
             auto brdf = (fvec3(1.0f) - F) * (G * VdH * LdN / NdM);
-            brdf = min(brdf, fvec3(kMaxBRDF));                           // clamp to avoid fireflies
+            brdf = min(brdf, fvec3(kMaxBRDF));                               // clamp to avoid fireflies
             auto new_pos = point.position - new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
             auto new_payload = diffuse_color * transmission * attenuation * brdf * ray_.payload * alpha;
-            ray_with_payload new_ray{
-                {new_pos, normalize(l)}, new_payload, new_depth, false};  // normalizing for better accuracy
+            ray_with_payload new_ray{{new_pos, normalize(l)}, new_payload, new_depth, false};  // normalizing for better accuracy
             ray_collection.push_back(new_ray);
         }
         {  // specular reflection
@@ -415,7 +414,7 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
             auto G = V_SmithGGXCorrelated(VdN, LdN, linear_roughness);
             // auto G = V_Schlick(LdN, VdN, roughness);
             auto brdf = F * (G * LdN * LdH / NdH);
-            brdf = min(brdf, fvec3(kMaxBRDF));                           // clamp to avoid fireflies
+            brdf = min(brdf, fvec3(kMaxBRDF));                               // clamp to avoid fireflies
             auto new_pos = point.position + new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
             auto new_payload = attenuation * brdf * ray_.payload * alpha;
             ray_with_payload new_ray{{new_pos, l}, new_payload, new_depth, false};

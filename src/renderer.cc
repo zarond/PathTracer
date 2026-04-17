@@ -95,7 +95,8 @@ void Renderer::reload_acceleration_structure() {
 
 void Renderer::reload_materials() {}
 
-ray_with_payload Renderer::generate_camera_ray(int x, int y, float inv_width, float inv_height, int sampleIndex, fvec2 jitter) const noexcept {
+ray_with_payload Renderer::generate_camera_ray(
+    int x, int y, float inv_width, float inv_height, int sampleIndex, fvec2 jitter) const noexcept {
     fvec2 pixel_coords = fvec2{static_cast<float>(x), static_cast<float>(y)} + subsamplesPositions[sampleIndex] + jitter;
     auto ndc_coords = ndc_from_pixel(pixel_coords.x, pixel_coords.y, inv_width, inv_height);
     auto world_coords = NDC2WorldMatrix_ * ndc_coords;
@@ -189,7 +190,7 @@ void Renderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, bool i
     }
 }
 
-void Renderer::set_render_settings(const RenderSettings& settings) { 
+void Renderer::set_render_settings(const RenderSettings& settings) {
     const auto currentSettings = renderSettings_;
     renderSettings_ = settings;
 
@@ -223,7 +224,7 @@ RenderingState Renderer::get_rendering_state() const { return render_state_; }
 
 void Renderer::set_render_starting_state() {
     if (render_state_ == RenderingState::Idle) {
-        render_state_ = RenderingState::ReadyToStart; 
+        render_state_ = RenderingState::ReadyToStart;
     }
 }
 

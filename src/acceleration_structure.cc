@@ -278,9 +278,9 @@ ray_triangle_hit_info NaiveAS::intersect_ray(const ray& ray, bool any_hit) const
         if (potential_obj_hit.hit_info.forward_hit() && potential_obj_hit.hit_info.forward_hit_distance() < hit.t) {
             // Perform detailed intersection test with the mesh
             const auto& obj = object_data_[potential_obj_hit.object_index];
-            ray_triangle_hit_info potential_mesh_hit = (any_hit)? 
-                mesh_ray_intersection<true>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_[obj.meshIndex])
-              : mesh_ray_intersection<false>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_[obj.meshIndex]);
+            ray_triangle_hit_info potential_mesh_hit =
+                (any_hit) ? mesh_ray_intersection<true>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_[obj.meshIndex])
+                          : mesh_ray_intersection<false>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_[obj.meshIndex]);
             if (potential_mesh_hit.forward_hit() && (potential_mesh_hit.t < hit.t)) {
                 hit = potential_mesh_hit;
                 hit.objectIndex = obj.objectIndex;
@@ -513,8 +513,8 @@ std::span<BVH_AS::MeshBVHNode::triangle>::iterator BVH_AS::MeshBVHData::split_tr
         best_center = bbox.min[best_axis] + 0.5f * bbox_dim[best_axis];
     }
 
-    auto central_it = std::partition(
-        triangles_span.begin(), triangles_span.end(), [best_center, best_axis](const MeshBVHNode::triangle& tri) {
+    auto central_it =
+        std::partition(triangles_span.begin(), triangles_span.end(), [best_center, best_axis](const MeshBVHNode::triangle& tri) {
             float centroid = (tri.p1[best_axis] + tri.p2[best_axis] + tri.p3[best_axis]) / 3.0f;
             return centroid < best_center;
         });
@@ -567,8 +567,8 @@ void BVH_AS::MeshBVHData::collect_tree_info() const noexcept {
     float mean_tris = static_cast<float>(info.mean_tris_in_leaf) / info.total_leaves;
     std::cout << "Mesh BVH info: \n"
               << " Depth: min=" << info.min_depth << ", max=" << info.max_depth << ", mean=" << mean_depth << "\n"
-              << " Tris per leaf: min=" << info.min_tris_in_leaf << ", max=" << info.max_tris_in_leaf
-              << ", mean=" << mean_tris << "\n"
+              << " Tris per leaf: min=" << info.min_tris_in_leaf << ", max=" << info.max_tris_in_leaf << ", mean=" << mean_tris
+              << "\n"
               << " Total leaves: " << info.total_leaves << "\n"
               << " Total tris: " << data_storage.size() << "\n";
     std::cout << std::endl;
@@ -615,9 +615,9 @@ ray_triangle_hit_info BVH_AS::intersect_ray(const ray& ray, bool any_hit) const 
         if (potential_obj_hit.hit_info.forward_hit() && potential_obj_hit.hit_info.forward_hit_distance() < hit.t) {
             // Perform detailed intersection test with the mesh
             const auto& obj = object_data_[potential_obj_hit.object_index];
-            ray_triangle_hit_info potential_mesh_hit = (any_hit) ? 
-                mesh_ray_intersection<true>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_bvh_data_[obj.meshIndex])
-              : mesh_ray_intersection<false>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_bvh_data_[obj.meshIndex]);
+            ray_triangle_hit_info potential_mesh_hit =
+                (any_hit) ? mesh_ray_intersection<true>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_bvh_data_[obj.meshIndex])
+                          : mesh_ray_intersection<false>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_bvh_data_[obj.meshIndex]);
             if (potential_mesh_hit.forward_hit() && (potential_mesh_hit.t < hit.t)) {
                 hit = potential_mesh_hit;
                 hit.objectIndex = obj.objectIndex;

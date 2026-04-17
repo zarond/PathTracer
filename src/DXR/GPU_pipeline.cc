@@ -1,42 +1,41 @@
 #include "GPU_pipeline.h"
 
 #include <d3dcompiler.h>
+
 #include <iostream>
 
 #include "../d3d_context.h"
 #include "helpers/DXSampleHelper.h"
 #include "helpers/DirectXRaytracingHelper.h"
 
-
 namespace GlobalRootSignatureParams {
-    enum Value : int { 
-        OutputViewSlot = 0,
-        AccelerationStructureSlot, 
-        SceneConstantSlot,
-        IndexBufferSlot,
-        VertexBufferSlot,
-        IndicesOffsetBufferSlot,
-        MaterialsBufferSlot,
-        EnvmapTex,
-        
-        Count 
-    };
+enum Value : int {
+    OutputViewSlot = 0,
+    AccelerationStructureSlot,
+    SceneConstantSlot,
+    IndexBufferSlot,
+    VertexBufferSlot,
+    IndicesOffsetBufferSlot,
+    MaterialsBufferSlot,
+    EnvmapTex,
+
+    Count
+};
 }
 
 namespace LocalRootSignatureParams {
-    enum Value : int {
-        ViewportConstantSlot = 0,
-        
-        Count 
-    };
+enum Value : int {
+    ViewportConstantSlot = 0,
+
+    Count
+};
 }
 
 namespace app {
 
 using namespace glm;
 
-void SerializeAndCreateRaytracingRootSignature(
-    D3D12_ROOT_SIGNATURE_DESC& desc, ComPtr<ID3D12RootSignature>* rootSig) {
+void SerializeAndCreateRaytracingRootSignature(D3D12_ROOT_SIGNATURE_DESC& desc, ComPtr<ID3D12RootSignature>* rootSig) {
     D3DContext& d3d_ctx = D3DContext::Get();
     auto device = d3d_ctx.g_pd3dDevice;
     ComPtr<ID3DBlob> blob;
@@ -60,15 +59,15 @@ void GPU_pipeline::CreateRootSignatures() {
     // Global Root Signature
     // This is a root signature that is shared across all raytracing shaders invoked during a DispatchRays() call.
     {
-        CD3DX12_DESCRIPTOR_RANGE ranges[6];                     // Perfomance TIP: Order from most frequent to least frequent.
-        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
-        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 2 static index buffer.
-        ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 3 static vertex buffer.
-        ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 4 static index offsets buffer.
-        ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);  // 5 materials buffer.
+        CD3DX12_DESCRIPTOR_RANGE ranges[6];                        // Perfomance TIP: Order from most frequent to least frequent.
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);     // 1 output texture
+        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);     // 2 static index buffer.
+        ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);     // 3 static vertex buffer.
+        ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);     // 4 static index offsets buffer.
+        ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);     // 5 materials buffer.
         ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 1);  // Envmap texture.
 
-        D3D12_STATIC_SAMPLER_DESC envmap_sampler = {}; // Envmap static sampler.
+        D3D12_STATIC_SAMPLER_DESC envmap_sampler = {};  // Envmap static sampler.
         envmap_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
         envmap_sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
         envmap_sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
@@ -81,7 +80,7 @@ void GPU_pipeline::CreateRootSignatures() {
         default_sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
         default_sampler.ShaderRegister = 1;  // s1
 
-        D3D12_STATIC_SAMPLER_DESC samplers[] = { envmap_sampler,  default_sampler};
+        D3D12_STATIC_SAMPLER_DESC samplers[] = {envmap_sampler, default_sampler};
 
         CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
         rootParameters[GlobalRootSignatureParams::OutputViewSlot].InitAsDescriptorTable(1, &ranges[0]);
@@ -159,20 +158,19 @@ void GPU_pipeline::CreateRaytracingPipelines() {
         m_dxrStateObjectRayCaster, PBR_DXR_RECURSION_DEPTH);  // RayCaster
     CreateRaytracingPipeline(libdxil, nullptr, c_closestHitAOShaderName, c_missAOShaderName, 
         m_dxrStateObjectAmbientOcclusion, 2);  // AO
-    CreateRaytracingPipeline( libdxil, c_anyHitRCShaderName, c_closestHitPBRShaderName, c_missEnvmapShaderName, 
+    CreateRaytracingPipeline(libdxil, c_anyHitRCShaderName, c_closestHitPBRShaderName, c_missEnvmapShaderName,
         m_dxrStateObjectPBR, PBR_DXR_RECURSION_DEPTH);  // PBR
-
 }
 
 void GPU_pipeline::CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const wchar_t* c_anyHitShaderName,
-    const wchar_t* c_closestHitShaderName, const wchar_t* c_missShaderName, ComPtr<ID3D12StateObject>& m_dxrStateObject, 
+    const wchar_t* c_closestHitShaderName, const wchar_t* c_missShaderName, ComPtr<ID3D12StateObject>& m_dxrStateObject,
     UINT maxRecursionDepth) {
-    CD3DX12_STATE_OBJECT_DESC raytracingPipeline{ D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE };
+    CD3DX12_STATE_OBJECT_DESC raytracingPipeline{D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE};
     auto lib = raytracingPipeline.CreateSubobject<CD3DX12_DXIL_LIBRARY_SUBOBJECT>();
     lib->SetDXILLibrary(&libdxil);
     // Define which shader exports to surface from the library.
     // If no shader exports are defined for a DXIL library subobject, all shaders will be surfaced.
-    // In this sample, this could be omitted for convenience since the sample uses all shaders in the library. 
+    // In this sample, this could be omitted for convenience since the sample uses all shaders in the library.
     {
         lib->DefineExport(c_raygenShaderName);
         lib->DefineExport(c_closestHitShaderName);
@@ -181,10 +179,10 @@ void GPU_pipeline::CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const
             lib->DefineExport(c_anyHitShaderName);
         }
     }
-    
+
     // Triangle hit group
-    // A hit group specifies closest hit, any hit and intersection shaders to be executed when a ray intersects the geometry's triangle/AABB.
-    // In this sample, we only use triangle geometry with a closest hit shader, so others are not set.
+    // A hit group specifies closest hit, any hit and intersection shaders to be executed when a ray intersects the geometry's
+    // triangle/AABB. In this sample, we only use triangle geometry with a closest hit shader, so others are not set.
     auto hitGroup = raytracingPipeline.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
     hitGroup->SetClosestHitShaderImport(c_closestHitShaderName);
     if (c_anyHitShaderName) {
@@ -192,12 +190,12 @@ void GPU_pipeline::CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const
     }
     hitGroup->SetHitGroupExport(c_hitGroupName);
     hitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
-    
+
     // Shader config
     // Defines the maximum sizes in bytes for the ray payload and attribute structure.
     auto shaderConfig = raytracingPipeline.CreateSubobject<CD3DX12_RAYTRACING_SHADER_CONFIG_SUBOBJECT>();
-    UINT payloadSize = 6 * sizeof(float) + 2 * sizeof(int);   // float3 color + float3 absorption + int depth + int iteration
-    UINT attributeSize = 2 * sizeof(float); // float2 barycentrics
+    UINT payloadSize = 6 * sizeof(float) + 2 * sizeof(int);  // float3 color + float3 absorption + int depth + int iteration
+    UINT attributeSize = 2 * sizeof(float);                  // float2 barycentrics
     shaderConfig->Config(payloadSize, attributeSize);
 
     // Local root signature and shader association
@@ -212,8 +210,8 @@ void GPU_pipeline::CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const
     // Pipeline config
     // Defines the maximum TraceRay() recursion depth.
     auto pipelineConfig = raytracingPipeline.CreateSubobject<CD3DX12_RAYTRACING_PIPELINE_CONFIG_SUBOBJECT>();
-    // PERFOMANCE TIP: Set max recursion depth as low as needed 
-    // as drivers may apply optimization strategies for low recursion depths. 
+    // PERFOMANCE TIP: Set max recursion depth as low as needed
+    // as drivers may apply optimization strategies for low recursion depths.
     pipelineConfig->Config(maxRecursionDepth);
 
 #if _DEBUG
@@ -224,22 +222,22 @@ void GPU_pipeline::CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const
     auto device = d3d_ctx.g_pd3dDevice;
 
     // Create the state object.
-    ThrowIfFailed(device->CreateStateObject(raytracingPipeline, IID_PPV_ARGS(&m_dxrStateObject)), L"Couldn't create DirectX Raytracing state object.\n");
+    ThrowIfFailed(device->CreateStateObject(raytracingPipeline, IID_PPV_ARGS(&m_dxrStateObject)),
+        L"Couldn't create DirectX Raytracing state object.\n");
 }
 
-void GPU_pipeline::BuildAllShaderTables() { 
+void GPU_pipeline::BuildAllShaderTables() {
     BuildShaderTables(c_closestHitRCShaderName, c_missEnvmapShaderName, m_dxrStateObjectRayCaster, m_RC_missShaderTable,
-        m_RC_hitGroupShaderTable);                                                                                              // RayCaster
+        m_RC_hitGroupShaderTable);      // RayCaster
     BuildShaderTables(c_closestHitAOShaderName, c_missAOShaderName, m_dxrStateObjectAmbientOcclusion, m_AO_missShaderTable,
-        m_AO_hitGroupShaderTable);                                                                                              // AO
+        m_AO_hitGroupShaderTable);      // AO
     BuildShaderTables(c_closestHitAOShaderName, c_missEnvmapShaderName, m_dxrStateObjectPBR, m_PBR_missShaderTable,
-        m_PBR_hitGroupShaderTable);                                                                                             // PBR
+        m_PBR_hitGroupShaderTable);     // PBR
 }
 
-void GPU_pipeline::BuildShaderTables(
-    const wchar_t* c_closestHitShaderName, const wchar_t* c_missShaderName, ComPtr<ID3D12StateObject>& m_dxrStateObject, 
-    ComPtr<ID3D12Resource>& m_missShaderTable, ComPtr<ID3D12Resource>& m_hitGroupShaderTable) 
-{
+void GPU_pipeline::BuildShaderTables(const wchar_t* c_closestHitShaderName, const wchar_t* c_missShaderName,
+    ComPtr<ID3D12StateObject>& m_dxrStateObject, ComPtr<ID3D12Resource>& m_missShaderTable,
+    ComPtr<ID3D12Resource>& m_hitGroupShaderTable) {
     D3DContext& d3d_ctx = D3DContext::Get();
     auto device = d3d_ctx.g_pd3dDevice;
 
@@ -249,7 +247,7 @@ void GPU_pipeline::BuildShaderTables(
 
     auto GetShaderIdentifiers = [&](auto* stateObjectProperties) {
         rayGenShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_raygenShaderName);
-        missShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_missShaderName);;
+        missShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_missShaderName);
         hitGroupShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_hitGroupName);
     };
 
@@ -321,7 +319,7 @@ void GPU_pipeline::release_gpu_resources() {
 void GPU_pipeline::CreateConstantBuffers() {
     D3DContext& d3d_ctx = D3DContext::Get();
     auto device = d3d_ctx.g_pd3dDevice;
-    //auto frameCount = m_deviceResources->GetBackBufferCount();
+    // auto frameCount = m_deviceResources->GetBackBufferCount();
 
     // Create the constant buffer memory and map the CPU and GPU addresses
     const D3D12_HEAP_PROPERTIES uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
@@ -342,11 +340,11 @@ void GPU_pipeline::CreateConstantBuffers() {
 void GPU_pipeline::DoRaytracing(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) {
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.g_pd3dDXRCommandList;
-    
+
     UINT m_width = framebuffer.width();
     UINT m_height = framebuffer.height();
     auto DispatchRays = [&](auto* commandList, auto* stateObject, D3D12_DISPATCH_RAYS_DESC* dispatchDesc,
-        ComPtr<ID3D12Resource> hitGroupShaderTable, ComPtr<ID3D12Resource> missShaderTable)
+        ComPtr<ID3D12Resource> hitGroupShaderTable, ComPtr<ID3D12Resource> missShaderTable) 
     {
         // Since each shader table has only one shader record, the stride is same as the size.
         dispatchDesc->HitGroupTable.StartAddress = hitGroupShaderTable->GetGPUVirtualAddress();
@@ -374,24 +372,27 @@ void GPU_pipeline::DoRaytracing(const GPU_model& gpu_model, const GPU_texture& e
     // Set index and successive vertex buffer decriptor tables
     commandList->SetComputeRootDescriptorTable(
         GlobalRootSignatureParams::IndexBufferSlot, gpu_model.combined_mesh_indices.gpuDescriptorHandle);
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::VertexBufferSlot, gpu_model.combined_mesh_vertices.gpuDescriptorHandle);
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::IndicesOffsetBufferSlot, gpu_model.combined_mesh_offsets.gpuDescriptorHandle);
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::MaterialsBufferSlot, gpu_model.materials_array.gpuDescriptorHandle);
+    commandList->SetComputeRootDescriptorTable(
+        GlobalRootSignatureParams::VertexBufferSlot, gpu_model.combined_mesh_vertices.gpuDescriptorHandle);
+    commandList->SetComputeRootDescriptorTable(
+        GlobalRootSignatureParams::IndicesOffsetBufferSlot, gpu_model.combined_mesh_offsets.gpuDescriptorHandle);
+    commandList->SetComputeRootDescriptorTable(
+        GlobalRootSignatureParams::MaterialsBufferSlot, gpu_model.materials_array.gpuDescriptorHandle);
 
     // Envmap texture and sampler
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::EnvmapTex, envmap.GetSRVHandle());
 
-    // Bind the heaps, acceleration structure and dispatch rays.    
+    // Bind the heaps, acceleration structure and dispatch rays.
     D3D12_DISPATCH_RAYS_DESC dispatchDesc = {};
-    //commandList->SetDescriptorHeaps(1, m_descriptorHeap.GetAddressOf());
+    // commandList->SetDescriptorHeaps(1, m_descriptorHeap.GetAddressOf());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, framebuffer.uav_gpu_handle);
     commandList->SetComputeRootShaderResourceView(
         GlobalRootSignatureParams::AccelerationStructureSlot, gpu_model.GetGPUVirtualAddress());
 
     switch (RaytracingMode) {
         case RayProgramMode::AmbientOcclusion:
-            DispatchRays(
-                commandList.Get(), m_dxrStateObjectAmbientOcclusion.Get(), &dispatchDesc, m_AO_hitGroupShaderTable, m_AO_missShaderTable);
+            DispatchRays(commandList.Get(), m_dxrStateObjectAmbientOcclusion.Get(), &dispatchDesc, m_AO_hitGroupShaderTable,
+                m_AO_missShaderTable);
             break;
         case RayProgramMode::PBR:
             DispatchRays(
@@ -399,10 +400,9 @@ void GPU_pipeline::DoRaytracing(const GPU_model& gpu_model, const GPU_texture& e
             break;
         case RayProgramMode::RayCaster:
         default:
-            DispatchRays(
-                commandList.Get(), m_dxrStateObjectRayCaster.Get(), &dispatchDesc, m_RC_hitGroupShaderTable, m_RC_missShaderTable);
+            DispatchRays(commandList.Get(), m_dxrStateObjectRayCaster.Get(), &dispatchDesc, m_RC_hitGroupShaderTable,
+                m_RC_missShaderTable);
     }
 }
 
-
-}
+}  // namespace app

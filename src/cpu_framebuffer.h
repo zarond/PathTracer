@@ -107,9 +107,8 @@ class CPUTexture {
   public:
     // Idea: use mdspan
     CPUTexture() = default;
-    explicit CPUTexture(
-        const fastgltf::Image& image, const fastgltf::Asset& asset_);  // used to load sdr texture images
-    explicit CPUTexture(const std::filesystem::path& path);            // used to load hdr environment images
+    explicit CPUTexture(const fastgltf::Image& image, const fastgltf::Asset& asset_);  // used to load sdr texture images
+    explicit CPUTexture(const std::filesystem::path& path);                            // used to load hdr environment images
     CPUTexture(pixel initial_col) : width_(1), height_(1), channels_(4), data_(1, initial_col) {}
 
     int width() const { return width_; }
@@ -155,8 +154,7 @@ class CPUTexture {
                 col10 = pixel_srgb8_to_linear(c10);
                 col01 = pixel_srgb8_to_linear(c01);
                 col11 = pixel_srgb8_to_linear(c11);
-            }
-            else {
+            } else {
                 col00 = pixel_to_float(c00);
                 col10 = pixel_to_float(c10);
                 col01 = pixel_to_float(c01);
@@ -215,10 +213,10 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
     void create_texture_resource();
     void upload_to_gpu();
     void release_gpu_resource();
-    D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu_handle;
-    D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle;
-    D3D12_CPU_DESCRIPTOR_HANDLE uav_cpu_handle;
-    D3D12_GPU_DESCRIPTOR_HANDLE uav_gpu_handle;
+    D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu_handle{};
+    D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle{};
+    D3D12_CPU_DESCRIPTOR_HANDLE uav_cpu_handle{};
+    D3D12_GPU_DESCRIPTOR_HANDLE uav_gpu_handle{};
     void transition_from_copy_to_srv() const;
     void transition_from_srv_to_copy() const;
     void transition_from_srv_to_uav();
@@ -227,11 +225,12 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
 
     ComPtr<ID3D12Resource> get_gpu_resource() const;
     ComPtr<ID3D12Resource> get_gpu_upload_resource() const;
+
   private:
     ComPtr<ID3D12Resource> pTexture;
     ComPtr<ID3D12Resource> uploadBuffer;
-    UINT uploadPitch;
-    UINT uploadSize;
+    UINT uploadPitch = 0;
+    UINT uploadSize = 0;
     void* mapped = nullptr;
 
     std::vector<hdr_pixel> download_from_gpu() const;

@@ -8,10 +8,10 @@
 #include <filesystem>
 #include <glm/fwd.hpp>
 #include <memory>
-#include <optional>
-#include <vector>
 #include <mutex>
+#include <optional>
 #include <stop_token>
+#include <vector>
 
 #include "cpu_framebuffer.h"
 #include "model_loader.h"
@@ -20,11 +20,11 @@
 
 namespace app {
 
-using glm::ivec2;
+using glm::dvec2;
 using glm::fvec2;
 using glm::fvec3;
 using glm::fvec4;
-using glm::dvec2;
+using glm::ivec2;
 
 class Viewer {
   public:
@@ -92,7 +92,7 @@ class Viewer {
     CPUTexture<hdr_pixel> environmentTexture_;
     std::vector<Material> materials_backups_;
     bool need_materials_update_ = false;
-    
+
     std::mutex mtx_render_;
     std::condition_variable cv_render_;
 
@@ -103,7 +103,7 @@ class Viewer {
 
     std::optional<uint32_t> activeCameraIndex_ = std::nullopt;
 
-    std::shared_ptr<IRenderer> renderer_; // currently chosen renderer
+    std::shared_ptr<IRenderer> renderer_;                // currently chosen renderer
     std::vector<std::shared_ptr<IRenderer>> renderers_;  // initialize all renderers
     RendererMode activeRendererMode_;
 

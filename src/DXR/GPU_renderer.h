@@ -71,4 +71,4 @@ class GPURenderer : public IRenderer {
     unsigned int frameID = 0;
 };
 
-}
+}  // namespace app

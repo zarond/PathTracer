@@ -73,12 +73,14 @@ float3x3 construct_TBN(const float3 tangent, const float3 bitangent, const float
     float3 n = normalize(normal);
     float3 t = normalize(tangent - n * dot(n, tangent));
     float3 b = normalize(bitangent - n * dot(n, bitangent) - t * dot(t, bitangent));
-    return float3x3(t, b, n); // transposed TBN matrix, tangent is the first row, bitangent - second row, normal - third
+    return float3x3(t, b, n);  // transposed TBN matrix, tangent is the first row, bitangent - second row, normal - third
 }
 
-float3 Tangent2World(float3 v, const float3x3 TBN) { return mul(v, TBN); } // swap mul(M, v) order because TBN matrix is transposed
+float3 Tangent2World(float3 v, const float3x3 TBN) {
+    return mul(v, TBN);
+}  // swap mul(M, v) order because TBN matrix is transposed
 
-float3 get_geometric_normal(const float3 p1, const float3 p2, const float3 p3,
+float3 get_geometric_normal(const float3 p1, const float3 p2, const float3 p3, 
     const bool double_sided_material = false, const bool backface_hit = false) 
 {
     float3 geometric_normal = normalize(cross(p2 - p1, p3 - p1));
@@ -93,10 +95,11 @@ float3 normal_map_sample_to_world(const float3 normal_map_sample, const float3x3
     return Tangent2World(normal_vector, TBN);
 }
 
-float3x3 handle_TBN_creation(const float3x3 NormalMatrixTransposed, const float3 normal_map_color, bool has_normal_map, 
+float3x3 handle_TBN_creation(const float3x3 NormalMatrixTransposed, const float3 normal_map_color, bool has_normal_map,
     const float3 w_tangent, const float3 w_bitangent, const float3 w_normal,
     const float3 view, const bool double_sided_material, const bool exiting_volume, const bool backface_hit, 
-    const float3 p1, const float3 p2, const float3 p3) {
+    const float3 p1, const float3 p2, const float3 p3) 
+{
     // todo: potential problem with self-intersection from interpolated normal and geometry normal mismatch in certain
     // cases, unrelated to impossible normal angle (in relation to v)
     float3x3 TBN = construct_TBN(w_tangent, w_bitangent, w_normal);

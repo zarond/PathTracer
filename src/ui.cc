@@ -39,7 +39,7 @@ bool useTextureCheckbox(const char* text, int& texture, int original_texture_val
     return changed;
 }
 
-}
+}  // namespace
 
 namespace app {
 
@@ -113,7 +113,6 @@ void DXWindow::SetFullscreen(bool enabled, HWND hWnd) {
     is_fullscreen = enabled;
 }
 
-
 // Win32 message handler
 // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to tell if dear imgui wants to use your inputs.
 // - When io.WantCaptureMouse is true, do not dispatch mouse input data to your main application, or clear/overwrite your copy of
@@ -162,7 +161,7 @@ std::string OpenFileDialog() {     // todo: modernize with IFileDialog
     OPENFILENAMEA ofn{};
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = DXWindow::Get().hwnd;
-    ofn.lpstrFilter = 
+    ofn.lpstrFilter =
         "All Files\0*.*\0"
         "Gltf Files (*.gltf;*.glb)\0*.gltf;*.glb\0"
         "HDR Files (*.hdr)\0*.hdr\0\0";
@@ -196,7 +195,8 @@ std::string SaveFileDialog() {     // todo: modernize with IFileDialog
     return "";
 }
 
-bool SliderUInt(const char* label, unsigned int* v, unsigned int v_min, unsigned int v_max, const char* format, ImGuiSliderFlags flags) {
+bool SliderUInt(
+    const char* label, unsigned int* v, unsigned int v_min, unsigned int v_max, const char* format, ImGuiSliderFlags flags) {
     return ImGui::SliderScalar(label, ImGuiDataType_U32, v, &v_min, &v_max, format, flags);
 }
 
@@ -254,7 +254,7 @@ static void MaterialsSettingsUI(Viewer& viewer) {
     Material& current_material = model.materials_[current_material_index];
     const Material& original_material = viewer.get_materials_backup()[current_material_index];
 
-    settings_changed |= 
+    settings_changed |=
         useTextureCheckbox("Use Albedo Texture", current_material.baseColorTextureIndex, original_material.baseColorTextureIndex);
     settings_changed |=
         useTextureCheckbox("Use Metallic-Roughness Texture", current_material.metallicRoughnessTextureIndex, original_material.metallicRoughnessTextureIndex);
@@ -265,25 +265,25 @@ static void MaterialsSettingsUI(Viewer& viewer) {
     settings_changed |= 
         useTextureCheckbox("Use Emissive Texture", current_material.emissiveTextureIndex, original_material.emissiveTextureIndex);
 
-    settings_changed |= ImGui::ColorEdit4(
-        "BaseColor F.", reinterpret_cast<float*>(&current_material.baseColorFactor), ImGuiColorEditFlags_Float);
-    settings_changed |= ImGui::ColorEdit3(
-        "Emissive F.", reinterpret_cast<float*>(&current_material.emissiveFactor), ImGuiColorEditFlags_Float);
-    settings_changed |= ImGui::ColorEdit3(
-        "Attenuation F.", reinterpret_cast<float*>(&current_material.attenuationFactor), ImGuiColorEditFlags_Float);
-    settings_changed |= ImGui::SliderFloat(
-        "Metallic F.", &current_material.metallicFactor, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
-    settings_changed |= ImGui::SliderFloat(
-        "Roughness F.", &current_material.roughnessFactor, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
+    settings_changed |=
+        ImGui::ColorEdit4("BaseColor F.", reinterpret_cast<float*>(&current_material.baseColorFactor), ImGuiColorEditFlags_Float);
+    settings_changed |=
+        ImGui::ColorEdit3("Emissive F.", reinterpret_cast<float*>(&current_material.emissiveFactor), ImGuiColorEditFlags_Float);
+    settings_changed |= 
+        ImGui::ColorEdit3("Attenuation F.", reinterpret_cast<float*>(&current_material.attenuationFactor), ImGuiColorEditFlags_Float);
+    settings_changed |=
+        ImGui::SliderFloat("Metallic F.", &current_material.metallicFactor, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
+    settings_changed |=
+        ImGui::SliderFloat("Roughness F.", &current_material.roughnessFactor, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
     settings_changed |= ImGui::SliderFloat("IOR", &current_material.ior, 0.001f, 5.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
     if (ImGui::Button("Reset Dielectric F0 from IOR")) {
         current_material.dielectric_f0 = f0_dielectric(current_material.ior);
         settings_changed = true;
     }
-    settings_changed |= ImGui::SliderFloat(
-        "Dielectric F0", &current_material.dielectric_f0, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
-    settings_changed |= ImGui::SliderFloat(
-        "Transmission F.", &current_material.transmisionFactor, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
+    settings_changed |=
+        ImGui::SliderFloat("Dielectric F0", &current_material.dielectric_f0, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
+    settings_changed |= 
+        ImGui::SliderFloat("Transmission F.", &current_material.transmisionFactor, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
     settings_changed |= ImGui::SliderFloat("Emissive Strength F.", &current_material.emissiveStrength, 0.0f, 10.0f, "%.3f");
     settings_changed |= ImGui::Checkbox("Double Sided", &current_material.doubleSided);
     settings_changed |= ImGui::Checkbox("Has Volume", &current_material.hasVolume);
@@ -573,8 +573,8 @@ static void RenderSettingsUI(Viewer& viewer, ConsoleArgs& console_arguments, std
         }
         settings_changed |= ImGui::DragInt("environment rotation", &console_arguments.envmapRotation, 1.0f, 0, 360);
         HelpTooltip("environment rotation in degrees around UP axis.");
-        settings_changed |= imgui_combo(
-            "Ray Program Mode:", std::array{"RayCaster", "AmbientOcclusion", "PBR"}, console_arguments.programMode);
+        settings_changed |=
+            imgui_combo("Ray Program Mode:", std::array{"RayCaster", "AmbientOcclusion", "PBR"}, console_arguments.programMode);
         if (!viewer.is_using_gpu_renderer()) {
             settings_changed |=
                 imgui_combo("Acceleration Struct Type:", std::array{"Naive", "BVH"}, console_arguments.accelStructType);
@@ -607,13 +607,13 @@ static void RenderSettingsUI(Viewer& viewer, ConsoleArgs& console_arguments, std
 void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector<PendingDelete>& deferredDeletes,
     const bool hardware_raytracing_support) {
     ImGui::Begin("Options", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
-    
+
     RenderingProgressUI(viewer);
-    
+
     ImGui::Separator();
-    
+
     CameraUI(viewer);
-    
+
     ImGui::Separator();
     static bool show_material_settings = false;
     if (ImGui::TreeNode("Materials")) {
@@ -637,4 +637,4 @@ void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector
     }
 }
 
-}
+}  // namespace app

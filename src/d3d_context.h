@@ -16,7 +16,7 @@ using Microsoft::WRL::ComPtr;
 // Config
 static const int APP_NUM_FRAMES_IN_FLIGHT = 2;  // double buffering
 static const int APP_NUM_BACK_BUFFERS = 2;
-static const int APP_SRV_HEAP_SIZE = 1024; // maximum textures in whole pipeline, imgui + gltf scene
+static const int APP_SRV_HEAP_SIZE = 1024;  // maximum textures in whole pipeline, imgui + gltf scene
 
 struct FrameContext {
     ComPtr<ID3D12CommandAllocator> CommandAllocator;
@@ -113,6 +113,7 @@ struct D3DContext {
         static D3DContext instance;
         return instance;
     }
+
   private:
     D3DContext() = default;
 
@@ -124,4 +125,4 @@ struct PendingDelete {
     // UINT64 fenceValue;
 };
 
-}
+}  // namespace app

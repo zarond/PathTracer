@@ -1,5 +1,5 @@
-#include "Common.hlsl"
 #include "BRDF.hlsl"
+#include "Common.hlsl"
 
 // Raytracing output texture, accessed as a UAV
 RWTexture2D<float4> gOutput : register(u0);
@@ -28,11 +28,11 @@ SamplerState Sampler : register(s1, space1);
 inline void GenerateCameraRay(uint2 index, uint2 dims, out float3 origin, out float3 direction, int i) {
     float2 xy = index + g_rayGenCB.subpixel_offset;
     if (g_rayGenCB.samplesPerPixel == 1) {
-        xy += 0.5f;                                  // center in the middle of the pixel.
+        xy += 0.5f;  // center in the middle of the pixel.
     } else {
         xy += fibonacci2D(i, g_rayGenCB.invSamplesPerPixel);
     }
-    float2 screenPos = ( xy / dims ) * 2.0f - 1.0f;
+    float2 screenPos = (xy / dims) * 2.0f - 1.0f;
 
     // Invert Y for DirectX-style coordinates.
     screenPos.y = -screenPos.y;
@@ -119,8 +119,9 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
     }
 }
 
-[shader("closesthit")] void ClosestHitAO(inout HitInfo payload, Attributes attr) {
-    const uint3 indices =  GetIndices();
+[shader("closesthit")]
+void ClosestHitAO(inout HitInfo payload, Attributes attr) {
+    const uint3 indices = GetIndices();
 
     const uint mesh_id = InstanceID();
     Material material = Materials[mesh_id];
@@ -172,16 +173,16 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
         ray.TMin = kEpsilon5;
         ray.TMax = 10000.0;
 
-        uint flags = RAY_FLAG_CULL_BACK_FACING_TRIANGLES | RAY_FLAG_FORCE_NON_OPAQUE | 
-            RAY_FLAG_SKIP_CLOSEST_HIT_SHADER | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
+        uint flags = RAY_FLAG_CULL_BACK_FACING_TRIANGLES | RAY_FLAG_FORCE_NON_OPAQUE | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER |
+                     RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
 
         TraceRay(
-            SceneBVH,                             // RaytracingAccelerationStructure
-            flags,                                // RayFlags
-            ~0,                                   // InstanceInclusionMask
-            0,                                    // RayContributionToHitGroupIndex
-            1,                                    // MultiplierForGeometryContributionToShaderIndex
-            0,                                    // MissShaderIndex
+            SceneBVH,       // RaytracingAccelerationStructure
+            flags,          // RayFlags
+            ~0,             // InstanceInclusionMask
+            0,              // RayContributionToHitGroupIndex
+            1,              // MultiplierForGeometryContributionToShaderIndex
+            0,              // MissShaderIndex
             ray, 
             payload
         );
@@ -189,7 +190,8 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
     payload.color *= inv_aoSamples;
 }
 
-[shader("closesthit")] void ClosestHitRC(inout HitInfo payload, Attributes attr) {
+[shader("closesthit")]
+void ClosestHitRC(inout HitInfo payload, Attributes attr) {
     const uint3 indices = GetIndices();
 
     float2 vertexUV[3] = {Vertices[indices[0]].uv.xy, Vertices[indices[1]].uv.xy, Vertices[indices[2]].uv.xy};
@@ -199,7 +201,7 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
     const uint mesh_id = InstanceID();
     Material mat = Materials[mesh_id];
     float4 color = sample_albedo(mat, uv, Sampler);
-    float alpha = color.w; 
+    float alpha = color.w;
     if (mat.alphaBlending == 0) {
         alpha = (alpha < mat.alpha_cutoff) ? 0.0f : 1.0f;
     }
@@ -224,7 +226,8 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
     }
 }
 
-[shader("anyhit")] void AnyHitRC(inout HitInfo payload, Attributes attr) {
+[shader("anyhit")] 
+void AnyHitRC(inout HitInfo payload, Attributes attr) {
     const uint3 indices = GetIndices();
 
     float2 vertexUV[3] = {Vertices[indices[0]].uv.xy, Vertices[indices[1]].uv.xy, Vertices[indices[2]].uv.xy};
@@ -243,7 +246,8 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
     }
 }
 
-[shader("closesthit")] void ClosestHitPBR(inout HitInfo payload, Attributes attr) { 
+[shader("closesthit")] 
+void ClosestHitPBR(inout HitInfo payload, Attributes attr) {
     const uint3 indices = GetIndices();
 
     const uint mesh_id = InstanceID();
@@ -309,17 +313,17 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
 
     float3x3 TBN = handle_TBN_creation(NormalMatrixTransposed, normal_map_color, has_normal_map, 
         worldTangent, worldBitangent, worldNormal, 
-        v, material.doubleSided, exiting_volume, backface_hit, vertexLocalPos[0], vertexLocalPos[1], vertexLocalPos[2]);
+            v, material.doubleSided, exiting_volume, backface_hit, vertexLocalPos[0], vertexLocalPos[1], vertexLocalPos[2]);
 
     worldNormal = normalize(worldNormal);
-    
+
     float transmission = sample_transmission(material, uv, Sampler);
     float2 ORM = sample_roughness_metallic(material, uv, Sampler);
     float3 diffuse_color = (1.0f - ORM.y) * albedo_color.rgb;
 
     float3 f0 = lerp(material.dielectric_f0, albedo_color.rgb, ORM.y);
     const float3 f90 = 1.0f;
-    const float roughness = max(ORM.x, 0.002f); // trying to avoid numerical issues with very low roughness
+    const float roughness = max(ORM.x, 0.002f);  // trying to avoid numerical issues with very low roughness
     const float linear_roughness = roughness * roughness;
 
     uint2 launchIndex = DispatchRaysIndex();
@@ -378,10 +382,10 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
         float3 F = fresnel_schlick(f0, f90, (!exiting_volume) ? VdM : LdM);
 
         const bool sample_transmission = any(diffuse_color * transmission != 0.0) && any(l != 0.0f);
-        if (sample_transmission) {  // transmission
+        if (sample_transmission) {                // transmission
             float3 h = -(interface_ior * v + l);  // transmission half-vector;
-                                                // minus is because normal points into into the medium with the lower
-                                                // index of refraction (e.g., air). (convention)
+                                                  // minus is because normal points into into the medium with the lower
+                                                  // index of refraction (e.g., air). (convention)
             h = normalize(h);
             float LdN = clamp(dot(-N, l), 0.0f, 1.0f);
             float G = V_SmithGGXCorrelated(VdN, LdN, linear_roughness);
@@ -391,9 +395,9 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
             float VdH = clamp(dot((!exiting_volume) ? v : -v, h), 0.0f, 1.0f);
 
             float3 brdf = (1.0f - F) * (G * VdH * LdN / NdM);
-            brdf = min(brdf, kMaxBRDF);                               // clamp to avoid fireflies
+            brdf = min(brdf, kMaxBRDF);                                       // clamp to avoid fireflies
             float3 new_pos = worldPosition - new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
-            
+
             float3 next_payload_absorption = old_payload_absorption * diffuse_color * transmission * attenuation * brdf * alpha;
 
             RayDesc ray;
@@ -407,7 +411,7 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
 
             TraceRay(SceneBVH, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, ~0, 0, 1, 0, ray, payload);
         }
-        {   // specular reflection
+        {  // specular reflection
             float3 h = m;
 
             l = normalize(reflect(-v, h));  // normalizing for better accuracy
@@ -418,7 +422,7 @@ inline void ContinueTrace(inout HitInfo payload, const float alpha, const float3
             float G = V_SmithGGXCorrelated(VdN, LdN, linear_roughness);
             // auto G = V_Schlick(LdN, VdN, roughness);
             float3 brdf = F * (G * LdN * LdH / NdH);
-            brdf = min(brdf, kMaxBRDF);                               // clamp to avoid fireflies
+            brdf = min(brdf, kMaxBRDF);                                       // clamp to avoid fireflies
             float3 new_pos = worldPosition + new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
             float3 next_payload_absorption = old_payload_absorption * attenuation * brdf * alpha;
 

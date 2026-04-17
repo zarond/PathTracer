@@ -14,10 +14,10 @@
 
 namespace app {
 
+using glm::fmat4x4;
 using glm::fvec2;
 using glm::fvec3;
 using glm::fvec4;
-using glm::fmat4x4;
 
 struct BBox {
     fvec3 min, max;

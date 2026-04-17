@@ -84,7 +84,8 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
         if (FAILED(g_pd3dDevice->CreateCommandQueue(&desc, IID_PPV_ARGS(&g_pd3dCopyQueue)))) return false;
         if (FAILED(g_pd3dDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COPY, IID_PPV_ARGS(&g_pd3dCopyAllocator))))
             return false;
-        if (FAILED(g_pd3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COPY, g_pd3dCopyAllocator.Get(), nullptr, IID_PPV_ARGS(&g_pd3dCopyCommandList))) ||
+        if (FAILED(g_pd3dDevice->CreateCommandList(
+                0, D3D12_COMMAND_LIST_TYPE_COPY, g_pd3dCopyAllocator.Get(), nullptr, IID_PPV_ARGS(&g_pd3dCopyCommandList))) ||
             FAILED(g_pd3dCopyCommandList->Close()))
             return false;
         if (FAILED(g_pd3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&copy_fence)))) return false;
@@ -101,8 +102,9 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
         if (FAILED(g_pd3dDevice->CreateCommandQueue(&desc, IID_PPV_ARGS(&g_pd3dDXRQueue)))) return false;
         if (FAILED(g_pd3dDevice->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&g_pd3dDXRAllocator))))
             return false;
-        if (FAILED(g_pd3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, g_pd3dDXRAllocator.Get(),
-                nullptr, IID_PPV_ARGS(&g_pd3dDXRCommandList))) || FAILED(g_pd3dDXRCommandList->Close()))
+        if (FAILED(g_pd3dDevice->CreateCommandList(
+                0, D3D12_COMMAND_LIST_TYPE_DIRECT, g_pd3dDXRAllocator.Get(), nullptr, IID_PPV_ARGS(&g_pd3dDXRCommandList))) ||
+            FAILED(g_pd3dDXRCommandList->Close()))
             return false;
         if (FAILED(g_pd3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&dxr_fence)))) return false;
         dxr_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
@@ -117,10 +119,12 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
 
     // Create command list
     for (UINT i = 0; i < APP_NUM_FRAMES_IN_FLIGHT; i++)
-        if (FAILED(g_pd3dDevice->CreateCommandAllocator( D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&g_frameContext[i].CommandAllocator))))
+        if (FAILED(g_pd3dDevice->CreateCommandAllocator(
+                D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&g_frameContext[i].CommandAllocator))))
             return false;
     if (FAILED(g_pd3dDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, g_frameContext[0].CommandAllocator.Get(),
-            nullptr, IID_PPV_ARGS(&g_pd3dCommandList))) || FAILED(g_pd3dCommandList->Close()))
+            nullptr, IID_PPV_ARGS(&g_pd3dCommandList))) ||
+        FAILED(g_pd3dCommandList->Close()))
         return false;
 
     // Setup swap chain
@@ -132,7 +136,7 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
         sd.Stereo = FALSE;
         sd.SampleDesc.Count = 1;
         sd.SampleDesc.Quality = 0;
-        sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT; // or DXGI_USAGE_BACK_BUFFER | DXGI_USAGE_RENDER_TARGET_OUTPUT ?
+        sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;  // or DXGI_USAGE_BACK_BUFFER | DXGI_USAGE_RENDER_TARGET_OUTPUT ?
         sd.BufferCount = APP_NUM_BACK_BUFFERS;
         sd.Scaling = DXGI_SCALING_STRETCH;
         sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
@@ -142,9 +146,7 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
         // sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH | DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING; // ?
     }
     DXGI_SWAP_CHAIN_FULLSCREEN_DESC sfd = {};
-    {
-        sfd.Windowed = true;
-    }
+    sfd.Windowed = true;
 
     {
         ComPtr<IDXGISwapChain1> swapChain1 = nullptr;
@@ -311,14 +313,13 @@ void D3DContext::WaitForPendingDXR() {
 void D3DContext::CreateRenderTarget() {
     for (UINT i = 0; i < APP_NUM_BACK_BUFFERS; i++) {
         g_pSwapChain->GetBuffer(i, IID_PPV_ARGS(&g_mainRenderTargetResource[i]));
-        
+
         D3D12_RENDER_TARGET_VIEW_DESC rtv{};
         rtv.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
         rtv.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
         rtv.Texture2D.MipSlice = 0;
         rtv.Texture2D.PlaneSlice = 0;
-        g_pd3dDevice->CreateRenderTargetView(
-            g_mainRenderTargetResource[i].Get(), &rtv, g_mainRenderTargetDescriptor[i]);
+        g_pd3dDevice->CreateRenderTargetView(g_mainRenderTargetResource[i].Get(), &rtv, g_mainRenderTargetDescriptor[i]);
     }
 }
 
@@ -355,4 +356,4 @@ void D3DContext::ResizeSwapchain(UINT Width, UINT Height) {
     CreateRenderTarget();
 }
 
-}
+}  // namespace app

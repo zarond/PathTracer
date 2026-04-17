@@ -2,10 +2,10 @@
 
 #include <fastgltf/util.hpp>
 #include <glm/ext.hpp>
+#include <iostream>
 #include <stdexcept>
 #include <utility>
 #include <variant>
-#include <iostream>
 
 #ifndef NO_WINDOWS
 #include "DXR/GPU_renderer.h"
@@ -70,9 +70,7 @@ void Viewer::switch_to_renderer(RendererMode mode) {
     activeRendererMode_ = mode;
 }
 
-RendererMode Viewer::get_renderer_mode() const { 
-    return activeRendererMode_; 
-}
+RendererMode Viewer::get_renderer_mode() const { return activeRendererMode_; }
 #endif
 
 void Viewer::resize_window(const ivec2& newDimensions, bool createGPUTex) {
@@ -104,13 +102,13 @@ void Viewer::render() {
 }
 
 void Viewer::cancel_rendering() {
-    renderer_->cancel_rendering(); 
+    renderer_->cancel_rendering();
     cv_render_.notify_one();
 }
 
 RenderingState Viewer::get_rendering_state() const { return renderer_->get_rendering_state(); }
 
-void Viewer::async_start_render() { 
+void Viewer::async_start_render() {
     renderer_->set_render_starting_state();
     cv_render_.notify_one();
 }
@@ -131,7 +129,9 @@ void Viewer::set_active_camera(std::optional<uint32_t> cameraIndex) {
 
 std::optional<uint32_t> Viewer::get_active_camera() const { return activeCameraIndex_; }
 
-void Viewer::take_snapshot(const std::filesystem::path& filePath) const { framebuffer_.save_to_file(filePath, is_using_gpu_renderer()); }
+void Viewer::take_snapshot(const std::filesystem::path& filePath) const {
+    framebuffer_.save_to_file(filePath, is_using_gpu_renderer());
+}
 
 bool Viewer::snap_to_camera(bool use_default) {
     bool success = false;
@@ -164,20 +164,18 @@ bool Viewer::snap_to_camera(bool use_default) {
 
 int Viewer::get_number_of_cameras() const { return static_cast<int>(model_.cameras_.size()); }
 
-void Viewer::set_render_settings(const RenderSettings& settings) {
-    renderer_->set_render_settings(settings);
-}
+void Viewer::set_render_settings(const RenderSettings& settings) { renderer_->set_render_settings(settings); }
 RenderSettings Viewer::get_render_settings() const { return renderer_->get_render_settings(); }
 
 float Viewer::get_render_progress() const { return renderer_->get_progress(); }
 
-void Viewer::load_envmap(CPUTexture<hdr_pixel>&& environmentTexture) { 
+void Viewer::load_envmap(CPUTexture<hdr_pixel>&& environmentTexture) {
     environmentTexture_ = std::move(environmentTexture);
     ++lastEnvmapFenceValue;
     renderer_->load_envmap(environmentTexture_, lastEnvmapFenceValue);
 }
 
-void Viewer::load_model(Model&& model) { 
+void Viewer::load_model(Model&& model) {
     model_ = std::move(model);
     activeCameraIndex_ = std::nullopt;
     if (model_.cameras_.size() > 0) {
@@ -192,9 +190,7 @@ void Viewer::load_model(Model&& model) {
 const Model& Viewer::get_model() const { return model_; }
 Model& Viewer::get_model() { return model_; }
 const std::vector<Material>& Viewer::get_materials_backup() const { return materials_backups_; }
-void Viewer::set_materials_updated() {
-    need_materials_update_ = true;
-}
+void Viewer::set_materials_updated() { need_materials_update_ = true; }
 
 CPUFrameBuffer& Viewer::get_framebuffer() { return framebuffer_; }
 
@@ -222,9 +218,9 @@ fvec3 Viewer::right_() const { return cross(direction_, up_); }
 
 float& Viewer::get_yfov() { return cam_params_.yfov; }
 
-fvec3 Viewer::get_euler_angles_camera() const { 
+fvec3 Viewer::get_euler_angles_camera() const {
     glm::quat quat = glm::quatLookAt(direction_, up_);
-    const glm::quat q_shfl{quat.w, quat.y, quat.x, quat.z}; // To overcome GLM's gimbal lock issue
+    const glm::quat q_shfl{quat.w, quat.y, quat.x, quat.z};  // To overcome GLM's gimbal lock issue
     const glm::fvec3 euler{
         glm::yaw(q_shfl),    // Pitch
         glm::pitch(q_shfl),  // Yaw
@@ -237,8 +233,7 @@ bool Viewer::is_using_gpu_renderer() const { return (activeRendererMode_ == Rend
 
 void Viewer::wait_for_render_start(std::stop_token stop) {
     std::unique_lock<std::mutex> lock(mtx_render_);
-    cv_render_.wait(
-        lock, [&]() { return stop.stop_requested() || (get_rendering_state() == RenderingState::ReadyToStart); });
+    cv_render_.wait(lock, [&]() { return stop.stop_requested() || (get_rendering_state() == RenderingState::ReadyToStart); });
 }
 
 void save_render_image_timed_action(const Viewer& viewer, const std::filesystem::path& image_path) {

@@ -4,18 +4,18 @@
 #include <fastgltf/types.hpp>
 #include <filesystem>
 #include <glm/fwd.hpp>
+#include <string>
 #include <variant>
 #include <vector>
-#include <string>
 
 #include "cpu_framebuffer.h"
 
 namespace app {
 
+using glm::fmat4x4;
 using glm::fvec2;
 using glm::fvec3;
 using glm::fvec4;
-using glm::fmat4x4;
 
 struct vertex {
     fvec3 position;

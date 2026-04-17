@@ -140,8 +140,8 @@ Model ModelLoader::constructModel() const {
             Mesh mesh;
 
             auto* positionIt = primitive.findAttribute("POSITION");
-            assert(positionIt !=  primitive.attributes.end());  // A mesh primitive is required to hold the POSITION attribute.
-            assert(primitive.indicesAccessor.has_value());  // We specify GenerateMeshIndices, so we should always have indices
+            assert(positionIt != primitive.attributes.end());  // A mesh primitive is required to hold the POSITION attribute.
+            assert(primitive.indicesAccessor.has_value());     // We specify GenerateMeshIndices, so we should always have indices
 
             auto* normalIt = primitive.findAttribute("NORMAL");
             auto* uvIt = primitive.findAttribute("TEXCOORD_0");
@@ -193,7 +193,7 @@ Model ModelLoader::constructModel() const {
 
             model.meshes_.push_back(std::move(mesh));
         }
-        mesh_ids.push_back({count, gltf_mesh.primitives.size()});
+        mesh_ids.emplace_back(count, gltf_mesh.primitives.size());
         count += gltf_mesh.primitives.size();
     }
     size_t sceneIndex = asset_.defaultScene.value_or(0);

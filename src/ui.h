@@ -5,14 +5,14 @@
 #define NOMINMAX
 #include <windows.h>
 
-#include "imgui.h"
 #include <span>
 #include <type_traits>
 #include <vector>
 
-#include "viewer.h"
-#include "d3d_context.h"
 #include "arguments.h"
+#include "d3d_context.h"
+#include "imgui.h"
+#include "viewer.h"
 
 namespace app {
 
@@ -29,7 +29,7 @@ struct DXWindow {
     void Update();
     void SetFullscreen(bool enabled, HWND hWnd);
 
-  // Singleton pattern
+    // Singleton pattern
   public:
     DXWindow(const DXWindow&) = delete;
     DXWindow& operator=(const DXWindow&) = delete;
@@ -99,7 +99,8 @@ bool imgui_combo(const char* label, std::span<std::string> items, auto& current_
 bool SliderUInt(const char* label, unsigned int* v, unsigned int v_min, unsigned int v_max, const char* format = (const char*)0,
     ImGuiSliderFlags flags = 0);
 
-bool InputUInt(const char* label, unsigned int* v, unsigned int step = 1, unsigned int step_fast = 100, ImGuiInputTextFlags flags = 0);
+bool InputUInt(
+    const char* label, unsigned int* v, unsigned int step = 1, unsigned int step_fast = 100, ImGuiInputTextFlags flags = 0);
 
 void HelpTooltip(const char* msg);
 
@@ -113,4 +114,4 @@ void RenderedImageUI(Viewer& viewer, const bool hardware_raytracing_support);
 void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector<PendingDelete>& deferredDeletes,
     const bool hardware_raytracing_support);
 
-}
+}  // namespace app
