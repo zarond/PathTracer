@@ -31,58 +31,58 @@ void GPURenderer::update_camera_transform_state(
 
 void GPURenderer::load_scene(
     const Model& model, const CPUTexture<hdr_pixel>& envmap, size_t ModelFenceValue, size_t EnvmapFenceValue) {
-    if (ModelFenceValue == lastModelFenceValue && EnvmapFenceValue == lastEnvmapFenceValue) return;
+    if (ModelFenceValue == last_model_fence_value_ && EnvmapFenceValue == last_envmap_fence_value_) return;
 
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.WaitForPendingCopy();
 
-    modelRef = &model;
-    envmapRef = &envmap;
+    model_ref_ = &model;
+    envmap_ref_ = &envmap;
     reload_acceleration_structure();
     reload_ray_program();
 
-    lastModelFenceValue = ModelFenceValue;
-    lastEnvmapFenceValue = EnvmapFenceValue;
+    last_model_fence_value_ = ModelFenceValue;
+    last_envmap_fence_value_ = EnvmapFenceValue;
 }
 
 void GPURenderer::load_envmap(const CPUTexture<hdr_pixel>& envmap, size_t EnvmapFenceValue) {
-    if (EnvmapFenceValue == lastEnvmapFenceValue) return;
-    envmapRef = &envmap;
+    if (EnvmapFenceValue == last_envmap_fence_value_) return;
+    envmap_ref_ = &envmap;
     reload_ray_program();
-    lastEnvmapFenceValue = EnvmapFenceValue;
+    last_envmap_fence_value_ = EnvmapFenceValue;
 }
 
 void GPURenderer::load_model(const Model& model, size_t ModelFenceValue) {
-    if (ModelFenceValue == lastModelFenceValue) return;
-    modelRef = &model;
+    if (ModelFenceValue == last_model_fence_value_) return;
+    model_ref_ = &model;
     reload_acceleration_structure();
-    lastModelFenceValue = ModelFenceValue;
+    last_model_fence_value_ = ModelFenceValue;
 }
 
 void GPURenderer::reload_ray_program() {
-    if (envmapRef == nullptr) return;
-    gpu_envmap_ = std::make_unique<GPU_texture>(*envmapRef);
-    pipeline_.RaytracingMode = renderSettings_.programMode;
+    if (envmap_ref_ == nullptr) return;
+    gpu_envmap_ = std::make_unique<GPU_texture>(*envmap_ref_);
+    pipeline_.RaytracingMode = render_settings_.programMode;
 }
 void GPURenderer::reload_acceleration_structure() {
-    if (modelRef == nullptr) return;
+    if (model_ref_ == nullptr) return;
     auto start = std::chrono::high_resolution_clock::now();
 
-    gpu_model_ = std::make_unique<GPU_model>(*modelRef);
+    gpu_model_ = std::make_unique<GPU_model>(*model_ref_);
 
     auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
     std::cout << "GPU DXR model Acceleration Structure created in " << diff.count() << " ms." << '\n';
 }
 
 void GPURenderer::reload_materials() {
-    if (modelRef == nullptr || gpu_model_ == nullptr) return;
+    if (model_ref_ == nullptr || gpu_model_ == nullptr) return;
     D3DContext& d3d_ctx = D3DContext::Get();
-    gpu_model_->update_materials_array_buffer(*modelRef);
+    gpu_model_->update_materials_array_buffer(*model_ref_);
 }
 
 void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, bool iterative, int iteration_count) {
-    assert(modelRef);
-    if (modelRef == nullptr || envmapRef == nullptr || gpu_model_ == nullptr) {
+    assert(model_ref_);
+    if (model_ref_ == nullptr || envmap_ref_ == nullptr || gpu_model_ == nullptr) {
         throw std::runtime_error("One of components is nullptr in GPURenderer::render_frame()");
     }
     if (gpu_model_->isEmpty()) {
@@ -99,29 +99,29 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
         static std::minstd_rand gen = std::minstd_rand(std::random_device{}());
         static std::uniform_real_distribution<float> dist{-0.5f, 0.5f};
         jitter = fvec2{dist(gen), dist(gen)};
-        float n_sqrt = sqrtf(renderSettings_.samplesPerPixel);
+        float n_sqrt = sqrtf(render_settings_.samplesPerPixel);
         jitter /= n_sqrt;
         inverse_iteration_count = 1.0f / static_cast<float>(iteration_count);
     }
 
     pipeline_.m_rayGenCB.cameraPosition = xyz1(origin_);
     pipeline_.m_rayGenCB.projectionToWorld = NDC2WorldMatrix_;
-    pipeline_.m_rayGenCB.subpixel_offset = jitter;
-    pipeline_.m_rayGenCB.frameID = ++frameID;
+    pipeline_.m_rayGenCB.subpixelOffset = jitter;
+    pipeline_.m_rayGenCB.frameID = ++frameID_;
     pipeline_.m_rayGenCB.iteration = iteration_count;
     pipeline_.m_rayGenCB.invIterationCount = inverse_iteration_count;
-    pipeline_.m_rayGenCB.samplesPerPixel = renderSettings_.samplesPerPixel;
-    pipeline_.m_rayGenCB.invSamplesPerPixel = 1.0f / static_cast<float>(renderSettings_.samplesPerPixel);
-    pipeline_.m_rayGenCB.maxNewRaysPerBounce = renderSettings_.maxNewRaysPerBounce;
-    pipeline_.m_rayGenCB.invMaxNewRaysPerBounce = 1.0f / renderSettings_.maxNewRaysPerBounce;
-    pipeline_.m_rayGenCB.maxRayBounces = renderSettings_.maxRayBounces;
-    pipeline_.m_rayGenCB.envmapRotation = renderSettings_.envmapRotation;
+    pipeline_.m_rayGenCB.samplesPerPixel = render_settings_.samplesPerPixel;
+    pipeline_.m_rayGenCB.invSamplesPerPixel = 1.0f / static_cast<float>(render_settings_.samplesPerPixel);
+    pipeline_.m_rayGenCB.maxNewRaysPerBounce = render_settings_.maxNewRaysPerBounce;
+    pipeline_.m_rayGenCB.invMaxNewRaysPerBounce = 1.0f / render_settings_.maxNewRaysPerBounce;
+    pipeline_.m_rayGenCB.maxRayBounces = render_settings_.maxRayBounces;
+    pipeline_.m_rayGenCB.envmapRotation = render_settings_.envmapRotation;
 
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
 
-    ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.g_pd3dSrvDescHeap.Get()};
-    d3d_ctx.g_pd3dDXRCommandList->SetDescriptorHeaps(1, desc_heap);
+    ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};
+    d3d_ctx.m_DXRCommandList->SetDescriptorHeaps(1, desc_heap);
 
     framebuffer.transition_from_srv_to_uav();
     pipeline_.DoRaytracing(*gpu_model_, *gpu_envmap_, framebuffer);
@@ -141,14 +141,14 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
 }
 
 void GPURenderer::set_render_settings(const RenderSettings& settings) {
-    const auto currentSettings = renderSettings_;
-    renderSettings_ = settings;
+    const auto currentSettings = render_settings_;
+    render_settings_ = settings;
 
     if (currentSettings.programMode != settings.programMode) {
         reload_ray_program();
     }
 }
-RenderSettings GPURenderer::get_render_settings() const { return renderSettings_; }
+RenderSettings GPURenderer::get_render_settings() const { return render_settings_; }
 
 BBox GPURenderer::get_scene_bound() const {
     // Todo: compute scene bound from model

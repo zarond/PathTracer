@@ -225,11 +225,11 @@ DOP object_to_ws_dop(const Object& obj, const Mesh& mesh) noexcept {
 
 NaiveAS::NaiveAS(const Model& model) {
     auto start = std::chrono::high_resolution_clock::now();
-    object_data_.reserve(model.objects_.size());
-    mesh_data_.reserve(model.meshes_.size());
-    for (uint32_t i = 0; i < model.objects_.size(); ++i) {
-        const auto& obj = model.objects_[i];
-        const auto& mesh = model.meshes_[obj.meshIndex];
+    object_data_.reserve(model.objects.size());
+    mesh_data_.reserve(model.meshes.size());
+    for (uint32_t i = 0; i < model.objects.size(); ++i) {
+        const auto& obj = model.objects[i];
+        const auto& mesh = model.meshes[obj.meshIndex];
         DOP volume = object_to_ws_dop(obj, mesh);
         object_data_.emplace_back(
             volume, 
@@ -245,12 +245,12 @@ NaiveAS::NaiveAS(const Model& model) {
     };
     std::sort(object_data_.begin(), object_data_.end(), complexity_cmp);
 
-    for (const auto& mesh : model.meshes_) {
+    for (const auto& mesh : model.meshes) {
         std::vector<fvec3> data;
         data.reserve(mesh.indices.size());
         std::for_each(mesh.indices.begin(), mesh.indices.end(),
             [&data, &mesh](std::uint32_t index) { data.push_back(mesh.vertices[index].position); });
-        const auto& mat = model.materials_[mesh.materialIndex];
+        const auto& mat = model.materials[mesh.materialIndex];
         bool doubleSided = mat.doubleSided || mat.hasVolume;
         mesh_data_.emplace_back(std::move(data), doubleSided);
     }
@@ -355,11 +355,11 @@ BBox NaiveAS::get_scene_bounds() const noexcept {
 
 BVH_AS::BVH_AS(const Model& model, int max_triangles_per_leaf) {
     auto start = std::chrono::high_resolution_clock::now();
-    object_data_.reserve(model.objects_.size());
-    mesh_bvh_data_.reserve(model.meshes_.size());
-    for (uint32_t i = 0; i < model.objects_.size(); ++i) {
-        const auto& obj = model.objects_[i];
-        const auto& mesh = model.meshes_[obj.meshIndex];
+    object_data_.reserve(model.objects.size());
+    mesh_bvh_data_.reserve(model.meshes.size());
+    for (uint32_t i = 0; i < model.objects.size(); ++i) {
+        const auto& obj = model.objects[i];
+        const auto& mesh = model.meshes[obj.meshIndex];
         DOP volume = object_to_ws_dop(obj, mesh);
         object_data_.emplace_back(
             volume, 
@@ -377,8 +377,8 @@ BVH_AS::BVH_AS(const Model& model, int max_triangles_per_leaf) {
     };
     std::sort(object_data_.begin(), object_data_.end(), complexity_cmp);
 
-    for (const auto& mesh : model.meshes_) {
-        const auto& mat = model.materials_[mesh.materialIndex];
+    for (const auto& mesh : model.meshes) {
+        const auto& mat = model.materials[mesh.materialIndex];
         bool doubleSided = mat.doubleSided || mat.hasVolume;
         mesh_bvh_data_.emplace_back(
             mesh, 

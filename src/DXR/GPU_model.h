@@ -35,7 +35,7 @@ class GPU_mesh {
     ComPtr<ID3D12Resource2> vertexBuffer;
     ComPtr<ID3D12Resource2> indexBuffer;
 
-    bool positions_only_ = false;
+    bool positionsOnly = false;
 
   private:
     ComPtr<ID3D12Resource> scratchBuffer;
@@ -62,7 +62,7 @@ struct GPU_Material {  // enforce packing rules on CPU Material data
     int transmissionTextureIndex;
     int emissiveTextureIndex;
     float emissiveStrength;
-    float alpha_cutoff;
+    float alphaCutoff;
 
     int doubleSided;
     int hasVolume;
@@ -137,9 +137,9 @@ class GPU_model {
   private:
     std::vector<GPU_mesh> meshes_;
 
-    std::vector<int> texture_id_conversion_table;
-    GPU_texture default_white_texture = GPU_texture(CPUTexture<sdr_pixel>::create_white_texture(), false);
-    int default_white_texture_index = 0;
+    std::vector<int> texture_id_conversion_table_;
+    GPU_texture default_white_texture_ = GPU_texture(CPUTexture<sdr_pixel>::create_white_texture(), false);
+    int default_white_texture_index_ = 0;
 
     void create_top_level_AS(const Model& cpu_model);
 

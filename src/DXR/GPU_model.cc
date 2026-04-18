@@ -25,9 +25,9 @@ D3D12_SHADER_RESOURCE_VIEW_DESC CreateSRVDescription(UINT numElements, UINT elem
 
 void CreateBufferSRV(D3DContext& d3d_ctx, const ComPtr<ID3D12Resource>& buffer, UINT numElements, UINT elementSize,
     GPU_model::D3D_Handle_Pair& handles) {
-    d3d_ctx.g_pd3dSrvDescHeapAlloc.Alloc(&handles.cpuDescriptorHandle, &handles.gpuDescriptorHandle);
+    d3d_ctx.m_SrvDescHeapAlloc.Alloc(&handles.cpuDescriptorHandle, &handles.gpuDescriptorHandle);
     const auto srvDesc = CreateSRVDescription(numElements, elementSize);
-    d3d_ctx.g_pd3dDevice->CreateShaderResourceView(buffer.Get(), &srvDesc, handles.cpuDescriptorHandle);
+    d3d_ctx.m_d3dDevice->CreateShaderResourceView(buffer.Get(), &srvDesc, handles.cpuDescriptorHandle);
 }
 
 }  // namespace
@@ -42,7 +42,7 @@ inline void ThrowIfFailed(HRESULT hr) {
     }
 }
 
-GPU_mesh::GPU_mesh(const Mesh& cpu_mesh, bool positions_only) : positions_only_(positions_only) {
+GPU_mesh::GPU_mesh(const Mesh& cpu_mesh, bool positions_only) : positionsOnly(positions_only) {
     D3DContext& d3d_ctx = D3DContext::Get();
 
     d3d_ctx.InitCopyCommandList();
@@ -53,7 +53,7 @@ GPU_mesh::GPU_mesh(const Mesh& cpu_mesh, bool positions_only) : positions_only_(
     vertexCount = cpu_mesh.vertices.size();
     indexCount = cpu_mesh.indices.size();
 
-    const UINT vertexBufferSize = (positions_only_ ? sizeof(vertex::position) : sizeof(vertex)) * vertexCount;
+    const UINT vertexBufferSize = (positionsOnly ? sizeof(vertex::position) : sizeof(vertex)) * vertexCount;
     const UINT indexBufferSize = sizeof(uint32_t) * indexCount;
 
     const D3D12_HEAP_PROPERTIES def_props{
@@ -89,7 +89,7 @@ GPU_mesh::GPU_mesh(const Mesh& cpu_mesh, bool positions_only) : positions_only_(
 
     // vertices
     ThrowIfFailed(
-        d3d_ctx.g_pd3dDevice->CreateCommittedResource(
+        d3d_ctx.m_d3dDevice->CreateCommittedResource(
             &upload_props, 
             D3D12_HEAP_FLAG_NONE, 
             &upload_desc, 
@@ -99,7 +99,7 @@ GPU_mesh::GPU_mesh(const Mesh& cpu_mesh, bool positions_only) : positions_only_(
         )
     );
     ThrowIfFailed(
-        d3d_ctx.g_pd3dDevice->CreateCommittedResource(
+        d3d_ctx.m_d3dDevice->CreateCommittedResource(
             &def_props, 
             D3D12_HEAP_FLAG_NONE, 
             &upload_desc,
@@ -110,7 +110,7 @@ GPU_mesh::GPU_mesh(const Mesh& cpu_mesh, bool positions_only) : positions_only_(
     );
     // indices
     ThrowIfFailed(
-        d3d_ctx.g_pd3dDevice->CreateCommittedResource(
+        d3d_ctx.m_d3dDevice->CreateCommittedResource(
             &upload_props, 
             D3D12_HEAP_FLAG_NONE, 
             &index_upload_desc, 
@@ -120,7 +120,7 @@ GPU_mesh::GPU_mesh(const Mesh& cpu_mesh, bool positions_only) : positions_only_(
         )
     );
     ThrowIfFailed(
-        d3d_ctx.g_pd3dDevice->CreateCommittedResource(
+        d3d_ctx.m_d3dDevice->CreateCommittedResource(
             &def_props, 
             D3D12_HEAP_FLAG_NONE, 
             &index_upload_desc,
@@ -133,7 +133,7 @@ GPU_mesh::GPU_mesh(const Mesh& cpu_mesh, bool positions_only) : positions_only_(
     // Copy the triangle data to the vertex buffer.
     void* pVertexDataBegin;
     ThrowIfFailed(uploadBuffer->Map(0, nullptr, &pVertexDataBegin));
-    if (positions_only_) {
+    if (positionsOnly) {
         std::vector<fvec3> tmp_positions;
         static_assert(sizeof(vertex::position) == sizeof(fvec3) && sizeof(fvec3) == sizeof(fvec4),
             "vertex::position should be the same as fvec3 AND fvec4");
@@ -153,8 +153,8 @@ GPU_mesh::GPU_mesh(const Mesh& cpu_mesh, bool positions_only) : positions_only_(
     index_uploadBuffer->Unmap(0, nullptr);
 
     // Copy call
-    d3d_ctx.g_pd3dCopyCommandList->CopyBufferRegion(vertexBuffer.Get(), 0, uploadBuffer.Get(), 0, vertexBufferSize);
-    d3d_ctx.g_pd3dCopyCommandList->CopyBufferRegion(indexBuffer.Get(), 0, index_uploadBuffer.Get(), 0, indexBufferSize);
+    d3d_ctx.m_CopyCommandList->CopyBufferRegion(vertexBuffer.Get(), 0, uploadBuffer.Get(), 0, vertexBufferSize);
+    d3d_ctx.m_CopyCommandList->CopyBufferRegion(indexBuffer.Get(), 0, index_uploadBuffer.Get(), 0, indexBufferSize);
 
     d3d_ctx.DispatchCopyCommandList();
     d3d_ctx.WaitForPendingCopy();
@@ -190,7 +190,7 @@ void GPU_mesh::transition_from_copy_to_usage() {
         },
     };
     // or D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE ? or D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE ?
-    d3d_ctx.g_pd3dCommandList->ResourceBarrier(_countof(barriers), barriers);
+    d3d_ctx.m_CommandList->ResourceBarrier(_countof(barriers), barriers);
 }
 
 D3D12_GPU_VIRTUAL_ADDRESS GPU_mesh::get_blas_gpu_va() const { return blasBuffer ? blasBuffer->GetGPUVirtualAddress() : 0; }
@@ -205,7 +205,7 @@ void GPU_mesh::create_bottom_level_AS() {
     };
 
     geomDesc.Triangles.VertexBuffer.StartAddress = vertexBuffer->GetGPUVirtualAddress();
-    geomDesc.Triangles.VertexBuffer.StrideInBytes = positions_only_ ? sizeof(vertex::position) : sizeof(vertex);
+    geomDesc.Triangles.VertexBuffer.StrideInBytes = positionsOnly ? sizeof(vertex::position) : sizeof(vertex);
     geomDesc.Triangles.VertexCount = vertexCount;
     geomDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
 
@@ -222,7 +222,7 @@ void GPU_mesh::create_bottom_level_AS() {
 
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
 
-    d3d_ctx.g_pd3dDevice->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
+    d3d_ctx.m_d3dDevice->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
 
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC buildDesc;
 
@@ -261,7 +261,7 @@ void GPU_mesh::create_bottom_level_AS() {
     };
 
     ThrowIfFailed(
-        d3d_ctx.g_pd3dDevice->CreateCommittedResource(
+        d3d_ctx.m_d3dDevice->CreateCommittedResource(
             &def_props, 
             D3D12_HEAP_FLAG_NONE, 
             &scratch_desc,
@@ -271,7 +271,7 @@ void GPU_mesh::create_bottom_level_AS() {
         )
     );
     ThrowIfFailed(
-        d3d_ctx.g_pd3dDevice->CreateCommittedResource(
+        d3d_ctx.m_d3dDevice->CreateCommittedResource(
             &def_props, 
             D3D12_HEAP_FLAG_NONE, 
             &blas_desc,
@@ -287,20 +287,20 @@ void GPU_mesh::create_bottom_level_AS() {
     buildDesc.DestAccelerationStructureData = blasBuffer->GetGPUVirtualAddress();
 
     // Build the AS
-    d3d_ctx.g_pd3dCommandList->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
+    d3d_ctx.m_CommandList->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
 
     D3D12_RESOURCE_BARRIER uavBarrier;
     uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
     uavBarrier.UAV.pResource = blasBuffer.Get();
     uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    d3d_ctx.g_pd3dCommandList->ResourceBarrier(1, &uavBarrier);
+    d3d_ctx.m_CommandList->ResourceBarrier(1, &uavBarrier);
 }
 
 GPU_mesh::~GPU_mesh() { release_gpu_resource(); }
 
 void GPU_mesh::release_gpu_resource() {
     D3DContext& d3d_ctx = D3DContext::Get();
-    if (d3d_ctx.g_pd3dCommandQueue != nullptr) {
+    if (d3d_ctx.m_CommandQueue != nullptr) {
         d3d_ctx.WaitForPendingOperations();
         d3d_ctx.WaitForPendingCopy();
     }
@@ -334,7 +334,7 @@ GPU_Material::GPU_Material(const Material& mat, const std::vector<int>& texture_
     transmissionTextureIndex = lambda(mat.transmissionTextureIndex);
     emissiveTextureIndex = lambda(mat.emissiveTextureIndex);
     emissiveStrength = mat.emissiveStrength;
-    alpha_cutoff = mat.alpha_cutoff;
+    alphaCutoff = mat.alphaCutoff;
 
     doubleSided = mat.doubleSided;
     hasVolume = mat.hasVolume;
@@ -343,11 +343,11 @@ GPU_Material::GPU_Material(const Material& mat, const std::vector<int>& texture_
 }
 
 GPU_model::GPU_model(const Model& cpu_model) {
-    if (cpu_model.meshes_.size() == 0) {
+    if (cpu_model.meshes.size() == 0) {
         return;
     }
-    meshes_.reserve(cpu_model.meshes_.size());
-    for (const auto& mesh : cpu_model.meshes_) {
+    meshes_.reserve(cpu_model.meshes.size());
+    for (const auto& mesh : cpu_model.meshes) {
         meshes_.emplace_back(mesh);
     }
     for (auto& mesh : meshes_) {
@@ -364,10 +364,10 @@ GPU_model::GPU_model(const Model& cpu_model) {
 }
 
 void GPU_model::prepare_textures_array_buffer(const Model& cpu_model) {
-    int images_size = cpu_model.images_.size();
+    int images_size = cpu_model.images.size();
     std::vector<bool> useSRGB;
     useSRGB.resize(images_size, false);
-    for (const auto& mat : cpu_model.materials_) {
+    for (const auto& mat : cpu_model.materials) {
         int albedo_id = mat.baseColorTextureIndex;
         int emissive_id = mat.emissiveTextureIndex;
         if (albedo_id >= 0 && albedo_id < images_size) {
@@ -380,7 +380,7 @@ void GPU_model::prepare_textures_array_buffer(const Model& cpu_model) {
 
     textures.reserve(images_size);
     for (int i = 0; i < images_size; ++i) {
-        const auto& img = cpu_model.images_[i];
+        const auto& img = cpu_model.images[i];
         bool srgb = useSRGB[i];
         textures.emplace_back(img, srgb);
     }
@@ -390,7 +390,7 @@ GPU_model::~GPU_model() { release_gpu_resource(); }
 
 void GPU_model::release_gpu_resource() {
     D3DContext& d3d_ctx = D3DContext::Get();
-    if (d3d_ctx.g_pd3dCommandQueue != nullptr) {
+    if (d3d_ctx.m_CommandQueue != nullptr) {
         d3d_ctx.WaitForPendingOperations();
     }
     tlasScratchBuffer.Reset();
@@ -400,10 +400,10 @@ void GPU_model::release_gpu_resource() {
 
     if (isEmpty_) return;
 
-    d3d_ctx.g_pd3dSrvDescHeapAlloc.Free(combined_mesh_indices.cpuDescriptorHandle, combined_mesh_indices.gpuDescriptorHandle);
-    d3d_ctx.g_pd3dSrvDescHeapAlloc.Free(combined_mesh_vertices.cpuDescriptorHandle, combined_mesh_vertices.gpuDescriptorHandle);
-    d3d_ctx.g_pd3dSrvDescHeapAlloc.Free(combined_mesh_offsets.cpuDescriptorHandle, combined_mesh_offsets.gpuDescriptorHandle);
-    d3d_ctx.g_pd3dSrvDescHeapAlloc.Free(materials_array.cpuDescriptorHandle, materials_array.gpuDescriptorHandle);
+    d3d_ctx.m_SrvDescHeapAlloc.Free(combined_mesh_indices.cpuDescriptorHandle, combined_mesh_indices.gpuDescriptorHandle);
+    d3d_ctx.m_SrvDescHeapAlloc.Free(combined_mesh_vertices.cpuDescriptorHandle, combined_mesh_vertices.gpuDescriptorHandle);
+    d3d_ctx.m_SrvDescHeapAlloc.Free(combined_mesh_offsets.cpuDescriptorHandle, combined_mesh_offsets.gpuDescriptorHandle);
+    d3d_ctx.m_SrvDescHeapAlloc.Free(materials_array.cpuDescriptorHandle, materials_array.gpuDescriptorHandle);
 };
 
 bool GPU_model::isEmpty() const { return isEmpty_; }
@@ -411,7 +411,7 @@ bool GPU_model::isEmpty() const { return isEmpty_; }
 void GPU_model::create_top_level_AS(const Model& cpu_model) {
     D3DContext& d3d_ctx = D3DContext::Get();
 
-    const auto& objects = cpu_model.objects_;
+    const auto& objects = cpu_model.objects;
     const size_t instanceCount = objects.size();
     if (instanceCount == 0) return;
 
@@ -434,11 +434,11 @@ void GPU_model::create_top_level_AS(const Model& cpu_model) {
                 inst.Transform[r][c] = Mat[c][r];
             }
         }
-        const auto& cpu_mesh = cpu_model.meshes_[obj.meshIndex];
-        const auto& material = cpu_model.materials_[cpu_mesh.materialIndex];
+        const auto& cpu_mesh = cpu_model.meshes[obj.meshIndex];
+        const auto& material = cpu_model.materials[cpu_mesh.materialIndex];
         bool doubleSided = material.doubleSided || material.hasVolume;
         bool alphaBlending = material.alphaBlending;
-        bool alphaTest = (material.alpha_cutoff >= 0.0f);
+        bool alphaTest = (material.alphaCutoff >= 0.0f);
 
         inst.InstanceID = objects[i].meshIndex;  // can be used to identify object in shaders
         inst.InstanceMask = 0xFF;
@@ -480,7 +480,7 @@ void GPU_model::create_top_level_AS(const Model& cpu_model) {
         .Flags = D3D12_RESOURCE_FLAG_NONE,
     };
 
-    ThrowIfFailed(d3d_ctx.g_pd3dDevice->CreateCommittedResource(&upload_props, D3D12_HEAP_FLAG_NONE, &instances_desc,
+    ThrowIfFailed(d3d_ctx.m_d3dDevice->CreateCommittedResource(&upload_props, D3D12_HEAP_FLAG_NONE, &instances_desc,
         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&instancesUploadBuffer)));
 
     // Copy instance descs to upload buffer
@@ -498,7 +498,7 @@ void GPU_model::create_top_level_AS(const Model& cpu_model) {
     inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
 
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
-    d3d_ctx.g_pd3dDevice->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
+    d3d_ctx.m_d3dDevice->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
 
     // Create scratch and result buffers for TLAS
     const D3D12_HEAP_PROPERTIES def_props{
@@ -535,10 +535,10 @@ void GPU_model::create_top_level_AS(const Model& cpu_model) {
         .Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
     };
 
-    ThrowIfFailed(d3d_ctx.g_pd3dDevice->CreateCommittedResource(
+    ThrowIfFailed(d3d_ctx.m_d3dDevice->CreateCommittedResource(
         &def_props, D3D12_HEAP_FLAG_NONE, &scratch_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&tlasScratchBuffer)));
 
-    ThrowIfFailed(d3d_ctx.g_pd3dDevice->CreateCommittedResource(&def_props, D3D12_HEAP_FLAG_NONE, &tlas_desc,
+    ThrowIfFailed(d3d_ctx.m_d3dDevice->CreateCommittedResource(&def_props, D3D12_HEAP_FLAG_NONE, &tlas_desc,
         D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, nullptr, IID_PPV_ARGS(&tlasBuffer)));
 
     // Describe build
@@ -549,20 +549,20 @@ void GPU_model::create_top_level_AS(const Model& cpu_model) {
     buildDesc.SourceAccelerationStructureData = 0;
 
     // Build TLAS
-    d3d_ctx.g_pd3dCommandList->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
+    d3d_ctx.m_CommandList->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
 
     // UAV barrier
     D3D12_RESOURCE_BARRIER uavBarrier{};
     uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
     uavBarrier.UAV.pResource = tlasBuffer.Get();
     uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    d3d_ctx.g_pd3dCommandList->ResourceBarrier(1, &uavBarrier);
+    d3d_ctx.m_CommandList->ResourceBarrier(1, &uavBarrier);
 }
 
 void GPU_model::prepare_combined_vertex_index_buffers(const Model& cpu_model) {
     size_t totalVertexCount = 0;
     size_t totalIndexCount = 0;
-    for (const auto& mesh : cpu_model.meshes_) {
+    for (const auto& mesh : cpu_model.meshes) {
         totalVertexCount += mesh.vertices.size();
         totalIndexCount += mesh.indices.size();
     }
@@ -571,9 +571,9 @@ void GPU_model::prepare_combined_vertex_index_buffers(const Model& cpu_model) {
     std::vector<uint32_t> indicesOffsets;
     combinedVertices.reserve(totalVertexCount);
     combinedIndices.reserve(totalIndexCount);
-    indicesOffsets.reserve(cpu_model.meshes_.size());
+    indicesOffsets.reserve(cpu_model.meshes.size());
 
-    for (const auto& mesh : cpu_model.meshes_) {
+    for (const auto& mesh : cpu_model.meshes) {
         indicesOffsets.push_back(combinedIndices.size());
         uint32_t vertexOffset = combinedVertices.size();
         combinedVertices.insert(combinedVertices.end(), mesh.vertices.begin(), mesh.vertices.end());
@@ -628,9 +628,9 @@ void GPU_model::prepare_combined_vertex_index_buffers(const Model& cpu_model) {
         .Flags = D3D12_RESOURCE_FLAG_NONE,
     };
 
-    ThrowIfFailed(d3d_ctx.g_pd3dDevice->CreateCommittedResource(&upload_props, D3D12_HEAP_FLAG_NONE, &upload_desc,
+    ThrowIfFailed(d3d_ctx.m_d3dDevice->CreateCommittedResource(&upload_props, D3D12_HEAP_FLAG_NONE, &upload_desc,
         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&offsets_uploadBuffer)));
-    ThrowIfFailed(d3d_ctx.g_pd3dDevice->CreateCommittedResource(&def_props, D3D12_HEAP_FLAG_NONE, &upload_desc,
+    ThrowIfFailed(d3d_ctx.m_d3dDevice->CreateCommittedResource(&def_props, D3D12_HEAP_FLAG_NONE, &upload_desc,
         D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&MeshIndicesOffsets)));
 
     void* pOffsetsDataBegin;
@@ -639,7 +639,7 @@ void GPU_model::prepare_combined_vertex_index_buffers(const Model& cpu_model) {
     offsets_uploadBuffer->Unmap(0, nullptr);
 
     // Copy call
-    d3d_ctx.g_pd3dCopyCommandList->CopyBufferRegion(
+    d3d_ctx.m_CopyCommandList->CopyBufferRegion(
         MeshIndicesOffsets.Get(), 0, offsets_uploadBuffer.Get(), 0, offsetsBufferSize);
 
     d3d_ctx.DispatchCopyCommandList();
@@ -653,16 +653,16 @@ void GPU_model::prepare_combined_vertex_index_buffers(const Model& cpu_model) {
 
 void GPU_model::prepare_materials_array_buffer(const Model& cpu_model) {
     D3DContext& d3d_ctx = D3DContext::Get();
-    const auto& heap_alloc = d3d_ctx.g_pd3dSrvDescHeapAlloc;
+    const auto& heap_alloc = d3d_ctx.m_SrvDescHeapAlloc;
 
     // convert from cpu image_id into indices within GPU SRV Heap
-    texture_id_conversion_table.reserve(textures.size());
-    std::transform(textures.begin(), textures.end(), std::back_inserter(texture_id_conversion_table),
+    texture_id_conversion_table_.reserve(textures.size());
+    std::transform(textures.begin(), textures.end(), std::back_inserter(texture_id_conversion_table_),
         [&heap_alloc](const auto& el) { return heap_alloc.GetIndex(el.GetSRVHandle()); }
     );
-    default_white_texture_index = heap_alloc.GetIndex(default_white_texture.GetSRVHandle());
+    default_white_texture_index_ = heap_alloc.GetIndex(default_white_texture_.GetSRVHandle());
 
-    uint32_t matCount = cpu_model.meshes_.size();
+    uint32_t matCount = cpu_model.meshes.size();
     const UINT BufferSize = sizeof(GPU_Material) * matCount;
 
     const D3D12_HEAP_PROPERTIES def_props{
@@ -686,7 +686,7 @@ void GPU_model::prepare_materials_array_buffer(const Model& cpu_model) {
         .Flags = D3D12_RESOURCE_FLAG_NONE,
     };
 
-    ThrowIfFailed(d3d_ctx.g_pd3dDevice->CreateCommittedResource(
+    ThrowIfFailed(d3d_ctx.m_d3dDevice->CreateCommittedResource(
         &def_props, D3D12_HEAP_FLAG_NONE, &upload_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&MaterialsArray)));
     CreateBufferSRV(d3d_ctx, MaterialsArray, matCount, sizeof(GPU_Material), materials_array);
 
@@ -699,10 +699,10 @@ void GPU_model::update_materials_array_buffer(const Model& cpu_model) {
     // Todo: pack the same as CPU without redundancy
     std::vector<GPU_Material> data;
     assert(sizeof(GPU_Material) == 112);
-    data.reserve(cpu_model.meshes_.size());
-    for (const auto& mesh : cpu_model.meshes_) {
-        const auto& mat = cpu_model.materials_[mesh.materialIndex];
-        data.emplace_back(mat, texture_id_conversion_table, default_white_texture_index);
+    data.reserve(cpu_model.meshes.size());
+    for (const auto& mesh : cpu_model.meshes) {
+        const auto& mat = cpu_model.materials[mesh.materialIndex];
+        data.emplace_back(mat, texture_id_conversion_table_, default_white_texture_index_);
     }
 
     D3DContext& d3d_ctx = D3DContext::Get();
@@ -734,7 +734,7 @@ void GPU_model::update_materials_array_buffer(const Model& cpu_model) {
         .Flags = D3D12_RESOURCE_FLAG_NONE,
     };
 
-    ThrowIfFailed(d3d_ctx.g_pd3dDevice->CreateCommittedResource(&upload_props, D3D12_HEAP_FLAG_NONE, &upload_desc,
+    ThrowIfFailed(d3d_ctx.m_d3dDevice->CreateCommittedResource(&upload_props, D3D12_HEAP_FLAG_NONE, &upload_desc,
         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&mat_uploadBuffer)));
 
     void* pDataBegin;
@@ -742,7 +742,7 @@ void GPU_model::update_materials_array_buffer(const Model& cpu_model) {
     memcpy(pDataBegin, data.data(), BufferSize);
     mat_uploadBuffer->Unmap(0, nullptr);
 
-    d3d_ctx.g_pd3dCopyCommandList->CopyBufferRegion(MaterialsArray.Get(), 0, mat_uploadBuffer.Get(), 0, BufferSize);
+    d3d_ctx.m_CopyCommandList->CopyBufferRegion(MaterialsArray.Get(), 0, mat_uploadBuffer.Get(), 0, BufferSize);
 
     d3d_ctx.DispatchCopyCommandList();
     d3d_ctx.WaitForPendingCopy();
@@ -789,9 +789,9 @@ void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT
             .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
         };
 
-        d3d_ctx.g_pd3dSrvDescHeapAlloc.Alloc(&srv_cpu_handle, &srv_gpu_handle);
+        d3d_ctx.m_SrvDescHeapAlloc.Alloc(&srv_cpu_handle, &srv_gpu_handle);
 
-        d3d_ctx.g_pd3dDevice->CreateCommittedResource(
+        d3d_ctx.m_d3dDevice->CreateCommittedResource(
             &def_props, D3D12_HEAP_FLAG_NONE, &tex_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&pTexture));
 
         const D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{
@@ -804,7 +804,7 @@ void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT
                     .MipLevels = 1,
                 },
         };
-        d3d_ctx.g_pd3dDevice->CreateShaderResourceView(pTexture.Get(), &srvDesc, srv_cpu_handle);
+        d3d_ctx.m_d3dDevice->CreateShaderResourceView(pTexture.Get(), &srvDesc, srv_cpu_handle);
     }
 }
 
@@ -840,7 +840,7 @@ void GPU_texture::upload_texture_to_gpu(int width_, int height_, const auto& dat
         .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
     };
 
-    hr = d3d_ctx.g_pd3dDevice->CreateCommittedResource(&upload_props, D3D12_HEAP_FLAG_NONE, &upload_desc,
+    hr = d3d_ctx.m_d3dDevice->CreateCommittedResource(&upload_props, D3D12_HEAP_FLAG_NONE, &upload_desc,
         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&uploadBuffer));
     assert(SUCCEEDED(hr));
 
@@ -876,7 +876,7 @@ void GPU_texture::upload_texture_to_gpu(int width_, int height_, const auto& dat
 
     d3d_ctx.InitCopyCommandList();
 
-    d3d_ctx.g_pd3dCopyCommandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, nullptr);
+    d3d_ctx.m_CopyCommandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, nullptr);
 
     d3d_ctx.DispatchCopyCommandList();
     d3d_ctx.WaitForPendingCopy();
@@ -884,7 +884,7 @@ void GPU_texture::upload_texture_to_gpu(int width_, int height_, const auto& dat
 
 void GPU_texture::release_gpu_resource() {
     if (pTexture) {
-        D3DContext::Get().g_pd3dSrvDescHeapAlloc.Free(srv_cpu_handle, srv_gpu_handle);
+        D3DContext::Get().m_SrvDescHeapAlloc.Free(srv_cpu_handle, srv_gpu_handle);
         pTexture.Reset();
     }
 }

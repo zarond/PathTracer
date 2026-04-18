@@ -17,29 +17,29 @@ namespace app {
 using namespace glm;
 
 Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture, const RenderSettings& settings)
-    : model_(std::move(model)), environmentTexture_(std::move(environmentTexture)) {
-    if (model_.cameras_.size() > 0) {
-        activeCameraIndex_ = 0;
+    : model_(std::move(model)), environment_texture_(std::move(environmentTexture)) {
+    if (model_.cameras.size() > 0) {
+        active_camera_index_ = 0;
     }
-    framebuffer_ = CPUFrameBuffer(windowDimensions_.x, windowDimensions_.y);
+    framebuffer_ = CPUFrameBuffer(window_dimensions_.x, window_dimensions_.y);
 
     renderers_.resize((int)RendererMode::Count);
     renderers_[(int)RendererMode::CPURenderer] = std::make_shared<Renderer>();
     renderer_ = renderers_[(int)RendererMode::CPURenderer];  // chose CPU renderer by default
-    activeRendererMode_ = RendererMode::CPURenderer;
+    active_renderer_mode_ = RendererMode::CPURenderer;
 
-    ++lastModelFenceValue;
-    ++lastEnvmapFenceValue;
+    ++last_model_fence_value_;
+    ++last_envmap_fence_value_;
     renderer_->set_render_settings(settings);
-    renderer_->load_scene(model_, environmentTexture_, lastModelFenceValue, lastEnvmapFenceValue);
+    renderer_->load_scene(model_, environment_texture_, last_model_fence_value_, last_envmap_fence_value_);
 
-    materials_backups_ = model_.materials_;
+    materials_backups_ = model_.materials;
 
     snap_to_camera();
 }
 
 #ifndef NO_WINDOWS
-void Viewer::InitGPURenderer() {
+void Viewer::init_GPU_renderer() {
     if (renderers_[(int)RendererMode::GPURenderer]) {
         return;
     }
@@ -59,26 +59,26 @@ void Viewer::switch_to_renderer(RendererMode mode) {
     if (renderer_->get_rendering_state() == RenderingState::Rendering) {
         throw std::runtime_error("Cannot switch renderer while rendering is in progress");
     }
-    if (activeRendererMode_ == mode) {
+    if (active_renderer_mode_ == mode) {
         return;
     }
     auto settings = get_render_settings();
     renderer_ = renderers_[(int)mode];
     renderer_->set_render_settings(settings);
-    renderer_->load_scene(model_, environmentTexture_, lastModelFenceValue, lastEnvmapFenceValue);
+    renderer_->load_scene(model_, environment_texture_, last_model_fence_value_, last_envmap_fence_value_);
     snap_to_camera(false);
-    activeRendererMode_ = mode;
+    active_renderer_mode_ = mode;
 }
 
-RendererMode Viewer::get_renderer_mode() const { return activeRendererMode_; }
+RendererMode Viewer::get_renderer_mode() const { return active_renderer_mode_; }
 #endif
 
 void Viewer::resize_window(const ivec2& newDimensions, bool createGPUTex) {
-    windowDimensions_ = newDimensions;
+    window_dimensions_ = newDimensions;
 #ifndef NO_WINDOWS
     framebuffer_.release_gpu_resource();
 #endif
-    framebuffer_ = CPUFrameBuffer(windowDimensions_.x, windowDimensions_.y);
+    framebuffer_ = CPUFrameBuffer(window_dimensions_.x, window_dimensions_.y);
 #ifndef NO_WINDOWS
     if (createGPUTex) {
         framebuffer_.create_texture_resource();
@@ -86,16 +86,16 @@ void Viewer::resize_window(const ivec2& newDimensions, bool createGPUTex) {
 #endif
 }
 
-ivec2 Viewer::get_window_dimensions() const { return windowDimensions_; }
+ivec2 Viewer::get_window_dimensions() const { return window_dimensions_; }
 
 void Viewer::render() {
     if (need_materials_update_) {
         renderer_->reload_materials();
         need_materials_update_ = false;
     }
-    renderer_->render_frame(framebuffer_, continuous_rendering, iterative_rendering, iterations_counter);
+    renderer_->render_frame(framebuffer_, continuous_rendering, iterative_rendering, iterations_counter_);
     if (iterative_rendering) {
-        ++iterations_counter;
+        ++iterations_counter_;
     } else {
         reset_iteration_counter();
     }
@@ -117,17 +117,17 @@ void Viewer::clear_framebuffer_black() { framebuffer_.clear(); }
 
 void Viewer::set_active_camera(std::optional<uint32_t> cameraIndex) {
     if (cameraIndex.has_value()) {
-        if (*cameraIndex >= model_.cameras_.size()) {
+        if (*cameraIndex >= model_.cameras.size()) {
             throw std::out_of_range("Camera index out of range in Viewer::set_active_camera");
         }
-        activeCameraIndex_ = cameraIndex;
+        active_camera_index_ = cameraIndex;
         snap_to_camera();
     } else {
-        activeCameraIndex_ = cameraIndex;
+        active_camera_index_ = cameraIndex;
     }
 }
 
-std::optional<uint32_t> Viewer::get_active_camera() const { return activeCameraIndex_; }
+std::optional<uint32_t> Viewer::get_active_camera() const { return active_camera_index_; }
 
 void Viewer::take_snapshot(const std::filesystem::path& filePath) const {
     framebuffer_.save_to_file(filePath, is_using_gpu_renderer());
@@ -136,13 +136,13 @@ void Viewer::take_snapshot(const std::filesystem::path& filePath) const {
 bool Viewer::snap_to_camera(bool use_default) {
     bool success = false;
 
-    if (activeCameraIndex_.has_value()) {
-        const auto& camera = model_.cameras_[*activeCameraIndex_];
+    if (active_camera_index_.has_value()) {
+        const auto& camera = model_.cameras[*active_camera_index_];
         std::visit(fastgltf::visitor{
                 [&](const fastgltf::Camera::Perspective& perspective) {
-                    position_ = xyz(camera.ModelMatrix[3]);
-                    direction_ = -xyz(camera.ModelMatrix[2]);
-                    up_ = xyz(camera.ModelMatrix[1]);
+                    position = xyz(camera.ModelMatrix[3]);
+                    direction = -xyz(camera.ModelMatrix[2]);
+                    up = xyz(camera.ModelMatrix[1]);
                     cam_params_ = perspective;
 
                     success = true;
@@ -153,16 +153,16 @@ bool Viewer::snap_to_camera(bool use_default) {
             },
         camera.camera_params);
     }
-    cam_params_.aspectRatio = static_cast<float>(windowDimensions_.x) / windowDimensions_.y;  // adjust camera aspect ratio to screen
+    cam_params_.aspectRatio = static_cast<float>(window_dimensions_.x) / window_dimensions_.y;  // adjust camera aspect ratio to screen
     if (!success && use_default) {
         set_up_default_camera_transforms();
     }
-    renderer_->update_camera_transform_state(position_, direction_, up_, cam_params_);
+    renderer_->update_camera_transform_state(position, direction, up, cam_params_);
 
     return success;
 }
 
-int Viewer::get_number_of_cameras() const { return static_cast<int>(model_.cameras_.size()); }
+int Viewer::get_number_of_cameras() const { return static_cast<int>(model_.cameras.size()); }
 
 void Viewer::set_render_settings(const RenderSettings& settings) { renderer_->set_render_settings(settings); }
 RenderSettings Viewer::get_render_settings() const { return renderer_->get_render_settings(); }
@@ -170,21 +170,21 @@ RenderSettings Viewer::get_render_settings() const { return renderer_->get_rende
 float Viewer::get_render_progress() const { return renderer_->get_progress(); }
 
 void Viewer::load_envmap(CPUTexture<hdr_pixel>&& environmentTexture) {
-    environmentTexture_ = std::move(environmentTexture);
-    ++lastEnvmapFenceValue;
-    renderer_->load_envmap(environmentTexture_, lastEnvmapFenceValue);
+    environment_texture_ = std::move(environmentTexture);
+    ++last_envmap_fence_value_;
+    renderer_->load_envmap(environment_texture_, last_envmap_fence_value_);
 }
 
 void Viewer::load_model(Model&& model) {
     model_ = std::move(model);
-    activeCameraIndex_ = std::nullopt;
-    if (model_.cameras_.size() > 0) {
-        activeCameraIndex_ = 0;
+    active_camera_index_ = std::nullopt;
+    if (model_.cameras.size() > 0) {
+        active_camera_index_ = 0;
     }
-    ++lastModelFenceValue;
-    renderer_->load_model(model_, lastModelFenceValue);
+    ++last_model_fence_value_;
+    renderer_->load_model(model_, last_model_fence_value_);
 
-    materials_backups_ = model_.materials_;
+    materials_backups_ = model_.materials;
 }
 
 const Model& Viewer::get_model() const { return model_; }
@@ -194,14 +194,14 @@ void Viewer::set_materials_updated() { need_materials_update_ = true; }
 
 CPUFrameBuffer& Viewer::get_framebuffer() { return framebuffer_; }
 
-void Viewer::reset_iteration_counter() { iterations_counter = 1; }
-int Viewer::get_iteration_counter() const { return iterations_counter; }
+void Viewer::reset_iteration_counter() { iterations_counter_ = 1; }
+int Viewer::get_iteration_counter() const { return iterations_counter_; }
 
 void Viewer::set_up_default_camera_transforms() {
-    direction_ = fvec3(0.0f, 0.0f, -1.0f);
-    up_ = fvec3(0.0f, 1.0f, 0.0f);  // up view direction
+    direction = fvec3(0.0f, 0.0f, -1.0f);
+    up = fvec3(0.0f, 1.0f, 0.0f);  // up view direction
     cam_params_ = {
-        .aspectRatio = static_cast<float>(windowDimensions_.x) / windowDimensions_.y,
+        .aspectRatio = static_cast<float>(window_dimensions_.x) / window_dimensions_.y,
         .yfov = glm::radians(60.f),
         .zfar = 1000.0f,
         .znear = 0.1f};
@@ -211,15 +211,15 @@ void Viewer::set_up_default_camera_transforms() {
     auto max_dim = (not_empty) ? max(dims.x, max(dims.y, dims.z)) : 1.0f;
     auto center = (not_empty) ? bounds.min + dims * 0.5f : fvec3{0.0f};
     fvec3 offset = fvec3(0.0f, 0.0f, 1.0f) * max_dim * 1.5f;
-    position_ = center + offset;
+    position = center + offset;
 }
 
-fvec3 Viewer::right_() const { return cross(direction_, up_); }
+fvec3 Viewer::right() const { return cross(direction, up); }
 
 float& Viewer::get_yfov() { return cam_params_.yfov; }
 
 fvec3 Viewer::get_euler_angles_camera() const {
-    glm::quat quat = glm::quatLookAt(direction_, up_);
+    glm::quat quat = glm::quatLookAt(direction, up);
     const glm::quat q_shfl{quat.w, quat.y, quat.x, quat.z};  // To overcome GLM's gimbal lock issue
     const glm::fvec3 euler{
         glm::yaw(q_shfl),    // Pitch
@@ -229,7 +229,7 @@ fvec3 Viewer::get_euler_angles_camera() const {
     return euler;
 }
 
-bool Viewer::is_using_gpu_renderer() const { return (activeRendererMode_ == RendererMode::GPURenderer); }
+bool Viewer::is_using_gpu_renderer() const { return (active_renderer_mode_ == RendererMode::GPURenderer); }
 
 void Viewer::wait_for_render_start(std::stop_token stop) {
     std::unique_lock<std::mutex> lock(mtx_render_);

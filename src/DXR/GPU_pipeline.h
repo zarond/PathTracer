@@ -26,7 +26,7 @@ using Microsoft::WRL::ComPtr;
 struct RayGenConstantBuffer {
     fmat4x4 projectionToWorld;
     fvec4 cameraPosition;
-    fvec2 subpixel_offset;
+    fvec2 subpixelOffset;
     unsigned int frameID;
     int iteration;
     float invIterationCount;

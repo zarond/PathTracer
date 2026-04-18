@@ -73,9 +73,9 @@ class RayCasterProgram : public IRayProgram {
         std::vector<ray_with_payload>& ray_collection) const noexcept override;
 
   private:
-    const Model& modelRef;
-    const CPUTexture<hdr_pixel>& envmapRef;
-    float envmap_rot;
+    const Model& model_ref_;
+    const CPUTexture<hdr_pixel>& envmap_ref_;
+    float envmap_rot_;
 };
 
 class AOProgram : public IRayProgram {
@@ -87,12 +87,12 @@ class AOProgram : public IRayProgram {
         std::vector<ray_with_payload>& ray_collection) const noexcept override;
 
   private:
-    const Model& modelRef;
-    const unsigned int aoSamples = 32;
-    const float inv_aoSamples;
+    const Model& model_ref_;
+    const unsigned int ao_samples_ = 32;
+    const float inv_ao_samples_;
 
-    static thread_local std::minstd_rand gen;
-    static thread_local std::uniform_real_distribution<float> dist;
+    static thread_local std::minstd_rand s_gen;
+    static thread_local std::uniform_real_distribution<float> s_dist;
 };
 
 class PBRProgram : public IRayProgram {
@@ -104,12 +104,12 @@ class PBRProgram : public IRayProgram {
         std::vector<ray_with_payload>& ray_collection) const noexcept override;
 
   private:
-    const Model& modelRef;
-    const CPUTexture<hdr_pixel>& envmapRef;
-    float envmap_rot;
+    const Model& model_ref_;
+    const CPUTexture<hdr_pixel>& envmap_ref_;
+    float envmap_rot_;
 
-    static thread_local std::minstd_rand gen;
-    static thread_local std::uniform_real_distribution<float> dist;
+    static thread_local std::minstd_rand s_gen;
+    static thread_local std::uniform_real_distribution<float> s_dist;
     // Todo: add quasi-random mode
 };
 

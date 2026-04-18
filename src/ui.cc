@@ -134,7 +134,7 @@ LRESULT WINAPI DXWindow::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
         case WM_SIZE: 
             {
                 D3DContext& d3d_ctx = D3DContext::Get();
-                if (d3d_ctx.g_pd3dDevice != nullptr && wParam != SIZE_MINIMIZED) {
+                if (d3d_ctx.m_d3dDevice != nullptr && wParam != SIZE_MINIMIZED) {
                     d3d_ctx.ResizeSwapchain(LOWORD(lParam), HIWORD(lParam));
                 }
             }
@@ -156,7 +156,7 @@ LRESULT WINAPI DXWindow::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lPar
 
 std::string OpenFileDialog() {     // todo: modernize with IFileDialog
     const int max_path = 1024;     // MAX_PATH;
-    char fileName[max_path] = "";  // todo: long file paths
+    char file_name[max_path] = "";  // todo: long file paths
 
     OPENFILENAMEA ofn{};
     ofn.lStructSize = sizeof(ofn);
@@ -165,18 +165,18 @@ std::string OpenFileDialog() {     // todo: modernize with IFileDialog
         "All Files\0*.*\0"
         "Gltf Files (*.gltf;*.glb)\0*.gltf;*.glb\0"
         "HDR Files (*.hdr)\0*.hdr\0\0";
-    ofn.lpstrFile = fileName;
+    ofn.lpstrFile = file_name;
     ofn.nMaxFile = max_path;
     ofn.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
 
-    if (GetOpenFileNameA(&ofn)) return fileName;
+    if (GetOpenFileNameA(&ofn)) return file_name;
 
     return "";
 }
 
 std::string SaveFileDialog() {     // todo: modernize with IFileDialog
     const int max_path = 1024;     // MAX_PATH;
-    char fileName[max_path] = "";  // todo: long file paths
+    char file_name[max_path] = "";  // todo: long file paths
 
     OPENFILENAMEA ofn{};
     ofn.lStructSize = sizeof(ofn);
@@ -185,12 +185,12 @@ std::string SaveFileDialog() {     // todo: modernize with IFileDialog
         "All Files\0*.*\0"
         "PNG File (*.png)\0*.png\0"
         "HDR File (*.hdr)\0*.hdr\0\0";
-    ofn.lpstrFile = fileName;
+    ofn.lpstrFile = file_name;
     ofn.nMaxFile = max_path;
     ofn.lpstrDefExt = "png";
     ofn.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_OVERWRITEPROMPT | OFN_NOCHANGEDIR;
 
-    if (GetSaveFileNameA(&ofn)) return fileName;
+    if (GetSaveFileNameA(&ofn)) return file_name;
 
     return "";
 }
@@ -244,14 +244,14 @@ void SetupImGuiStyle() {
 
 static void MaterialsSettingsUI(Viewer& viewer) {
     auto& model = viewer.get_model();
-    const int materials_size = model.materials_.size();
+    const int materials_size = model.materials.size();
     static int current_material_index = 0;
     if (current_material_index >= materials_size) {
         current_material_index = 0;
     }
     bool settings_changed = false;
-    imgui_combo("Choose Material:", model.materials_names_, current_material_index);
-    Material& current_material = model.materials_[current_material_index];
+    imgui_combo("Choose Material:", model.materials_names, current_material_index);
+    Material& current_material = model.materials[current_material_index];
     const Material& original_material = viewer.get_materials_backup()[current_material_index];
 
     settings_changed |=
@@ -288,7 +288,7 @@ static void MaterialsSettingsUI(Viewer& viewer) {
     settings_changed |= ImGui::Checkbox("Double Sided", &current_material.doubleSided);
     settings_changed |= ImGui::Checkbox("Has Volume", &current_material.hasVolume);
     settings_changed |= ImGui::Checkbox("Alpha Blending", &current_material.alphaBlending);
-    settings_changed |= ImGui::SliderFloat("Alpha Cutoff F.", &current_material.alpha_cutoff, -1.0f, 1.0f, "%.3f");
+    settings_changed |= ImGui::SliderFloat("Alpha Cutoff F.", &current_material.alphaCutoff, -1.0f, 1.0f, "%.3f");
     if (ImGui::Button("Reset to original material")) {
         current_material = original_material;
         settings_changed = true;
@@ -428,7 +428,7 @@ static void CameraUI(Viewer& viewer) {
             static float camera_rotation_speed = 10.0f;
             bool transform_changed = false;
             transform_changed |=
-                ImGui::DragFloat3("Camera Position", &viewer.position_.x, camera_speed * 0.001f, 0.0f, 0.0f, "%.4f");
+                ImGui::DragFloat3("Camera Position", &viewer.position.x, camera_speed * 0.001f, 0.0f, 0.0f, "%.4f");
             transform_changed |=
                 ImGui::DragFloat3("Camera Euler", &euler_angles.x, 0.1f, -180.0f, 180.0f, nullptr, ImGuiSliderFlags_WrapAround);
             transform_changed |=
@@ -450,27 +450,27 @@ static void CameraUI(Viewer& viewer) {
                         euler_angles.z = 0.0;
                     }
                     if (ImGui::IsKeyDown(ImGuiKey_W)) {
-                        viewer.position_ += viewer.direction_ * camera_speed * dT;
+                        viewer.position += viewer.direction * camera_speed * dT;
                         transform_changed |= true;
                     }
                     if (ImGui::IsKeyDown(ImGuiKey_A)) {
-                        viewer.position_ -= viewer.right_() * camera_speed * dT;
+                        viewer.position -= viewer.right() * camera_speed * dT;
                         transform_changed |= true;
                     }
                     if (ImGui::IsKeyDown(ImGuiKey_S)) {
-                        viewer.position_ -= viewer.direction_ * camera_speed * dT;
+                        viewer.position -= viewer.direction * camera_speed * dT;
                         transform_changed |= true;
                     }
                     if (ImGui::IsKeyDown(ImGuiKey_D)) {
-                        viewer.position_ += viewer.right_() * camera_speed * dT;
+                        viewer.position += viewer.right() * camera_speed * dT;
                         transform_changed |= true;
                     }
                     if (ImGui::IsKeyDown(ImGuiKey_E)) {
-                        viewer.position_ += viewer.up_ * camera_speed * dT;
+                        viewer.position += viewer.up * camera_speed * dT;
                         transform_changed |= true;
                     }
                     if (ImGui::IsKeyDown(ImGuiKey_Q)) {
-                        viewer.position_ -= viewer.up_ * camera_speed * dT;
+                        viewer.position -= viewer.up * camera_speed * dT;
                         transform_changed |= true;
                     }
                 }
@@ -478,8 +478,8 @@ static void CameraUI(Viewer& viewer) {
             if (transform_changed) {
                 euler_angles = glm::radians(euler_angles);
                 auto quat = glm::quat(euler_angles);
-                viewer.direction_ = quat * fvec3(0.0f, 0.0f, -1.0f);
-                viewer.up_ = quat * fvec3(0.0f, 1.0f, 0.0f);
+                viewer.direction = quat * fvec3(0.0f, 0.0f, -1.0f);
+                viewer.up = quat * fvec3(0.0f, 1.0f, 0.0f);
                 viewer.snap_to_camera(false);
             }
         }
@@ -522,9 +522,9 @@ static void RenderSettingsUI(Viewer& viewer, ConsoleArgs& console_arguments, std
         } else if (filepath.extension() == ".gltf" || filepath.extension() == ".glb") {
             std::cout << "Loading Gltf model file \n";
             ModelLoader loader{};
-            bool success = loader.loadFromFile(filepath);
+            bool success = loader.load_from_file(filepath);
             if (success) {
-                Model new_model = loader.constructModel();
+                Model new_model = loader.construct_model();
                 viewer.load_model(std::move(new_model));
                 viewer.snap_to_camera();
                 console_arguments.modelPath = filepath;

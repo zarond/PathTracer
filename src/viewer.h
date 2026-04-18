@@ -69,10 +69,10 @@ class Viewer {
     void reset_iteration_counter();
     int get_iteration_counter() const;
 
-    fvec3 position_ = fvec3(0.0f);                // camera position
-    fvec3 direction_ = fvec3(0.0f, 0.0f, -1.0f);  // center view direction
-    fvec3 up_ = fvec3(0.0f, 1.0f, 0.0f);          // up view direction
-    fvec3 right_() const;
+    fvec3 position = fvec3(0.0f);                // camera position
+    fvec3 direction = fvec3(0.0f, 0.0f, -1.0f);  // center view direction
+    fvec3 up = fvec3(0.0f, 1.0f, 0.0f);          // up view direction
+    fvec3 right() const;
 
     float& get_yfov();
     fvec3 get_euler_angles_camera() const;
@@ -80,7 +80,7 @@ class Viewer {
     bool is_using_gpu_renderer() const;
 
 #ifndef NO_WINDOWS
-    void InitGPURenderer();
+    void init_GPU_renderer();
     void switch_to_renderer(RendererMode mode);
     RendererMode get_renderer_mode() const;
 #endif
@@ -89,40 +89,29 @@ class Viewer {
 
   private:
     Model model_;
-    CPUTexture<hdr_pixel> environmentTexture_;
+    CPUTexture<hdr_pixel> environment_texture_;
     std::vector<Material> materials_backups_;
     bool need_materials_update_ = false;
 
     std::mutex mtx_render_;
     std::condition_variable cv_render_;
 
-    size_t lastModelFenceValue = 0;
-    size_t lastEnvmapFenceValue = 0;
+    size_t last_model_fence_value_ = 0;
+    size_t last_envmap_fence_value_ = 0;
 
-    int iterations_counter = 1;
+    int iterations_counter_ = 1;
 
-    std::optional<uint32_t> activeCameraIndex_ = std::nullopt;
+    std::optional<uint32_t> active_camera_index_ = std::nullopt;
 
     std::shared_ptr<IRenderer> renderer_;                // currently chosen renderer
     std::vector<std::shared_ptr<IRenderer>> renderers_;  // initialize all renderers
-    RendererMode activeRendererMode_;
+    RendererMode active_renderer_mode_;
 
     CPUFrameBuffer framebuffer_;
 
-    ivec2 windowDimensions_ = ivec2(800, 600);
-
-    std::chrono::steady_clock::time_point lastFrame_;
-    std::chrono::milliseconds deltaTime_;
-
-    fvec3 accelerationVector_ = fvec3(0.0f);
-    fvec3 velocity_ = fvec3(0.0f);
+    ivec2 window_dimensions_ = ivec2(800, 600);
 
     fastgltf::Camera::Perspective cam_params_;
-
-    dvec2 lastCursorPosition_ = dvec2(0.0f);
-    float yaw_ = -90.0f;
-    float pitch_ = 0.0f;
-    bool firstMouse_ = true;
 
     void set_up_default_camera_transforms();
 };

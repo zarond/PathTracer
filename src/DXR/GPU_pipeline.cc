@@ -37,7 +37,7 @@ using namespace glm;
 
 void SerializeAndCreateRaytracingRootSignature(D3D12_ROOT_SIGNATURE_DESC& desc, ComPtr<ID3D12RootSignature>* rootSig) {
     D3DContext& d3d_ctx = D3DContext::Get();
-    auto device = d3d_ctx.g_pd3dDevice;
+    auto device = d3d_ctx.m_d3dDevice;
     ComPtr<ID3DBlob> blob;
     ComPtr<ID3DBlob> error;
 
@@ -219,7 +219,7 @@ void GPU_pipeline::CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const
 #endif
 
     D3DContext& d3d_ctx = D3DContext::Get();
-    auto device = d3d_ctx.g_pd3dDevice;
+    auto device = d3d_ctx.m_d3dDevice;
 
     // Create the state object.
     ThrowIfFailed(device->CreateStateObject(raytracingPipeline, IID_PPV_ARGS(&m_dxrStateObject)),
@@ -239,7 +239,7 @@ void GPU_pipeline::BuildShaderTables(const wchar_t* c_closestHitShaderName, cons
     ComPtr<ID3D12StateObject>& m_dxrStateObject, ComPtr<ID3D12Resource>& m_missShaderTable,
     ComPtr<ID3D12Resource>& m_hitGroupShaderTable) {
     D3DContext& d3d_ctx = D3DContext::Get();
-    auto device = d3d_ctx.g_pd3dDevice;
+    auto device = d3d_ctx.m_d3dDevice;
 
     void* rayGenShaderIdentifier;
     void* missShaderIdentifier;
@@ -318,7 +318,7 @@ void GPU_pipeline::release_gpu_resources() {
 
 void GPU_pipeline::CreateConstantBuffers() {
     D3DContext& d3d_ctx = D3DContext::Get();
-    auto device = d3d_ctx.g_pd3dDevice;
+    auto device = d3d_ctx.m_d3dDevice;
     // auto frameCount = m_deviceResources->GetBackBufferCount();
 
     // Create the constant buffer memory and map the CPU and GPU addresses
@@ -339,7 +339,7 @@ void GPU_pipeline::CreateConstantBuffers() {
 
 void GPU_pipeline::DoRaytracing(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) {
     D3DContext& d3d_ctx = D3DContext::Get();
-    auto commandList = d3d_ctx.g_pd3dDXRCommandList;
+    auto commandList = d3d_ctx.m_DXRCommandList;
 
     UINT m_width = framebuffer.width();
     UINT m_height = framebuffer.height();

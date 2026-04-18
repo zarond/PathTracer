@@ -202,10 +202,10 @@ void CPUFrameBuffer::create_texture_resource() {
             .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
         };
 
-        d3d_ctx.g_pd3dSrvDescHeapAlloc.Alloc(&srv_cpu_handle, &srv_gpu_handle);
-        d3d_ctx.g_pd3dSrvDescHeapAlloc.Alloc(&uav_cpu_handle, &uav_gpu_handle);
+        d3d_ctx.m_SrvDescHeapAlloc.Alloc(&srv_cpu_handle, &srv_gpu_handle);
+        d3d_ctx.m_SrvDescHeapAlloc.Alloc(&uav_cpu_handle, &uav_gpu_handle);
 
-        d3d_ctx.g_pd3dDevice->CreateCommittedResource(
+        d3d_ctx.m_d3dDevice->CreateCommittedResource(
             &def_props, D3D12_HEAP_FLAG_NONE, &tex_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&pTexture));
 
         // Create a shader resource view for the texture
@@ -219,7 +219,7 @@ void CPUFrameBuffer::create_texture_resource() {
                     .MipLevels = 1,
                 },
         };
-        d3d_ctx.g_pd3dDevice->CreateShaderResourceView(pTexture.Get(), &srvDesc, srv_cpu_handle);
+        d3d_ctx.m_d3dDevice->CreateShaderResourceView(pTexture.Get(), &srvDesc, srv_cpu_handle);
 
         // Create a unordered access view for the texture
         const D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{
@@ -231,7 +231,7 @@ void CPUFrameBuffer::create_texture_resource() {
                     .PlaneSlice = 0,
                 },
         };
-        d3d_ctx.g_pd3dDevice->CreateUnorderedAccessView(pTexture.Get(), nullptr, &uavDesc, uav_cpu_handle);
+        d3d_ctx.m_d3dDevice->CreateUnorderedAccessView(pTexture.Get(), nullptr, &uavDesc, uav_cpu_handle);
     }
 }
 
@@ -267,7 +267,7 @@ void CPUFrameBuffer::upload_to_gpu(){
             .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
         };
 
-        hr = d3d_ctx.g_pd3dDevice->CreateCommittedResource(
+        hr = d3d_ctx.m_d3dDevice->CreateCommittedResource(
             &upload_props, D3D12_HEAP_FLAG_NONE, &upload_desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&uploadBuffer));
         assert(SUCCEEDED(hr));
     }
@@ -301,7 +301,7 @@ void CPUFrameBuffer::upload_to_gpu(){
         .SubresourceIndex = 0,
     };
 
-    d3d_ctx.g_pd3dCommandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, nullptr);
+    d3d_ctx.m_CommandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, nullptr);
 }
 
 void CPUFrameBuffer::transition_from_copy_to_srv() const {
@@ -320,7 +320,7 @@ void CPUFrameBuffer::transition_from_copy_to_srv() const {
                 .StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
             },
     };
-    d3d_ctx.g_pd3dCommandList->ResourceBarrier(1, &barrier_to_psr);
+    d3d_ctx.m_CommandList->ResourceBarrier(1, &barrier_to_psr);
 }
 
 void CPUFrameBuffer::transition_from_srv_to_copy() const {
@@ -339,7 +339,7 @@ void CPUFrameBuffer::transition_from_srv_to_copy() const {
                 .StateAfter = D3D12_RESOURCE_STATE_COMMON,
             },
     };
-    d3d_ctx.g_pd3dCommandList->ResourceBarrier(1, &toCopyDest);
+    d3d_ctx.m_CommandList->ResourceBarrier(1, &toCopyDest);
 }
 
 void CPUFrameBuffer::transition_from_srv_to_uav() {
@@ -358,7 +358,7 @@ void CPUFrameBuffer::transition_from_srv_to_uav() {
                 .StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
             },
     };
-    d3d_ctx.g_pd3dDXRCommandList->ResourceBarrier(1, &toUAV);
+    d3d_ctx.m_DXRCommandList->ResourceBarrier(1, &toUAV);
 }
 void CPUFrameBuffer::transition_from_uav_to_srv() {
     if (!pTexture) return;
@@ -376,7 +376,7 @@ void CPUFrameBuffer::transition_from_uav_to_srv() {
                 .StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
             },
     };
-    d3d_ctx.g_pd3dDXRCommandList->ResourceBarrier(1, &toSRV);
+    d3d_ctx.m_DXRCommandList->ResourceBarrier(1, &toSRV);
 }
 
 ComPtr<ID3D12Resource> CPUFrameBuffer::get_gpu_resource() const { return pTexture; }
@@ -385,8 +385,8 @@ ComPtr<ID3D12Resource> CPUFrameBuffer::get_gpu_upload_resource() const { return 
 
 void CPUFrameBuffer::release_gpu_resource() {
     if (pTexture) {
-        D3DContext::Get().g_pd3dSrvDescHeapAlloc.Free(srv_cpu_handle, srv_gpu_handle);
-        D3DContext::Get().g_pd3dSrvDescHeapAlloc.Free(uav_cpu_handle, uav_gpu_handle);
+        D3DContext::Get().m_SrvDescHeapAlloc.Free(srv_cpu_handle, srv_gpu_handle);
+        D3DContext::Get().m_SrvDescHeapAlloc.Free(uav_cpu_handle, uav_gpu_handle);
         pTexture.Reset();
     }
     if (uploadBuffer) {
@@ -430,7 +430,7 @@ std::vector<hdr_pixel> CPUFrameBuffer::download_from_gpu() const {
         .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
     };
 
-    d3d_ctx.g_pd3dDevice->GetCopyableFootprints(&tex_desc, 0, 1, 0, &footprint, &numRows, &rowSizeInBytes, &totalBytes);
+    d3d_ctx.m_d3dDevice->GetCopyableFootprints(&tex_desc, 0, 1, 0, &footprint, &numRows, &rowSizeInBytes, &totalBytes);
 
     const D3D12_RESOURCE_DESC upload_desc{
         .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
@@ -446,7 +446,7 @@ std::vector<hdr_pixel> CPUFrameBuffer::download_from_gpu() const {
     };
 
     ComPtr<ID3D12Resource> readbackBuffer;
-    d3d_ctx.g_pd3dDevice->CreateCommittedResource(
+    d3d_ctx.m_d3dDevice->CreateCommittedResource(
         &heap_props, D3D12_HEAP_FLAG_NONE, &upload_desc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(&readbackBuffer));
 
 
@@ -464,7 +464,7 @@ std::vector<hdr_pixel> CPUFrameBuffer::download_from_gpu() const {
 
     transition_from_srv_to_copy();
 
-    d3d_ctx.g_pd3dCommandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, nullptr);
+    d3d_ctx.m_CommandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, nullptr);
 
     const D3D12_RESOURCE_BARRIER barrier_to_psr = {
         .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
@@ -477,7 +477,7 @@ std::vector<hdr_pixel> CPUFrameBuffer::download_from_gpu() const {
                 .StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
             },
     };
-    d3d_ctx.g_pd3dCommandList->ResourceBarrier(1, &barrier_to_psr);
+    d3d_ctx.m_CommandList->ResourceBarrier(1, &barrier_to_psr);
 
     d3d_ctx.DispatchCommandList();
 

@@ -106,12 +106,12 @@ class Renderer : public IRenderer {
     RenderingState get_rendering_state() const;
     void set_render_starting_state();
 
-  protected:
-    std::unique_ptr<IAccelerationStructure> accelStruct;
-    std::unique_ptr<IRayProgram> rayProgram;
-    const Model* modelRef = nullptr;
-    const CPUTexture<hdr_pixel>* envmapRef = nullptr;
-    RenderSettings renderSettings_;
+  private:
+    std::unique_ptr<IAccelerationStructure> accel_struct_;
+    std::unique_ptr<IRayProgram> ray_program_;
+    const Model* model_ref_ = nullptr;
+    const CPUTexture<hdr_pixel>* envmap_ref_ = nullptr;
+    RenderSettings render_settings_;
 
     fmat4x4 viewMatrix_ = fmat4x4(1.0f);
     fmat4x4 projectionMatrix_ = fmat4x4(1.0f);
@@ -121,15 +121,14 @@ class Renderer : public IRenderer {
     float progress_ = 0.0f;
     std::atomic<RenderingState> render_state_ = RenderingState::Idle;
 
-  private:
     ray_with_payload generate_camera_ray(
         int x, int y, float inv_width, float inv_height, int sampleIndex = 0, fvec2 jitter = {0.0f, 0.0f}) const noexcept;
     void generate_subsample_positions();
 
-    std::vector<fvec2> subsamplesPositions;
+    std::vector<fvec2> subsamples_positions_;
 
-    size_t lastModelFenceValue = 0;
-    size_t lastEnvmapFenceValue = 0;
+    size_t last_model_fence_value_ = 0;
+    size_t last_envmap_fence_value_ = 0;
 };
 
 }  // namespace app

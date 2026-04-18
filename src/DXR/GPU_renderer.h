@@ -47,12 +47,12 @@ class GPURenderer : public IRenderer {
     RenderingState get_rendering_state() const;
     void set_render_starting_state();
 
-  protected:
-    const Model* modelRef = nullptr;
-    const CPUTexture<hdr_pixel>* envmapRef = nullptr;
+  private:
+    const Model* model_ref_ = nullptr;
+    const CPUTexture<hdr_pixel>* envmap_ref_ = nullptr;
     std::unique_ptr<GPU_model> gpu_model_;
     std::unique_ptr<GPU_texture> gpu_envmap_;
-    RenderSettings renderSettings_;
+    RenderSettings render_settings_;
 
     fmat4x4 viewMatrix_ = fmat4x4(1.0f);
     fmat4x4 projectionMatrix_ = fmat4x4(1.0f);
@@ -62,13 +62,12 @@ class GPURenderer : public IRenderer {
     float progress_ = 0.0f;
     std::atomic<RenderingState> render_state_ = RenderingState::Idle;
 
-  private:
     GPU_pipeline pipeline_;
 
-    size_t lastModelFenceValue = 0;
-    size_t lastEnvmapFenceValue = 0;
+    size_t last_model_fence_value_ = 0;
+    size_t last_envmap_fence_value_ = 0;
 
-    unsigned int frameID = 0;
+    unsigned int frameID_ = 0;
 };
 
 }  // namespace app

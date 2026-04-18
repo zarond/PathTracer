@@ -15,7 +15,7 @@ namespace app {
 
 using namespace glm;
 
-bool ModelLoader::loadFromFile(const std::filesystem::path& path) {
+bool ModelLoader::load_from_file(const std::filesystem::path& path) {
     if (!std::filesystem::exists(path)) {
         std::cerr << "Failed to find " << path << '\n';
         return false;
@@ -53,16 +53,16 @@ bool ModelLoader::loadFromFile(const std::filesystem::path& path) {
     return true;
 }
 
-Model ModelLoader::constructModel() const {
+Model ModelLoader::construct_model() const {
     Model model{};
-    model.materials_.reserve(asset_.materials.size() + 1);
-    model.meshes_.reserve(asset_.meshes.size());
-    model.objects_.reserve(asset_.nodes.size());
-    model.images_.reserve(asset_.images.size());
-    model.materials_names_.reserve(asset_.materials.size() + 1);
+    model.materials.reserve(asset_.materials.size() + 1);
+    model.meshes.reserve(asset_.meshes.size());
+    model.objects.reserve(asset_.nodes.size());
+    model.images.reserve(asset_.images.size());
+    model.materials_names.reserve(asset_.materials.size() + 1);
 
     for (const auto& image : asset_.images) {
-        model.images_.emplace_back(image, asset_);
+        model.images.emplace_back(image, asset_);
     }
 
     TangentSpaceHelper tangent_space_helper;
@@ -122,14 +122,14 @@ Model ModelLoader::constructModel() const {
             .doubleSided = material.doubleSided,
             .hasVolume = material.volume ? true : false,
             .alphaBlending = (material.alphaMode == fastgltf::AlphaMode::Blend),
-            .alpha_cutoff = (material.alphaMode == fastgltf::AlphaMode::Mask) ? material.alphaCutoff : -1.0f};
-        model.materials_.push_back(mat);
-        model.materials_names_.emplace_back(material.name);
+            .alphaCutoff = (material.alphaMode == fastgltf::AlphaMode::Mask) ? material.alphaCutoff : -1.0f};
+        model.materials.push_back(mat);
+        model.materials_names.emplace_back(material.name);
     }
-    model.materials_.emplace_back();  // default material at last index
-    model.materials_names_.emplace_back("Gltf Default Material");
+    model.materials.emplace_back();  // default material at last index
+    model.materials_names.emplace_back("Gltf Default Material");
 
-    // vector of span-like structures { index in model.meshes_, size } to map gltf primitives to our model meshes
+    // vector of span-like structures { index in model.meshes, size } to map gltf primitives to our model meshes
     // one gltf mesh (mesh_ids[i]) can be multiple gltf primitives
     std::vector<std::pair<uint32_t, uint32_t>> mesh_ids{};
     mesh_ids.reserve(asset_.meshes.size());
@@ -150,7 +150,7 @@ Model ModelLoader::constructModel() const {
             bool has_uv = (uvIt != primitive.attributes.end());
 
             // Load material index
-            mesh.materialIndex = primitive.materialIndex.value_or(model.materials_.size() - 1);  // value or default material
+            mesh.materialIndex = primitive.materialIndex.value_or(model.materials.size() - 1);  // value or default material
 
             // Load indices
             {
@@ -191,7 +191,7 @@ Model ModelLoader::constructModel() const {
                 }
             }
 
-            model.meshes_.push_back(std::move(mesh));
+            model.meshes.push_back(std::move(mesh));
         }
         mesh_ids.emplace_back(count, gltf_mesh.primitives.size());
         count += gltf_mesh.primitives.size();
@@ -203,14 +203,14 @@ Model ModelLoader::constructModel() const {
                 auto normalMatrix = transpose(inverse(matrix));
                 size_t mesh_index = *node.meshIndex;
                 for (uint32_t i = 0; i < mesh_ids[mesh_index].second; ++i) {
-                    model.objects_.emplace_back(
+                    model.objects.emplace_back(
                         std::bit_cast<fmat4>(matrix), 
                         std::bit_cast<fmat4>(normalMatrix),
                         mesh_ids[mesh_index].first + i);
                 }
             }
             if (node.cameraIndex.has_value()) {
-                model.cameras_.emplace_back(std::bit_cast<fmat4>(matrix), asset_.cameras[*node.cameraIndex].camera);
+                model.cameras.emplace_back(std::bit_cast<fmat4>(matrix), asset_.cameras[*node.cameraIndex].camera);
             }
         });
 

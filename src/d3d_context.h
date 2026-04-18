@@ -43,48 +43,48 @@ class ExampleDescriptorHeapAllocator {
 
 // Data
 struct D3DContext {
-    UINT g_frameIndex = 0;
-    FrameContext g_frameContext[APP_NUM_FRAMES_IN_FLIGHT] = {};
+    UINT m_frameIndex = 0;
+    FrameContext m_frameContext[APP_NUM_FRAMES_IN_FLIGHT] = {};
 
-    ComPtr<ID3D12Device5> g_pd3dDevice;
+    ComPtr<ID3D12Device5> m_d3dDevice;
 
-    ComPtr<ID3D12DescriptorHeap> g_pd3dRtvDescHeap;
-    ComPtr<ID3D12DescriptorHeap> g_pd3dSrvDescHeap;
-    ExampleDescriptorHeapAllocator g_pd3dSrvDescHeapAlloc;
+    ComPtr<ID3D12DescriptorHeap> m_RtvDescHeap;
+    ComPtr<ID3D12DescriptorHeap> m_SrvDescHeap;
+    ExampleDescriptorHeapAllocator m_SrvDescHeapAlloc;
 
-    ComPtr<ID3D12CommandQueue> g_pd3dCommandQueue;
-    ComPtr<ID3D12GraphicsCommandList4> g_pd3dCommandList;
+    ComPtr<ID3D12CommandQueue> m_CommandQueue;
+    ComPtr<ID3D12GraphicsCommandList4> m_CommandList;
 
-    ComPtr<ID3D12CommandQueue> g_pd3dCopyQueue;
-    ComPtr<ID3D12CommandAllocator> g_pd3dCopyAllocator;
-    ComPtr<ID3D12GraphicsCommandList4> g_pd3dCopyCommandList;
+    ComPtr<ID3D12CommandQueue> m_CopyQueue;
+    ComPtr<ID3D12CommandAllocator> m_CopyAllocator;
+    ComPtr<ID3D12GraphicsCommandList4> m_CopyCommandList;
 
-    ComPtr<ID3D12CommandQueue> g_pd3dDXRQueue;
-    ComPtr<ID3D12CommandAllocator> g_pd3dDXRAllocator;
-    ComPtr<ID3D12GraphicsCommandList4> g_pd3dDXRCommandList;
+    ComPtr<ID3D12CommandQueue> m_DXRQueue;
+    ComPtr<ID3D12CommandAllocator> m_DXRAllocator;
+    ComPtr<ID3D12GraphicsCommandList4> m_DXRCommandList;
 
-    ComPtr<ID3D12Fence> copy_fence;
-    HANDLE copy_fenceEvent = nullptr;
-    UINT64 copy_fenceLastSignaledValue = 0;
+    ComPtr<ID3D12Fence> m_copy_fence;
+    HANDLE m_copy_fenceEvent = nullptr;
+    UINT64 m_copy_fenceLastSignaledValue = 0;
 
-    ComPtr<ID3D12Fence> g_fence;
-    HANDLE g_fenceEvent = nullptr;
-    UINT64 g_fenceLastSignaledValue = 0;
+    ComPtr<ID3D12Fence> m_fence;
+    HANDLE m_fenceEvent = nullptr;
+    UINT64 m_fenceLastSignaledValue = 0;
 
-    ComPtr<ID3D12Fence> dxr_fence;
-    HANDLE dxr_fenceEvent = nullptr;
-    UINT64 dxr_fenceLastSignaledValue = 0;
+    ComPtr<ID3D12Fence> m_dxr_fence;
+    HANDLE m_dxr_fenceEvent = nullptr;
+    UINT64 m_dxr_fenceLastSignaledValue = 0;
 
-    ComPtr<IDXGIFactory7> g_pdxgiFactory;
-    ComPtr<IDXGISwapChain3> g_pSwapChain;
-    // bool g_SwapChainTearingSupport = false;
-    bool g_SwapChainOccluded = false;
-    HANDLE g_hSwapChainWaitableObject = nullptr;
+    ComPtr<IDXGIFactory7> m_dxgiFactory;
+    ComPtr<IDXGISwapChain3> m_SwapChain;
+    // bool m_SwapChainTearingSupport = false;
+    bool m_SwapChainOccluded = false;
+    HANDLE m_SwapChainWaitableObject = nullptr;
 
     bool hardware_ray_tracing_support = false;
 
-    ComPtr<ID3D12Resource> g_mainRenderTargetResource[APP_NUM_BACK_BUFFERS] = {};
-    D3D12_CPU_DESCRIPTOR_HANDLE g_mainRenderTargetDescriptor[APP_NUM_BACK_BUFFERS] = {};
+    ComPtr<ID3D12Resource> m_mainRenderTargetResource[APP_NUM_BACK_BUFFERS] = {};
+    D3D12_CPU_DESCRIPTOR_HANDLE m_mainRenderTargetDescriptor[APP_NUM_BACK_BUFFERS] = {};
 
     bool CreateDeviceD3D(HWND hWnd);
     void CleanupDeviceD3D();

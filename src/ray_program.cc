@@ -74,10 +74,10 @@ fvec3 Tangent2World(fvec3 v, fvec3 T, fvec3 B, fvec3 N) { return T * v.x + B * v
 fvec3 Tangent2World(fvec3 v, const fmat3x3& TBN) { return TBN * v; }
 
 inline const Object& get_object_data(const Model& modelref, const ray_triangle_hit_info& hit) {
-    return modelref.objects_[hit.objectIndex];
+    return modelref.objects[hit.objectIndex];
 }
 inline const Mesh& get_mesh_data(const Model& modelref, const ray_triangle_hit_info& hit) {
-    return modelref.meshes_[hit.meshIndex];
+    return modelref.meshes[hit.meshIndex];
 }
 inline std::tuple<vertex, vertex, vertex> get_vertex_data(const Mesh& mesh_data, const ray_triangle_hit_info& hit) {
     auto p1 = mesh_data.indices[hit.triangleIndex];
@@ -152,15 +152,15 @@ float pow2(float v) { return v * v; }
 
 namespace app {
 RayCasterProgram::RayCasterProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings)
-    : modelRef(model), envmapRef(env), envmap_rot(settings.envmapRotation) {}
+    : model_ref_(model), envmap_ref_(env), envmap_rot_(settings.envmapRotation) {}
 
 fvec3 RayCasterProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_info& hit,
     std::vector<ray_with_payload>& ray_collection) const noexcept {
     if (hit.forward_hit() == false) {  // on miss
-        return ray_.payload * xyz(sample_environment(ray_.direction, envmapRef, envmap_rot));
+        return ray_.payload * xyz(sample_environment(ray_.direction, envmap_ref_, envmap_rot_));
     }
-    const auto& object = get_object_data(modelRef, hit);
-    const auto& mesh_data = get_mesh_data(modelRef, hit);
+    const auto& object = get_object_data(model_ref_, hit);
+    const auto& mesh_data = get_mesh_data(model_ref_, hit);
     const auto& [p1, p2, p3] = get_vertex_data(mesh_data, hit);
     auto point = interpolate_vertex_data(p1, p2, p3, hit);
 
@@ -168,7 +168,7 @@ fvec3 RayCasterProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_
     convert_normals_to_world_space(object, point);
 
     auto mat_index = mesh_data.materialIndex;
-    const auto& material = modelRef.materials_[mat_index];
+    const auto& material = model_ref_.materials[mat_index];
 
     bool exiting_volume = false;
     if (hit.backface) {
@@ -179,10 +179,10 @@ fvec3 RayCasterProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_
         }
     }
 
-    auto albedo_color = sample_albedo(material, modelRef.images_, point.uv);
+    auto albedo_color = sample_albedo(material, model_ref_.images, point.uv);
     float alpha = albedo_color.w;
     if (!material.alphaBlending) {
-        alpha = (alpha < material.alpha_cutoff) ? 0.0f : 1.0f;
+        alpha = (alpha < material.alphaCutoff) ? 0.0f : 1.0f;
     }
     if (alpha != 1.0f) {
         ray_with_payload new_ray = ray_;
@@ -197,10 +197,10 @@ fvec3 RayCasterProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_
 // RayCasterProgram
 
 AOProgram::AOProgram(const Model& model, const RenderSettings& settings)
-    : modelRef(model), aoSamples(settings.maxNewRaysPerBounce), inv_aoSamples(1.0f / aoSamples) {}
+    : model_ref_(model), ao_samples_(settings.maxNewRaysPerBounce), inv_ao_samples_(1.0f / ao_samples_) {}
 
-std::minstd_rand thread_local AOProgram::gen = std::minstd_rand(std::random_device{}());
-std::uniform_real_distribution<float> thread_local AOProgram::dist = std::uniform_real_distribution<float>(0.0f, 1.0f);
+std::minstd_rand thread_local AOProgram::s_gen = std::minstd_rand(std::random_device{}());
+std::uniform_real_distribution<float> thread_local AOProgram::s_dist = std::uniform_real_distribution<float>(0.0f, 1.0f);
 
 fvec3 AOProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_info& hit,
     std::vector<ray_with_payload>& ray_collection) const noexcept {
@@ -210,15 +210,15 @@ fvec3 AOProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_inf
     if (ray_.depth == 0) {
         return fvec3(0.0f);
     }
-    const auto& object = get_object_data(modelRef, hit);
-    const auto& mesh_data = get_mesh_data(modelRef, hit);
+    const auto& object = get_object_data(model_ref_, hit);
+    const auto& mesh_data = get_mesh_data(model_ref_, hit);
     const auto& [p1, p2, p3] = get_vertex_data(mesh_data, hit);
     auto point = interpolate_vertex_data(p1, p2, p3, hit);
 
     auto bitangent = convert_normals_to_world_space(object, point);
 
     auto mat_index = mesh_data.materialIndex;
-    const auto& material = modelRef.materials_[mat_index];
+    const auto& material = model_ref_.materials[mat_index];
 
     if (hit.backface) {
         // ray hits backside
@@ -229,7 +229,7 @@ fvec3 AOProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_inf
 
     fmat3x3 TBN = construct_TBN(xyz(point.tangent), bitangent, point.normal);
 
-    auto normal_map_color = sample_normals(material, modelRef.images_, point.uv);
+    auto normal_map_color = sample_normals(material, model_ref_.images, point.uv);
     if (normal_map_color.w != 0.0f) {
         fvec3 normal_vector = normal_map_sample_to_world(normal_map_color, TBN);
         TBN = construct_TBN(TBN[0], TBN[1], normal_vector);  // re-construct TBN with normal from normal map
@@ -240,17 +240,17 @@ fvec3 AOProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_inf
 
     std::uint8_t new_depth = 0;  // only one AO bounce
 
-    auto jitter_value_x = dist(gen);
-    auto jitter_value_y = dist(gen);
-    for (int i = 0; i < aoSamples; ++i) {
-        fvec2 rand = fibonacci2D(i, inv_aoSamples);         // quasi-random sampling
+    auto jitter_value_x = s_dist(s_gen);
+    auto jitter_value_y = s_dist(s_gen);
+    for (int i = 0; i < ao_samples_; ++i) {
+        fvec2 rand = fibonacci2D(i, inv_ao_samples_);         // quasi-random sampling
         rand.x = std::fmod(rand.x + jitter_value_x, 1.0f);  // jitter
         rand.y = std::fmod(rand.y + jitter_value_y, 1.0f);  // jitter
         auto new_direction = ImportanceSampleCosDir(rand);
         assert(new_direction.z > 0.0f);
         new_direction = Tangent2World(new_direction, TBN);
         assert(abs(length(new_direction) - 1.0f) < kEpsilon5);
-        ray_with_payload new_ray{{new_pos, new_direction}, fvec4(inv_aoSamples), new_depth, true};
+        ray_with_payload new_ray{{new_pos, new_direction}, fvec4(inv_ao_samples_), new_depth, true};
         ray_collection.push_back(new_ray);
     }
 
@@ -259,18 +259,18 @@ fvec3 AOProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_inf
 // AOProgram
 
 PBRProgram::PBRProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings)
-    : modelRef(model), envmapRef(env), envmap_rot(settings.envmapRotation) {}
+    : model_ref_(model), envmap_ref_(env), envmap_rot_(settings.envmapRotation) {}
 
-std::minstd_rand thread_local PBRProgram::gen = std::minstd_rand(std::random_device{}());
-std::uniform_real_distribution<float> thread_local PBRProgram::dist = std::uniform_real_distribution<float>(0.0f, 1.0f);
+std::minstd_rand thread_local PBRProgram::s_gen = std::minstd_rand(std::random_device{}());
+std::uniform_real_distribution<float> thread_local PBRProgram::s_dist = std::uniform_real_distribution<float>(0.0f, 1.0f);
 
 fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_info& hit,
     std::vector<ray_with_payload>& ray_collection) const noexcept {
     if (hit.forward_hit() == false) {  // on miss
-        return ray_.payload * xyz(sample_environment(ray_.direction, envmapRef, envmap_rot));
+        return ray_.payload * xyz(sample_environment(ray_.direction, envmap_ref_, envmap_rot_));
     }
-    const auto& object = get_object_data(modelRef, hit);
-    const auto& mesh_data = get_mesh_data(modelRef, hit);
+    const auto& object = get_object_data(model_ref_, hit);
+    const auto& mesh_data = get_mesh_data(model_ref_, hit);
     const auto& [p1, p2, p3] = get_vertex_data(mesh_data, hit);
     auto point = interpolate_vertex_data(p1, p2, p3, hit);
 
@@ -278,7 +278,7 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
     auto bitangent = convert_normals_to_world_space(object, point);
 
     auto mat_index = mesh_data.materialIndex;
-    const auto& material = modelRef.materials_[mat_index];
+    const auto& material = model_ref_.materials[mat_index];
 
     bool exiting_volume = false;
     if (hit.backface) {
@@ -290,10 +290,10 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
         }
     }
 
-    auto albedo_color = sample_albedo(material, modelRef.images_, point.uv);
+    auto albedo_color = sample_albedo(material, model_ref_.images, point.uv);
     float alpha = albedo_color.w;
     if (!material.alphaBlending) {
-        alpha = (alpha < material.alpha_cutoff) ? 0.0f : 1.0f;
+        alpha = (alpha < material.alphaCutoff) ? 0.0f : 1.0f;
     }
     if (alpha != 1.0f) {
         ray_with_payload new_ray = ray_;
@@ -311,21 +311,21 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
     fvec3 attenuation =
         exiting_volume ? min(exp(-material.attenuationFactor * hit.t), 1.0f) : fvec3{1.0f};  // Volume absorption
 
-    auto emissive = xyz(sample_emissive(material, modelRef.images_, point.uv));
+    auto emissive = xyz(sample_emissive(material, model_ref_.images, point.uv));
     if (ray_.depth == 0) {
         return ray_.payload * emissive * attenuation * alpha;
     }
 
     auto v = -ray_.direction;
 
-    auto normal_map_color = sample_normals(material, modelRef.images_, point.uv);
+    auto normal_map_color = sample_normals(material, model_ref_.images, point.uv);
     fmat3x3 TBN = handle_TBN_creation(
         object, normal_map_color, point, bitangent, v, material.doubleSided, exiting_volume, hit.backface, p1, p2, p3);
 
     point.normal = normalize(point.normal);
 
-    auto transmission = sample_transmission(material, modelRef.images_, point.uv);
-    auto ORM = sample_roughness_metallic(material, modelRef.images_, point.uv);
+    auto transmission = sample_transmission(material, model_ref_.images, point.uv);
+    auto ORM = sample_roughness_metallic(material, model_ref_.images, point.uv);
     auto diffuse_color = (1.0f - ORM.z) * xyz(albedo_color);
 
     auto f0 = mix(fvec3(material.dielectric_f0), xyz(albedo_color), ORM.z);
@@ -336,7 +336,7 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
     std::uint8_t new_depth = ray_.depth - 1;
 
     std::array<float, 4> random_values;
-    std::generate(random_values.begin(), random_values.end(), []() { return dist(gen); });
+    std::generate(random_values.begin(), random_values.end(), []() { return s_dist(s_gen); });
 
     const bool sample_diffuse = (diffuse_color * (1.0f - transmission) != fvec3(0.0f));
     if (sample_diffuse) {  // diffuse
