@@ -219,9 +219,6 @@ int main(int argc, char* argv[]) {
         UINT backBufferIdx = d3d_ctx.g_pSwapChain->GetCurrentBackBufferIndex();
         d3d_ctx.InitCommandList(*frameCtx->CommandAllocator.Get());
 
-        ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.g_pd3dSrvDescHeap.Get()};
-        d3d_ctx.g_pd3dCommandList->SetDescriptorHeaps(1, desc_heap);
-
         // Custom UI
         RenderedImageUI(viewer, d3d_ctx.hardware_ray_tracing_support);
         OptionsWindowUI(viewer, console_arguments, deferredDeletes, d3d_ctx.hardware_ray_tracing_support);
@@ -245,6 +242,8 @@ int main(int argc, char* argv[]) {
         d3d_ctx.g_pd3dCommandList->OMSetRenderTargets(1, &d3d_ctx.g_mainRenderTargetDescriptor[backBufferIdx], false, nullptr);
 
         // Render Dear ImGui graphics
+        ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.g_pd3dSrvDescHeap.Get()};
+        d3d_ctx.g_pd3dCommandList->SetDescriptorHeaps(1, desc_heap);
         ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), d3d_ctx.g_pd3dCommandList.Get());
 
         // end frame, change resource state
