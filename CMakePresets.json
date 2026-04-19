@@ -22,6 +22,22 @@
       }
     },
     {
+      "name": "debug-with-asan",
+      "displayName": "Debug with ASAN",
+      "description": "Debug configuration with ASAN enabled",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "ASAN": "ON"
+      }
+    },
+    {
       "name": "release",
       "displayName": "Release",
       "description": "Release configuration without debug information",
@@ -64,7 +80,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "NO_WINDOWS": "ON"
+        "ON_WINDOWS": "OFF"
       }
     }
   ]

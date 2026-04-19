@@ -17,4 +17,8 @@ TEST(SampleTest, Rendering) {
     EXPECT_EQ(result, 0);
     bool file_exists = std::filesystem::exists("snapshot.png") && std::filesystem::is_regular_file("snapshot.png");
     EXPECT_EQ(file_exists, true);
+#ifdef WIN32
+    bool shader_library_file_exists = std::filesystem::exists("RaytracingShaders.dxil") && std::filesystem::is_regular_file("RaytracingShaders.dxil");
+    EXPECT_EQ(shader_library_file_exists, true);
+#endif
 }

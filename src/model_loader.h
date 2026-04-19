@@ -1,15 +1,21 @@
 #pragma once
 
+#include <cstdint>
 #include <fastgltf/types.hpp>
 #include <filesystem>
-#include <glm/glm.hpp>
+#include <glm/fwd.hpp>
+#include <string>
+#include <variant>
 #include <vector>
 
 #include "cpu_framebuffer.h"
 
 namespace app {
 
-using namespace glm;
+using glm::fmat4x4;
+using glm::fvec2;
+using glm::fvec3;
+using glm::fvec4;
 
 struct vertex {
     fvec3 position;
@@ -48,7 +54,7 @@ struct Material {
     bool doubleSided = false;  // means each side is a surface (thin objects)
     bool hasVolume = false;    // essential for transmission, otherwise treat as thin surface
     bool alphaBlending = false;
-    float alpha_cutoff = -1.0f;
+    float alphaCutoff = -1.0f;
 };
 
 struct Camera {
@@ -57,17 +63,18 @@ struct Camera {
 };
 
 struct Model {
-    std::vector<Camera> cameras_;
-    std::vector<Material> materials_;
-    std::vector<Mesh> meshes_;
-    std::vector<Object> objects_;
-    std::vector<CPUTexture<sdr_pixel>> images_;
+    std::vector<Camera> cameras;
+    std::vector<Material> materials;
+    std::vector<Mesh> meshes;
+    std::vector<Object> objects;
+    std::vector<CPUTexture<sdr_pixel>> images;
+    std::vector<std::string> materials_names;
 };
 
 class ModelLoader {
   public:
-    bool loadFromFile(std::filesystem::path path);
-    Model constructModel() const;
+    bool load_from_file(const std::filesystem::path& path);
+    Model construct_model() const;
 
   private:
     fastgltf::Asset asset_;

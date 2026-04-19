@@ -4,7 +4,6 @@
 #include <dxgi1_6.h>
 
 #define NOMINMAX
-#include <windows.h>
 #include <wrl.h>
 
 #ifdef _DEBUG
@@ -31,7 +30,7 @@ class DXDebugLayer {
     ComPtr<IDXGIDebug1> m_dxgiDebug;
 #endif
 
-// singleton
+    // singleton
   public:
     DXDebugLayer(const DXDebugLayer&) = delete;
     DXDebugLayer& operator=(const DXDebugLayer&) = delete;
@@ -45,4 +44,4 @@ class DXDebugLayer {
     DXDebugLayer() = default;
 };
 
-}
+}  // namespace app

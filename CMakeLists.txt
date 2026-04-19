@@ -7,10 +7,21 @@ project(PathTracer VERSION 1.0
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
+set(ON_WINDOWS_DEFAULT OFF)
+if(WIN32)
+    set(ON_WINDOWS_DEFAULT ON)
+endif()
+
 # application
-option(NO_WINDOWS "remove Windows specific dependencies, that leaves CPU mode only and no GUI" OFF)
+option(ON_WINDOWS "Allow Windows specific dependencies, this enables DirectX raytracing mode and GUI" ${ON_WINDOWS_DEFAULT})
+option(ASAN "Turn On Address Sanitizer" OFF)
+
+message(STATUS "${PROJECT_NAME}: ON_WINDOWS option is currently: ${ON_WINDOWS}")
+message(STATUS "${PROJECT_NAME}: ASAN option is currently: ${ASAN}")
 
 set(LIBS_DIR libs)
+
+set(SHADER_SOURCES)
 
 set(APP_SOURCES
     src/main.cc
@@ -25,22 +36,85 @@ set(APP_SOURCES
     src/render_settings.cc
     src/brdf.cc
 )
-if(NOT NO_WINDOWS)
+if(ON_WINDOWS)
     list(APPEND APP_SOURCES
         src/ui.cc
         src/d3d_debug_layer.cc
         src/d3d_context.cc
+        src/DXR/GPU_model.cc
+        src/DXR/GPU_renderer.cc
+        src/DXR/GPU_pipeline.cc
     )
-else()
-    add_definitions(-DNO_WINDOWS)
+    list(APPEND SHADER_SOURCES
+        src/DXR/Shaders/RaytracingShaders.hlsl
+    )
 endif()
 
 add_executable(${PROJECT_NAME} ${APP_SOURCES})
 
+if(ON_WINDOWS)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE WINDOWS_SPECIFIC)
+endif()
+
+# compile hlsl shaders to dxil
+if(ON_WINDOWS)
+    #find_program(DXC dxc REQUIRED) # this just doesn't work for some reason in PowerShell and cmd, works only in Developer PowerShell for VS'
+    Set(DXC dxc) # in contrary, this works just fine
+    if(NOT DXC)
+        message(FATAL_ERROR "DXC compiler 'dxc' not found. Install DXC or add it to PATH.")
+    endif()
+
+    # Determine flags based on build type at configure-time
+    set(DXC_FLAGS "")
+
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+        # Debug: Full info, no optimizations
+        # set(DXC_FLAGS -Zi -Qembed_debug -Od) # For some reason this line causes Debug to output black pixels
+    elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+        # RelWithDebInfo: Full info, optimizations enabled
+        set(DXC_FLAGS -Zi -Qembed_debug)
+    endif()
+
+    foreach(SHADER ${SHADER_SOURCES})
+        get_filename_component(FILE_NAME ${SHADER} NAME_WE)
+
+        # compile into build dir (config-independent)
+        set(COMPILED_SHADER ${CMAKE_CURRENT_BINARY_DIR}/${FILE_NAME}.dxil)
+
+        # todo: better yet, compile into object file and link into executable, use extern const in code
+        add_custom_command(
+            OUTPUT ${COMPILED_SHADER}
+            COMMAND ${DXC}
+                    -T lib_6_6
+                    ${DXC_FLAGS}
+                    -Fo ${COMPILED_SHADER}
+                    ${CMAKE_SOURCE_DIR}/${SHADER}
+            DEPENDS ${SHADER}
+            COMMENT "Compiling shader ${SHADER}"
+        )
+        list(APPEND COMPILED_SHADERS ${COMPILED_SHADER})
+
+        # copy compiled shader next to the executable after the project is built
+        # $<TARGET_FILE_DIR:${PROJECT_NAME}> resolves per-config in multi-config generators
+        add_custom_command(
+            TARGET ${PROJECT_NAME}
+            POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${COMPILED_SHADER}
+                    $<TARGET_FILE_DIR:${PROJECT_NAME}>/${FILE_NAME}.dxil
+            COMMENT "Copying ${FILE_NAME}.dxil from ${COMPILED_SHADER} to target $<TARGET_FILE_DIR:${PROJECT_NAME}>/${FILE_NAME}.dxil"
+            VERBATIM
+        )
+    endforeach()
+
+    add_custom_target(Shaders ALL DEPENDS ${COMPILED_SHADERS})
+    add_dependencies(${PROJECT_NAME} Shaders)
+endif()
+
 # Warning options for compiler
 #target_compile_options(${PROJECT_NAME} PRIVATE -Wall)
 
-# doesn't work?
+# only works for Visual Studio Generators
 set_target_properties(${PROJECT_NAME} PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
@@ -50,7 +124,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 #)
 
 # libs for application
-if(NOT NO_WINDOWS)
+if(ON_WINDOWS)
     add_library(imgui STATIC 
         ${LIBS_DIR}/imgui/imgui.cpp
         ${LIBS_DIR}/imgui/imgui_draw.cpp
@@ -71,6 +145,19 @@ target_include_directories(stb INTERFACE ${LIBS_DIR}/stb)
 set(FASTGLTF_COMPILE_AS_CPP20 True)
 #set(FASTGLTF_USE_CUSTOM_SMALLVECTOR True)
 add_subdirectory(${LIBS_DIR}/fastgltf)
+
+# add ASAN for builds if ASAN option is enabled
+if(ASAN)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(${PROJECT_NAME} PRIVATE -fsanitize=address -fno-omit-frame-pointer)
+        target_link_options(${PROJECT_NAME} PRIVATE -fsanitize=address)
+        target_compile_options(fastgltf PRIVATE -fsanitize=address -fno-omit-frame-pointer)
+        target_link_options(fastgltf PRIVATE -fsanitize=address)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+        target_compile_options(${PROJECT_NAME} PRIVATE /fsanitize=address)
+        target_compile_options(fastgltf PRIVATE /fsanitize=address)
+    endif()
+endif()
 
 add_library(mikktspace STATIC 
     ${LIBS_DIR}/MikkTSpace/mikktspace.c
@@ -94,7 +181,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     mikktspace
     glm::glm
 )
-if(NOT NO_WINDOWS)
+if(ON_WINDOWS)
     target_link_libraries(${PROJECT_NAME} PRIVATE 
         imgui 
         d3d12
@@ -102,7 +189,7 @@ if(NOT NO_WINDOWS)
     )
 endif()
 
-if((CMAKE_BUILD_TYPE STREQUAL "Debug") AND (NOT NO_WINDOWS))
+if((CMAKE_BUILD_TYPE STREQUAL "Debug") AND ON_WINDOWS)
     target_link_libraries(${PROJECT_NAME} PRIVATE dxguid)
 endif()
 

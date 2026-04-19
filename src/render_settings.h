@@ -7,7 +7,7 @@ namespace app {
 struct RenderSettings {
     unsigned int samplesPerPixel = 1;
     unsigned int maxRayBounces = 0;
-    unsigned int maxNewRaysPerBounce = 0;
+    unsigned int maxNewRaysPerBounce = 1;
     unsigned int maxTrianglesPerBVHLeaf = 8;
     float envmapRotation = 0;  // in radians
 

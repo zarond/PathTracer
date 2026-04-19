@@ -1,8 +1,6 @@
 #pragma once
 
 #include <filesystem>
-#include <optional>
-#include <variant>
 
 namespace app {
 namespace fs = std::filesystem;
@@ -12,14 +10,14 @@ enum class RayProgramMode {
     AmbientOcclusion,
     PBR,
 
-    kNum
+    Count
 };
 
 enum class AccelerationStructureType {
     Naive,
     BVH,
 
-    kNum
+    Count
 };
 
 enum class DefaultEnvironment { Black, White };
@@ -36,7 +34,7 @@ struct ConsoleArgs {
 
     unsigned int samplesPerPixel = 1;
     unsigned int maxRayBounces = 0;
-    unsigned int maxNewRaysPerBounce = 0;
+    unsigned int maxNewRaysPerBounce = 1;
     int envmapRotation = 0;  // in degrees
 
     unsigned int maxTrianglesPerBVHLeaf = 8;

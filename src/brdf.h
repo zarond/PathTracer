@@ -1,7 +1,6 @@
 #pragma once
 
-#include <glm/glm.hpp>
-#include <glm/gtc/constants.hpp>
+#include <glm/fwd.hpp>
 #include <vector>
 
 #include "cpu_framebuffer.h"
@@ -9,7 +8,9 @@
 
 namespace app {
 
-using namespace glm;
+using glm::fvec2;
+using glm::fvec3;
+using glm::fvec4;
 
 fvec4 sample_albedo(const Material& material, const std::vector<CPUTexture<sdr_pixel>>& images, const fvec2 uv);
 

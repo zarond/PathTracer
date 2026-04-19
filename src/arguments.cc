@@ -1,24 +1,24 @@
 #include "arguments.h"
 
-#include <string>
 #include <iostream>
+#include <string>
+#include <string_view>
 
 #include "argparse/argparse.hpp"
 
 namespace {
 
 std::string_view no_arguments_message =
-    "A CPU PathTracer for .gltf files.\n"
+    "A PathTracer for .gltf files.\n"
     "Use -h or --help for usage info.";
 
 template <typename T>
 T int_to_enum(int v) {
-    if (v < 0 || v >= static_cast<int>(T::kNum)) return static_cast<T>(0);
+    if (v < 0 || v >= static_cast<int>(T::Count)) return static_cast<T>(0);
     return static_cast<T>(v);
 }
 
 }  // namespace
-// namespace
 
 namespace app {
 
@@ -28,12 +28,12 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
     argparse::ArgumentParser program("PathTracer", "1.0", argparse::default_arguments::help, false);
 
     program.add_description(
-        "A CPU PathTracer for .gltf files.\n"
+        "A PathTracer for .gltf files.\n"
         "Uses first camera in .gltf file to render image and save it as \"snapshot.hdr\" \n"
         "Choose between different rendering modes and ray intersection acceleration modes");
     program.add_epilog("It's an educational project, so it supports only a limited set of gltf features.");
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
     program.add_argument("-no-gui", "--no-gui").help("run without GUI.").flag();
 #else
     program.add_argument("-no-gui", "--no-gui").help("run without GUI.").flag().hidden();
@@ -86,7 +86,7 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         .scan<'i', int>()
         .required()
         .nargs(1)
-        .default_value(0);
+        .default_value(1);
 
     program.add_argument("--env_rot")
         .help("additional env map rotation around UP axis in degrees.")
@@ -144,7 +144,7 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         args.environmentPath = "";
     }
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
     args.noGui = program.get<bool>("-no-gui");
 #else
     args.noGui = true;
@@ -154,11 +154,11 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         if (program.is_used("-h")) {
             args.exitImmediately = true;
         } else if (args.modelPath == "") {
-            std::cout << no_arguments_message << std::endl;
+            std::cout << no_arguments_message << "\n";
             args.exitImmediately = true;
         }
     } else if (args.modelPath == "") {
-        std::cout << no_arguments_message << std::endl;
+        std::cout << no_arguments_message << "\n";
     }
 
     return args;

@@ -7,14 +7,21 @@
 #include <glm/glm.hpp>
 #include <vector>
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
 #define NOMINMAX
 #include <d3d12.h>
+#include <wrl.h>
 #endif
 
 namespace app {
 
-using namespace glm;
+using glm::fvec2;
+using glm::fvec3;
+using glm::fvec4;
+
+#ifdef WINDOWS_SPECIFIC
+using Microsoft::WRL::ComPtr;
+#endif
 
 // init-time initialized LUT
 extern std::array<float, 256> SRGB8_TO_LINEAR_LUT;
@@ -100,9 +107,8 @@ class CPUTexture {
   public:
     // Idea: use mdspan
     CPUTexture() = default;
-    explicit CPUTexture(
-        const fastgltf::Image& image, const fastgltf::Asset& asset_);  // used to load sdr texture images
-    explicit CPUTexture(const std::filesystem::path& path);            // used to load hdr environment images
+    explicit CPUTexture(const fastgltf::Image& image, const fastgltf::Asset& asset_);  // used to load sdr texture images
+    explicit CPUTexture(const std::filesystem::path& path);                            // used to load hdr environment images
     CPUTexture(pixel initial_col) : width_(1), height_(1), channels_(4), data_(1, initial_col) {}
 
     int width() const { return width_; }
@@ -148,8 +154,7 @@ class CPUTexture {
                 col10 = pixel_srgb8_to_linear(c10);
                 col01 = pixel_srgb8_to_linear(c01);
                 col11 = pixel_srgb8_to_linear(c11);
-            }
-            else {
+            } else {
                 col00 = pixel_to_float(c00);
                 col10 = pixel_to_float(c10);
                 col01 = pixel_to_float(c01);
@@ -170,6 +175,8 @@ class CPUTexture {
     static CPUTexture create_white_texture();
     static CPUTexture create_black_texture();
 
+    const std::vector<pixel>& data() const { return data_; }
+
   protected:
     std::vector<pixel> data_;
     int width_ = 1;
@@ -188,7 +195,7 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
     CPUFrameBuffer();
     CPUFrameBuffer(int width, int height);
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
     ~CPUFrameBuffer();
 #endif
 
@@ -200,21 +207,33 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
     using CPUTexture::sample_nearest;
     using CPUTexture::width;
 
-    void save_to_file(const std::filesystem::path& filePath) const;
+    void save_to_file(const std::filesystem::path& filePath, bool from_GPU_texture) const;
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
+    void create_texture_resource();
     void upload_to_gpu();
     void release_gpu_resource();
-    D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu_handle;
-    D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle;
-    void transition_back_for_copy();
+    D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu_handle{};
+    D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle{};
+    D3D12_CPU_DESCRIPTOR_HANDLE uav_cpu_handle{};
+    D3D12_GPU_DESCRIPTOR_HANDLE uav_gpu_handle{};
+    void transition_from_copy_to_srv() const;
+    void transition_from_srv_to_copy() const;
+    void transition_from_srv_to_uav();
+    void transition_from_uav_to_srv();
     bool nearest_filtering = true;
+
+    ComPtr<ID3D12Resource> get_gpu_resource() const;
+    ComPtr<ID3D12Resource> get_gpu_upload_resource() const;
+
   private:
-    ID3D12Resource* pTexture = nullptr;
-    ID3D12Resource* uploadBuffer = nullptr;
-    UINT uploadPitch;
-    UINT uploadSize;
+    ComPtr<ID3D12Resource> pTexture;
+    ComPtr<ID3D12Resource> uploadBuffer;
+    UINT uploadPitch = 0;
+    UINT uploadSize = 0;
     void* mapped = nullptr;
+
+    std::vector<hdr_pixel> download_from_gpu() const;
 #endif
 };
 

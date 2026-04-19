@@ -1,5 +1,8 @@
 #include "brdf.h"
 
+#include <cassert>
+#include <cmath>
+#include <glm/gtc/constants.hpp>
 #include <vector>
 
 namespace {
@@ -37,14 +40,12 @@ fvec4 sample_albedo(const Material& material, const std::vector<CPUTexture<sdr_p
     return sample_srgba(material.baseColorFactor,
         material.baseColorTextureIndex >= 0 ? &images[material.baseColorTextureIndex] : nullptr, uv);
 }
-fvec4 sample_roughness_metallic(
-    const Material& material, const std::vector<CPUTexture<sdr_pixel>>& images, const fvec2 uv) {
+fvec4 sample_roughness_metallic(const Material& material, const std::vector<CPUTexture<sdr_pixel>>& images, const fvec2 uv) {
     return sample_rgba(fvec4(1.0f, material.roughnessFactor, material.metallicFactor, 1.0f),
         material.metallicRoughnessTextureIndex >= 0 ? &images[material.metallicRoughnessTextureIndex] : nullptr, uv);
 }
 fvec4 sample_normals(const Material& material, const std::vector<CPUTexture<sdr_pixel>>& images, const fvec2 uv) {
-    const CPUTexture<sdr_pixel>* texture =
-        material.normalTextureIndex >= 0 ? &images[material.normalTextureIndex] : nullptr;
+    const CPUTexture<sdr_pixel>* texture = material.normalTextureIndex >= 0 ? &images[material.normalTextureIndex] : nullptr;
     if (texture) {
         return texture->sample_bilinear(uv);
     }
@@ -52,8 +53,8 @@ fvec4 sample_normals(const Material& material, const std::vector<CPUTexture<sdr_
 }
 fvec4 sample_emissive(const Material& material, const std::vector<CPUTexture<sdr_pixel>>& images, const fvec2 uv) {
     return sample_srgba(xyz1(material.emissiveFactor),
-        material.emissiveTextureIndex >= 0 ? &images[material.emissiveTextureIndex] : nullptr, uv) *
-        material.emissiveStrength;
+           material.emissiveTextureIndex >= 0 ? &images[material.emissiveTextureIndex] : nullptr, uv) *
+           material.emissiveStrength;
 }
 float sample_transmission(const Material& material, const std::vector<CPUTexture<sdr_pixel>>& images, const fvec2 uv) {
     return sample_r(material.transmisionFactor,
@@ -61,7 +62,7 @@ float sample_transmission(const Material& material, const std::vector<CPUTexture
 }
 fvec4 sample_environment(const fvec3 dir, const CPUTexture<hdr_pixel>& environment_texture, float y_rotation) {
     // compared to Blender, envmap is rotated 180 degrees around Y (Blender's Z) axis, but same as SP
-    assert(abs(length(dir) - 1.0f) < 1e-5);
+    assert(glm::abs(length(dir) - 1.0f) < 1e-5f);
     fvec2 uv = fvec2(std::atan2(-dir.z, -dir.x) + y_rotation, -2.0f * std::asin(dir.y)) * (1.0f / pi<float>());
     uv = uv * 0.5f + fvec2(0.5f);
     assert(!isnan(uv.x) && !isnan(uv.y));

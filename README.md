@@ -2,13 +2,17 @@
 
 A small path-tracing renderer written in C++ 20 for educational purposes.
 
-At this time it only uses CPU computation. In the future, however, I will port the algorithms to GPU as well. I have CUDA and DirectX Raytracing (DXR) in mind.
+You can choose either a CPU Renderer or a DirectX Raytracing (DXR) GPU Renderer in GUI (it is available only from GUI mode).
 
 The program has GUI, but you can also run it in command-line mode to render images without opening a window.
 
-The program requires Windows OS due to usage of Windows API and DirectX for UI.
+The program requires Windows OS due to usage of Windows API and DirectX.
 
-You can use CMake option "NO_WINDOWS" to disable Windows-specific code and build it on Linux or MacOS, but GUI will be disabled in this case.
+You can build the program on Linux or MacOS too, but it will disable Windows-specific code - GUI and DXR will be disabled in this case.
+
+You can override CMake option `ON_WINDOWS` to `OFF` if you want to build it on Windows without Windows-specific features.
+
+You can use CMake option `ASAN` to enable Address Sanitizer.
 
 ## Usage
 
@@ -49,15 +53,17 @@ Try it by running this command in binary (build/Release) folder:
 
 This image was rendered in 199 seconds on Intel Core i7-11800H @ 2.30GHz; 
 
+And for DXR GPU rendering mode it took 6.9 seconds on NVIDIA GeForce RTX 3070 Laptop GPU.
+
 ![rendered image](example/render.png)
 
-Same scene took 110 seconds in Blender CPU rendering with similar parameters.
+Same scene took 110 seconds in Blender CPU rendering with similar parameters, and 7.25 seconds in Blender GPU OptiX rendering.
 
 Screenshot from GUI mode with AO rendering:
 
 ![gui_screen](example/gui_screenshot.png)
 
-Check out this [Video on LinkedIn](https://www.linkedin.com/posts/artur-makoev-85755a2b3_hello-friends-i-would-like-to-show-you-my-activity-7419366989909045249-WOIP) to see how the program works in action.
+Check out this [Video on LinkedIn](https://www.linkedin.com/posts/artur-makoev-85755a2b3_hello-friends-i-would-like-to-show-you-my-activity-7419366989909045249-WOIP) or [this post](https://www.linkedin.com/posts/artur-makoev-85755a2b3_hello-everyone-i-want-to-give-an-update-ugcPost-7447220869531324416-5zeT/) (both are not the latest version of the program) to see how it works in action.
 
 ## Features
 

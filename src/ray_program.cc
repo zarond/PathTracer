@@ -1,8 +1,12 @@
 #include "ray_program.h"
 
 #include <algorithm>
+#include <array>
+#include <cassert>
+#include <cmath>
+#include <cstdlib>
+#include <glm/gtc/constants.hpp>
 #include <tuple>
-#include <vector>
 
 #include "brdf.h"
 
@@ -27,9 +31,11 @@ fvec3 ImportanceSampleCosDir(fvec2 xi) {
     return fvec3(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta);
 }
 fvec3 importanceSampleGGX(fvec2 xi, float a) {
-    // pdf(h) = D(h) * dot(n, h) : before conversion from half-vector to reflection vector
-    // pdf(l) = D(h) * dot(n, h) / (4.0 * dot(l, h)) : after conversion to reflection vector
-    float cos_theta2 = (1.0f - xi.x) / (1.0f + (a * a - 1.0f) * xi.x);
+    // pdf(h) = D(h) * dot(n, h) : before conversion from half-vector to reflection vector (l); h - microsurface normal, n - (macro)surface normal
+    // pdf(l) = D(h) * dot(n, h) / (4.0 * dot(l, h)) : after conversion to reflection vector (l); h - microsurface normal, n - (macro)surface normal
+    // pdf(l) = D(m) * dot(n, m) * dot(l, h) / (eta * dot(v, h) + dot(l, h))^2 : after conversion to refraction vector (l); 
+    // m - microsurface normal, h - transmission half vector, l - refraction vector, eta - index of refraction from incoming to outgoing medium
+    float cos_theta2 = clamp((1.0f - xi.x) / (1.0f + (a * a - 1.0f) * xi.x), 0.0f, 1.0f);
     float cos_theta = sqrt(cos_theta2);
     float sin_theta = sqrt(1.0f - cos_theta2);
     float phi = 2.0f * xi.y * pi<float>();
@@ -68,10 +74,10 @@ fvec3 Tangent2World(fvec3 v, fvec3 T, fvec3 B, fvec3 N) { return T * v.x + B * v
 fvec3 Tangent2World(fvec3 v, const fmat3x3& TBN) { return TBN * v; }
 
 inline const Object& get_object_data(const Model& modelref, const ray_triangle_hit_info& hit) {
-    return modelref.objects_[hit.objectIndex];
+    return modelref.objects[hit.objectIndex];
 }
 inline const Mesh& get_mesh_data(const Model& modelref, const ray_triangle_hit_info& hit) {
-    return modelref.meshes_[hit.meshIndex];
+    return modelref.meshes[hit.meshIndex];
 }
 inline std::tuple<vertex, vertex, vertex> get_vertex_data(const Mesh& mesh_data, const ray_triangle_hit_info& hit) {
     auto p1 = mesh_data.indices[hit.triangleIndex];
@@ -79,8 +85,7 @@ inline std::tuple<vertex, vertex, vertex> get_vertex_data(const Mesh& mesh_data,
     auto p3 = mesh_data.indices[hit.triangleIndex + 2];
     return std::tuple{mesh_data.vertices[p1], mesh_data.vertices[p2], mesh_data.vertices[p3]};
 }
-inline vertex interpolate_vertex_data(
-    const vertex& p1, const vertex& p2, const vertex& p3, const ray_triangle_hit_info& hit) {
+inline vertex interpolate_vertex_data(const vertex& p1, const vertex& p2, const vertex& p3, const ray_triangle_hit_info& hit) {
     auto C = hit.C();
     auto os_position = p1.position * hit.A + p2.position * hit.B + p3.position * C;
     auto os_normal = p1.normal * hit.A + p2.normal * hit.B + p3.normal * C;
@@ -100,8 +105,8 @@ inline fvec3 convert_normals_to_world_space(const Object& object, vertex& point)
     point.normal = xyz(object.NormalMatrix * xyz0(point.normal));
     return cross(point.normal, xyz(point.tangent)) * tangent_sign;
 }
-inline fvec3 get_geometric_normal(const vertex& p1, const vertex& p2, const vertex& p3,
-    const bool double_sided_material = false, const bool backface_hit = false) {
+inline fvec3 get_geometric_normal(const vertex& p1, const vertex& p2, const vertex& p3, const bool double_sided_material = false,
+    const bool backface_hit = false) {
     auto geometric_normal = normalize(cross(p2.position - p1.position, p3.position - p1.position));
     if (double_sided_material && backface_hit) {
         geometric_normal *= -1.0f;
@@ -133,7 +138,8 @@ fmat3x3 handle_TBN_creation(
     fvec3 normal_vector = has_normal_map ? normal_map_sample_to_world(normal_map_color, TBN) : TBN[2];
     const bool impossible_normal_angle = (dot((!exiting_volume) ? v : -v, normal_vector) < 0.0);
     if (impossible_normal_angle) {
-        normal_vector = get_geometric_normal(p1, p2, p3, double_sided_material, backface_hit);  // todo: somehow incorporate normal map into geometric normal?
+        normal_vector = get_geometric_normal(
+            p1, p2, p3, double_sided_material, backface_hit);  // todo: somehow incorporate normal map into geometric normal?
         normal_vector = xyz(object.NormalMatrix * xyz0(normal_vector));
     }
     if (has_normal_map || impossible_normal_angle) {
@@ -146,29 +152,55 @@ float pow2(float v) { return v * v; }
 
 namespace app {
 RayCasterProgram::RayCasterProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings)
-    : modelRef(model), envmapRef(env), envmap_rot(settings.envmapRotation) {}
+    : model_ref_(model), envmap_ref_(env), envmap_rot_(settings.envmapRotation) {}
 
 fvec3 RayCasterProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_info& hit,
     std::vector<ray_with_payload>& ray_collection) const noexcept {
     if (hit.forward_hit() == false) {  // on miss
-        return xyz(sample_environment(ray_.direction, envmapRef, envmap_rot));
+        return ray_.payload * xyz(sample_environment(ray_.direction, envmap_ref_, envmap_rot_));
     }
-    const auto& mesh_data = get_mesh_data(modelRef, hit);
+    const auto& object = get_object_data(model_ref_, hit);
+    const auto& mesh_data = get_mesh_data(model_ref_, hit);
     const auto& [p1, p2, p3] = get_vertex_data(mesh_data, hit);
-    auto uv = p1.uv * hit.A + p2.uv * hit.B + p3.uv * hit.C();
+    auto point = interpolate_vertex_data(p1, p2, p3, hit);
+
+    convert_position_to_world_space(object, point);
+    convert_normals_to_world_space(object, point);
 
     auto mat_index = mesh_data.materialIndex;
-    const auto& material = modelRef.materials_[mat_index];
-    auto albedo_color = sample_albedo(material, modelRef.images_, uv);
-    return xyz(albedo_color);
+    const auto& material = model_ref_.materials[mat_index];
+
+    bool exiting_volume = false;
+    if (hit.backface) {
+        if (material.doubleSided) {
+            point.normal *= -1.0f;
+        } else if (material.hasVolume) {  // according to glTF spec, volume is only for single-sided materials
+            exiting_volume = true;
+        }
+    }
+
+    auto albedo_color = sample_albedo(material, model_ref_.images, point.uv);
+    float alpha = albedo_color.w;
+    if (!material.alphaBlending) {
+        alpha = (alpha < material.alphaCutoff) ? 0.0f : 1.0f;
+    }
+    if (alpha != 1.0f) {
+        ray_with_payload new_ray = ray_;
+        new_ray.origin =
+            point.position + (exiting_volume ? 1.0f : -1.0f) * point.normal * kEpsilon5;  // offset to avoid self-intersection
+        new_ray.payload *= (1.0f - alpha);
+        ray_collection.push_back(new_ray);
+    }
+
+    return ray_.payload * xyz(albedo_color) * alpha;
 }
 // RayCasterProgram
 
 AOProgram::AOProgram(const Model& model, const RenderSettings& settings)
-    : modelRef(model), aoSamples(settings.maxNewRaysPerBounce), inv_aoSamples(1.0f / aoSamples) {}
+    : model_ref_(model), ao_samples_(settings.maxNewRaysPerBounce), inv_ao_samples_(1.0f / ao_samples_) {}
 
-std::minstd_rand thread_local AOProgram::gen = std::minstd_rand(std::random_device{}());
-std::uniform_real_distribution<float> thread_local AOProgram::dist = std::uniform_real_distribution<float>(0.0f, 1.0f);
+std::minstd_rand thread_local AOProgram::s_gen = std::minstd_rand(std::random_device{}());
+std::uniform_real_distribution<float> thread_local AOProgram::s_dist = std::uniform_real_distribution<float>(0.0f, 1.0f);
 
 fvec3 AOProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_info& hit,
     std::vector<ray_with_payload>& ray_collection) const noexcept {
@@ -178,15 +210,15 @@ fvec3 AOProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_inf
     if (ray_.depth == 0) {
         return fvec3(0.0f);
     }
-    const auto& object = get_object_data(modelRef, hit);
-    const auto& mesh_data = get_mesh_data(modelRef, hit);
+    const auto& object = get_object_data(model_ref_, hit);
+    const auto& mesh_data = get_mesh_data(model_ref_, hit);
     const auto& [p1, p2, p3] = get_vertex_data(mesh_data, hit);
     auto point = interpolate_vertex_data(p1, p2, p3, hit);
 
     auto bitangent = convert_normals_to_world_space(object, point);
 
     auto mat_index = mesh_data.materialIndex;
-    const auto& material = modelRef.materials_[mat_index];
+    const auto& material = model_ref_.materials[mat_index];
 
     if (hit.backface) {
         // ray hits backside
@@ -197,7 +229,7 @@ fvec3 AOProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_inf
 
     fmat3x3 TBN = construct_TBN(xyz(point.tangent), bitangent, point.normal);
 
-    auto normal_map_color = sample_normals(material, modelRef.images_, point.uv);
+    auto normal_map_color = sample_normals(material, model_ref_.images, point.uv);
     if (normal_map_color.w != 0.0f) {
         fvec3 normal_vector = normal_map_sample_to_world(normal_map_color, TBN);
         TBN = construct_TBN(TBN[0], TBN[1], normal_vector);  // re-construct TBN with normal from normal map
@@ -208,17 +240,17 @@ fvec3 AOProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_inf
 
     std::uint8_t new_depth = 0;  // only one AO bounce
 
-    auto jitter_value_x = dist(gen);
-    auto jitter_value_y = dist(gen);
-    for (unsigned int i = 0; i < aoSamples; ++i) {
-        fvec2 rand = fibonacci2D(i, inv_aoSamples);         // quasi-random sampling
+    auto jitter_value_x = s_dist(s_gen);
+    auto jitter_value_y = s_dist(s_gen);
+    for (int i = 0; i < ao_samples_; ++i) {
+        fvec2 rand = fibonacci2D(i, inv_ao_samples_);         // quasi-random sampling
         rand.x = std::fmod(rand.x + jitter_value_x, 1.0f);  // jitter
         rand.y = std::fmod(rand.y + jitter_value_y, 1.0f);  // jitter
         auto new_direction = ImportanceSampleCosDir(rand);
         assert(new_direction.z > 0.0f);
         new_direction = Tangent2World(new_direction, TBN);
         assert(abs(length(new_direction) - 1.0f) < kEpsilon5);
-        ray_with_payload new_ray{{new_pos, new_direction}, fvec4(inv_aoSamples), new_depth, true};
+        ray_with_payload new_ray{{new_pos, new_direction}, fvec4(inv_ao_samples_), new_depth, true};
         ray_collection.push_back(new_ray);
     }
 
@@ -227,18 +259,18 @@ fvec3 AOProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_inf
 // AOProgram
 
 PBRProgram::PBRProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings)
-    : modelRef(model), envmapRef(env), envmap_rot(settings.envmapRotation) {}
+    : model_ref_(model), envmap_ref_(env), envmap_rot_(settings.envmapRotation) {}
 
-std::minstd_rand thread_local PBRProgram::gen = std::minstd_rand(std::random_device{}());
-std::uniform_real_distribution<float> thread_local PBRProgram::dist = std::uniform_real_distribution<float>(0.0f, 1.0f);
+std::minstd_rand thread_local PBRProgram::s_gen = std::minstd_rand(std::random_device{}());
+std::uniform_real_distribution<float> thread_local PBRProgram::s_dist = std::uniform_real_distribution<float>(0.0f, 1.0f);
 
 fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_info& hit,
     std::vector<ray_with_payload>& ray_collection) const noexcept {
     if (hit.forward_hit() == false) {  // on miss
-        return ray_.payload * xyz(sample_environment(ray_.direction, envmapRef, envmap_rot));
+        return ray_.payload * xyz(sample_environment(ray_.direction, envmap_ref_, envmap_rot_));
     }
-    const auto& object = get_object_data(modelRef, hit);
-    const auto& mesh_data = get_mesh_data(modelRef, hit);
+    const auto& object = get_object_data(model_ref_, hit);
+    const auto& mesh_data = get_mesh_data(model_ref_, hit);
     const auto& [p1, p2, p3] = get_vertex_data(mesh_data, hit);
     auto point = interpolate_vertex_data(p1, p2, p3, hit);
 
@@ -246,7 +278,7 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
     auto bitangent = convert_normals_to_world_space(object, point);
 
     auto mat_index = mesh_data.materialIndex;
-    const auto& material = modelRef.materials_[mat_index];
+    const auto& material = model_ref_.materials[mat_index];
 
     bool exiting_volume = false;
     if (hit.backface) {
@@ -258,15 +290,15 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
         }
     }
 
-    auto albedo_color = sample_albedo(material, modelRef.images_, point.uv);
+    auto albedo_color = sample_albedo(material, model_ref_.images, point.uv);
     float alpha = albedo_color.w;
     if (!material.alphaBlending) {
-        alpha = (alpha < material.alpha_cutoff) ? 0.0f : 1.0f;
+        alpha = (alpha < material.alphaCutoff) ? 0.0f : 1.0f;
     }
     if (alpha != 1.0f) {
         ray_with_payload new_ray = ray_;
-        new_ray.origin = point.position +
-                         (exiting_volume ? 1.0f : -1.0f) * point.normal * kEpsilon5;  // offset to avoid self-intersection
+        new_ray.origin =
+            point.position + (exiting_volume ? 1.0f : -1.0f) * point.normal * kEpsilon5;  // offset to avoid self-intersection
         new_ray.payload *= (1.0f - alpha);
         ray_collection.push_back(new_ray);
     }
@@ -279,19 +311,21 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
     fvec3 attenuation =
         exiting_volume ? min(exp(-material.attenuationFactor * hit.t), 1.0f) : fvec3{1.0f};  // Volume absorption
 
-    auto emissive = xyz(sample_emissive(material, modelRef.images_, point.uv));
+    auto emissive = xyz(sample_emissive(material, model_ref_.images, point.uv));
     if (ray_.depth == 0) {
         return ray_.payload * emissive * attenuation * alpha;
     }
 
     auto v = -ray_.direction;
 
-    auto normal_map_color = sample_normals(material, modelRef.images_, point.uv);
+    auto normal_map_color = sample_normals(material, model_ref_.images, point.uv);
     fmat3x3 TBN = handle_TBN_creation(
         object, normal_map_color, point, bitangent, v, material.doubleSided, exiting_volume, hit.backface, p1, p2, p3);
 
-    auto transmission = sample_transmission(material, modelRef.images_, point.uv);
-    auto ORM = sample_roughness_metallic(material, modelRef.images_, point.uv);
+    point.normal = normalize(point.normal);
+
+    auto transmission = sample_transmission(material, model_ref_.images, point.uv);
+    auto ORM = sample_roughness_metallic(material, model_ref_.images, point.uv);
     auto diffuse_color = (1.0f - ORM.z) * xyz(albedo_color);
 
     auto f0 = mix(fvec3(material.dielectric_f0), xyz(albedo_color), ORM.z);
@@ -302,7 +336,7 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
     std::uint8_t new_depth = ray_.depth - 1;
 
     std::array<float, 4> random_values;
-    std::generate(random_values.begin(), random_values.end(), [this]() { return dist(gen); });
+    std::generate(random_values.begin(), random_values.end(), []() { return s_dist(s_gen); });
 
     const bool sample_diffuse = (diffuse_color * (1.0f - transmission) != fvec3(0.0f));
     if (sample_diffuse) {  // diffuse
@@ -362,11 +396,10 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
             float VdH = clamp(dot((!exiting_volume) ? v : -v, h), 0.0f, 1.0f);
 
             auto brdf = (fvec3(1.0f) - F) * (G * VdH * LdN / NdM);
-            brdf = min(brdf, fvec3(kMaxBRDF));                           // clamp to avoid fireflies
+            brdf = min(brdf, fvec3(kMaxBRDF));                               // clamp to avoid fireflies
             auto new_pos = point.position - new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
             auto new_payload = diffuse_color * transmission * attenuation * brdf * ray_.payload * alpha;
-            ray_with_payload new_ray{
-                {new_pos, normalize(l)}, new_payload, new_depth, false};  // normalizing for better accuracy
+            ray_with_payload new_ray{{new_pos, normalize(l)}, new_payload, new_depth, false};  // normalizing for better accuracy
             ray_collection.push_back(new_ray);
         }
         {  // specular reflection
@@ -381,7 +414,7 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
             auto G = V_SmithGGXCorrelated(VdN, LdN, linear_roughness);
             // auto G = V_Schlick(LdN, VdN, roughness);
             auto brdf = F * (G * LdN * LdH / NdH);
-            brdf = min(brdf, fvec3(kMaxBRDF));                           // clamp to avoid fireflies
+            brdf = min(brdf, fvec3(kMaxBRDF));                               // clamp to avoid fireflies
             auto new_pos = point.position + new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
             auto new_payload = attenuation * brdf * ray_.payload * alpha;
             ray_with_payload new_ray{{new_pos, l}, new_payload, new_depth, false};

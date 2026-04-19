@@ -1,8 +1,14 @@
 #include "acceleration_structure.h"
 
 #include <algorithm>
+#include <cassert>
+#include <chrono>
+#include <cmath>
 #include <execution>
+#include <glm/glm.hpp>
 #include <iostream>
+#include <iterator>
+#include <numeric>
 #include <utility>
 
 namespace {
@@ -126,7 +132,7 @@ float BBox::surface_area() const noexcept {
     return dim.x * dim.y + dim.x * dim.z + dim.y * dim.z;  // leave *2.0f
 }
 
-BBox object_to_ws_bbox(const Object& obj, const Mesh& mesh) {
+BBox object_to_ws_bbox(const Object& obj, const Mesh& mesh) noexcept {
     auto combine = [](BBox a, const BBox& b) {
         a.expand(b);
         return a;
@@ -166,7 +172,7 @@ void DOP::expand(const DOP& dop) noexcept {
         axis_min_max.y = std::max(axis_min_max.y, dop.min_max[i].y);
     }
 }
-BBox DOP::to_bbox() {
+BBox DOP::to_bbox() const noexcept {
     return BBox{fvec3{min_max[0].x, min_max[1].x, min_max[2].x}, fvec3{min_max[0].y, min_max[1].y, min_max[2].y}};
 }
 
@@ -204,7 +210,7 @@ ray_volume_hit_info DOP::ray_volume_intersection(const std::array<fvec2, 7>& pro
     return {true, t_min, t_max};
 }
 
-DOP object_to_ws_dop(const Object& obj, const Mesh& mesh) {
+DOP object_to_ws_dop(const Object& obj, const Mesh& mesh) noexcept {
     auto combine = [](DOP a, const DOP& b) {
         a.expand(b);
         return a;
@@ -219,11 +225,11 @@ DOP object_to_ws_dop(const Object& obj, const Mesh& mesh) {
 
 NaiveAS::NaiveAS(const Model& model) {
     auto start = std::chrono::high_resolution_clock::now();
-    object_data_.reserve(model.objects_.size());
-    mesh_data_.reserve(model.meshes_.size());
-    for (uint32_t i = 0; i < model.objects_.size(); ++i) {
-        const auto& obj = model.objects_[i];
-        const auto& mesh = model.meshes_[obj.meshIndex];
+    object_data_.reserve(model.objects.size());
+    mesh_data_.reserve(model.meshes.size());
+    for (uint32_t i = 0; i < model.objects.size(); ++i) {
+        const auto& obj = model.objects[i];
+        const auto& mesh = model.meshes[obj.meshIndex];
         DOP volume = object_to_ws_dop(obj, mesh);
         object_data_.emplace_back(
             volume, 
@@ -239,12 +245,12 @@ NaiveAS::NaiveAS(const Model& model) {
     };
     std::sort(object_data_.begin(), object_data_.end(), complexity_cmp);
 
-    for (const auto& mesh : model.meshes_) {
+    for (const auto& mesh : model.meshes) {
         std::vector<fvec3> data;
         data.reserve(mesh.indices.size());
         std::for_each(mesh.indices.begin(), mesh.indices.end(),
             [&data, &mesh](std::uint32_t index) { data.push_back(mesh.vertices[index].position); });
-        const auto& mat = model.materials_[mesh.materialIndex];
+        const auto& mat = model.materials[mesh.materialIndex];
         bool doubleSided = mat.doubleSided || mat.hasVolume;
         mesh_data_.emplace_back(std::move(data), doubleSided);
     }
@@ -272,9 +278,9 @@ ray_triangle_hit_info NaiveAS::intersect_ray(const ray& ray, bool any_hit) const
         if (potential_obj_hit.hit_info.forward_hit() && potential_obj_hit.hit_info.forward_hit_distance() < hit.t) {
             // Perform detailed intersection test with the mesh
             const auto& obj = object_data_[potential_obj_hit.object_index];
-            ray_triangle_hit_info potential_mesh_hit = (any_hit)? 
-                mesh_ray_intersection<true>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_[obj.meshIndex])
-              : mesh_ray_intersection<false>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_[obj.meshIndex]);
+            ray_triangle_hit_info potential_mesh_hit =
+                (any_hit) ? mesh_ray_intersection<true>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_[obj.meshIndex])
+                          : mesh_ray_intersection<false>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_data_[obj.meshIndex]);
             if (potential_mesh_hit.forward_hit() && (potential_mesh_hit.t < hit.t)) {
                 hit = potential_mesh_hit;
                 hit.objectIndex = obj.objectIndex;
@@ -349,11 +355,11 @@ BBox NaiveAS::get_scene_bounds() const noexcept {
 
 BVH_AS::BVH_AS(const Model& model, int max_triangles_per_leaf) {
     auto start = std::chrono::high_resolution_clock::now();
-    object_data_.reserve(model.objects_.size());
-    mesh_bvh_data_.reserve(model.meshes_.size());
-    for (uint32_t i = 0; i < model.objects_.size(); ++i) {
-        const auto& obj = model.objects_[i];
-        const auto& mesh = model.meshes_[obj.meshIndex];
+    object_data_.reserve(model.objects.size());
+    mesh_bvh_data_.reserve(model.meshes.size());
+    for (uint32_t i = 0; i < model.objects.size(); ++i) {
+        const auto& obj = model.objects[i];
+        const auto& mesh = model.meshes[obj.meshIndex];
         DOP volume = object_to_ws_dop(obj, mesh);
         object_data_.emplace_back(
             volume, 
@@ -371,8 +377,8 @@ BVH_AS::BVH_AS(const Model& model, int max_triangles_per_leaf) {
     };
     std::sort(object_data_.begin(), object_data_.end(), complexity_cmp);
 
-    for (const auto& mesh : model.meshes_) {
-        const auto& mat = model.materials_[mesh.materialIndex];
+    for (const auto& mesh : model.meshes) {
+        const auto& mat = model.materials[mesh.materialIndex];
         bool doubleSided = mat.doubleSided || mat.hasVolume;
         mesh_bvh_data_.emplace_back(
             mesh, 
@@ -507,8 +513,8 @@ std::span<BVH_AS::MeshBVHNode::triangle>::iterator BVH_AS::MeshBVHData::split_tr
         best_center = bbox.min[best_axis] + 0.5f * bbox_dim[best_axis];
     }
 
-    auto central_it = std::partition(
-        triangles_span.begin(), triangles_span.end(), [best_center, best_axis](const MeshBVHNode::triangle& tri) {
+    auto central_it =
+        std::partition(triangles_span.begin(), triangles_span.end(), [best_center, best_axis](const MeshBVHNode::triangle& tri) {
             float centroid = (tri.p1[best_axis] + tri.p2[best_axis] + tri.p3[best_axis]) / 3.0f;
             return centroid < best_center;
         });
@@ -561,11 +567,11 @@ void BVH_AS::MeshBVHData::collect_tree_info() const noexcept {
     float mean_tris = static_cast<float>(info.mean_tris_in_leaf) / info.total_leaves;
     std::cout << "Mesh BVH info: \n"
               << " Depth: min=" << info.min_depth << ", max=" << info.max_depth << ", mean=" << mean_depth << "\n"
-              << " Tris per leaf: min=" << info.min_tris_in_leaf << ", max=" << info.max_tris_in_leaf
-              << ", mean=" << mean_tris << "\n"
+              << " Tris per leaf: min=" << info.min_tris_in_leaf << ", max=" << info.max_tris_in_leaf << ", mean=" << mean_tris
+              << "\n"
               << " Total leaves: " << info.total_leaves << "\n"
               << " Total tris: " << data_storage.size() << "\n";
-    std::cout << std::endl;
+    std::cout << "\n";
 }
 
 BBox BVH_AS::MeshBVHNode::triangles_to_bbox(const std::span<MeshBVHNode::triangle> tris) noexcept {
@@ -609,9 +615,9 @@ ray_triangle_hit_info BVH_AS::intersect_ray(const ray& ray, bool any_hit) const 
         if (potential_obj_hit.hit_info.forward_hit() && potential_obj_hit.hit_info.forward_hit_distance() < hit.t) {
             // Perform detailed intersection test with the mesh
             const auto& obj = object_data_[potential_obj_hit.object_index];
-            ray_triangle_hit_info potential_mesh_hit = (any_hit) ? 
-                mesh_ray_intersection<true>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_bvh_data_[obj.meshIndex])
-              : mesh_ray_intersection<false>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_bvh_data_[obj.meshIndex]);
+            ray_triangle_hit_info potential_mesh_hit =
+                (any_hit) ? mesh_ray_intersection<true>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_bvh_data_[obj.meshIndex])
+                          : mesh_ray_intersection<false>(ray, obj.ModelMatrix, obj.invModelMatrix, mesh_bvh_data_[obj.meshIndex]);
             if (potential_mesh_hit.forward_hit() && (potential_mesh_hit.t < hit.t)) {
                 hit = potential_mesh_hit;
                 hit.objectIndex = obj.objectIndex;
@@ -684,7 +690,7 @@ ray_triangle_hit_info BVH_AS::mesh_ray_intersection(
             auto distance_l = volume_hit_l.forward_hit_distance();
             auto distance_r = volume_hit_r.forward_hit_distance();
 
-            if (distance_l < volume_hit_r.forward_hit_distance()) {
+            if (distance_l < distance_r) {
                 if (volume_hit_r.hit && hit.t > distance_r) bvh_stack.push_back(children.right_child_index);
                 if (volume_hit_l.hit && hit.t > distance_l) bvh_stack.push_back(children.left_child_index);
             } else {

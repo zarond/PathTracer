@@ -1,8 +1,10 @@
 #pragma once
 
+#include <array>
+#include <cstdint>
+#include <glm/fwd.hpp>
 #include <limits>
 #include <numbers>
-#include <numeric>
 #include <span>
 #include <variant>
 #include <vector>
@@ -11,6 +13,11 @@
 #include "ray_program.h"
 
 namespace app {
+
+using glm::fmat4x4;
+using glm::fvec2;
+using glm::fvec3;
+using glm::fvec4;
 
 struct BBox {
     fvec3 min, max;
@@ -28,7 +35,7 @@ struct BBox {
     float surface_area() const noexcept;
 };
 
-BBox object_to_ws_bbox(const Object& obj, const Mesh& mesh);
+BBox object_to_ws_bbox(const Object& obj, const Mesh& mesh) noexcept;
 
 struct DOP {
     DOP() noexcept;
@@ -37,7 +44,7 @@ struct DOP {
     bool is_empty() const noexcept;
     void expand(const fvec3& ws_point) noexcept;
     void expand(const DOP& dop) noexcept;
-    BBox to_bbox();
+    BBox to_bbox() const noexcept;
 
     ray_volume_hit_info ray_volume_intersection(const ray& ray) const noexcept;
     ray_volume_hit_info ray_volume_intersection(const std::array<fvec2, 7>& projections) const noexcept;
@@ -58,7 +65,7 @@ struct DOP {
     };
 };
 
-DOP object_to_ws_dop(const Object& obj, const Mesh& mesh);
+DOP object_to_ws_dop(const Object& obj, const Mesh& mesh) noexcept;
 
 class IAccelerationStructure {
   public:
@@ -91,9 +98,9 @@ class NaiveAS : public IAccelerationStructure {
     explicit NaiveAS(const Model& model);
     virtual ~NaiveAS() override = default;
 
-    ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const noexcept;
+    ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const noexcept override;
 
-    BBox get_scene_bounds() const noexcept;
+    BBox get_scene_bounds() const noexcept override;
 
   private:
     struct MeshData {
@@ -114,9 +121,9 @@ class BVH_AS : public IAccelerationStructure {
     explicit BVH_AS(const Model& model, int max_triangles_per_leaf);
     virtual ~BVH_AS() override = default;
 
-    ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const noexcept;
+    ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const noexcept override;
 
-    BBox get_scene_bounds() const noexcept;
+    BBox get_scene_bounds() const noexcept override;
 
   private:
     struct MeshBVHNode {
