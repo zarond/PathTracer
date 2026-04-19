@@ -79,7 +79,7 @@ class Viewer {
 
     bool is_using_gpu_renderer() const;
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
     void init_GPU_renderer();
     void switch_to_renderer(RendererMode mode);
     RendererMode get_renderer_mode() const;

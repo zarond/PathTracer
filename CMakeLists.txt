@@ -7,9 +7,17 @@ project(PathTracer VERSION 1.0
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
+set(ON_WINDOWS_DEFAULT OFF)
+if(WIN32)
+    set(ON_WINDOWS_DEFAULT ON)
+endif()
+
 # application
-option(NO_WINDOWS "remove Windows specific dependencies, that leaves CPU mode only and no GUI" OFF)
+option(ON_WINDOWS "Allow Windows specific dependencies, this enables DirectX raytracing mode and GUI" ${ON_WINDOWS_DEFAULT})
 option(ASAN "Turn On Address Sanitizer" OFF)
+
+message(STATUS "${PROJECT_NAME}: ON_WINDOWS option is currently: ${ON_WINDOWS}")
+message(STATUS "${PROJECT_NAME}: ASAN option is currently: ${ASAN}")
 
 set(LIBS_DIR libs)
 
@@ -28,7 +36,7 @@ set(APP_SOURCES
     src/render_settings.cc
     src/brdf.cc
 )
-if(NOT NO_WINDOWS)
+if(ON_WINDOWS)
     list(APPEND APP_SOURCES
         src/ui.cc
         src/d3d_debug_layer.cc
@@ -44,12 +52,12 @@ endif()
 
 add_executable(${PROJECT_NAME} ${APP_SOURCES})
 
-if(NO_WINDOWS)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE NO_WINDOWS)
+if(ON_WINDOWS)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE WINDOWS_SPECIFIC)
 endif()
 
 # compile hlsl shaders to dxil
-if(NOT NO_WINDOWS)
+if(ON_WINDOWS)
     #find_program(DXC dxc REQUIRED) # this just doesn't work for some reason in PowerShell and cmd, works only in Developer PowerShell for VS'
     Set(DXC dxc) # in contrary, this works just fine
     if(NOT DXC)
@@ -116,7 +124,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 #)
 
 # libs for application
-if(NOT NO_WINDOWS)
+if(ON_WINDOWS)
     add_library(imgui STATIC 
         ${LIBS_DIR}/imgui/imgui.cpp
         ${LIBS_DIR}/imgui/imgui_draw.cpp
@@ -173,7 +181,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     mikktspace
     glm::glm
 )
-if(NOT NO_WINDOWS)
+if(ON_WINDOWS)
     target_link_libraries(${PROJECT_NAME} PRIVATE 
         imgui 
         d3d12
@@ -181,7 +189,7 @@ if(NOT NO_WINDOWS)
     )
 endif()
 
-if((CMAKE_BUILD_TYPE STREQUAL "Debug") AND (NOT NO_WINDOWS))
+if((CMAKE_BUILD_TYPE STREQUAL "Debug") AND ON_WINDOWS)
     target_link_libraries(${PROJECT_NAME} PRIVATE dxguid)
 endif()
 

@@ -7,7 +7,7 @@
 #include <utility>
 #include <variant>
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
 #include "DXR/GPU_renderer.h"
 #include "d3d_context.h"
 #endif
@@ -38,7 +38,7 @@ Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture, const 
     snap_to_camera();
 }
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
 void Viewer::init_GPU_renderer() {
     if (renderers_[(int)RendererMode::GPURenderer]) {
         return;
@@ -75,11 +75,11 @@ RendererMode Viewer::get_renderer_mode() const { return active_renderer_mode_; }
 
 void Viewer::resize_window(const ivec2& newDimensions, bool createGPUTex) {
     window_dimensions_ = newDimensions;
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
     framebuffer_.release_gpu_resource();
 #endif
     framebuffer_ = CPUFrameBuffer(window_dimensions_.x, window_dimensions_.y);
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
     if (createGPUTex) {
         framebuffer_.create_texture_resource();
     }

@@ -7,7 +7,7 @@
 #include <glm/glm.hpp>
 #include <vector>
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
 #define NOMINMAX
 #include <d3d12.h>
 #include <wrl.h>
@@ -19,7 +19,7 @@ using glm::fvec2;
 using glm::fvec3;
 using glm::fvec4;
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
 using Microsoft::WRL::ComPtr;
 #endif
 
@@ -195,7 +195,7 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
     CPUFrameBuffer();
     CPUFrameBuffer(int width, int height);
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
     ~CPUFrameBuffer();
 #endif
 
@@ -209,7 +209,7 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
 
     void save_to_file(const std::filesystem::path& filePath, bool from_GPU_texture) const;
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
     void create_texture_resource();
     void upload_to_gpu();
     void release_gpu_resource();

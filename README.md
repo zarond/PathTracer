@@ -8,7 +8,11 @@ The program has GUI, but you can also run it in command-line mode to render imag
 
 The program requires Windows OS due to usage of Windows API and DirectX.
 
-You can use CMake option "NO_WINDOWS" to disable Windows-specific code and build it on Linux or MacOS, but GUI and DXR will be disabled in this case.
+You can build the program on Linux or MacOS too, but it will disable Windows-specific code - GUI and DXR will be disabled in this case.
+
+You can override CMake option `ON_WINDOWS` to `OFF` if you want to build it on Windows without Windows-specific features.
+
+You can use CMake option `ASAN` to enable Address Sanitizer.
 
 ## Usage
 

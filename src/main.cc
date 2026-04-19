@@ -6,7 +6,7 @@
 #include <utility>
 #include <vector>
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
 #include <stop_token>
 #include <thread>
 #endif
@@ -18,7 +18,7 @@
 #include "renderer.h"
 #include "viewer.h"
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
 #define NOMINMAX
 #include <imgui.h>
 
@@ -101,7 +101,7 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
     //------------------------------------------------------------------
     // GUI version logic starts from here
     //------------------------------------------------------------------
@@ -287,6 +287,6 @@ int main(int argc, char* argv[]) {
     dx_window.ShutDown();
 
     DXDebugLayer::Get().Shutdown();
-#endif  // #ifndef NO_WINDOWS
+#endif  // #ifdef WINDOWS_SPECIFIC
     return 0;
 }

@@ -33,7 +33,7 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         "Choose between different rendering modes and ray intersection acceleration modes");
     program.add_epilog("It's an educational project, so it supports only a limited set of gltf features.");
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
     program.add_argument("-no-gui", "--no-gui").help("run without GUI.").flag();
 #else
     program.add_argument("-no-gui", "--no-gui").help("run without GUI.").flag().hidden();
@@ -144,7 +144,7 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         args.environmentPath = "";
     }
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
     args.noGui = program.get<bool>("-no-gui");
 #else
     args.noGui = true;

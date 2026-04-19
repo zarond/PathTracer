@@ -14,7 +14,7 @@
 #include "stb_image.h"
 #include "stb_image_write.h"
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
 #include "d3d_context.h"
 #endif
 
@@ -126,7 +126,7 @@ CPUFrameBuffer::CPUFrameBuffer(int width, int height) {
     data_.resize(width_ * height_, hdr_pixel{});
 }
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
 CPUFrameBuffer::~CPUFrameBuffer() { release_gpu_resource(); }
 #endif
 
@@ -140,7 +140,7 @@ void CPUFrameBuffer::save_to_file(const std::filesystem::path& filePath, bool fr
     std::vector<hdr_pixel> gpu_data;
     std::span<const hdr_pixel> data_source;
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
     if (from_GPU_texture) {
         gpu_data = download_from_gpu();
         if (gpu_data.empty()) {
@@ -178,7 +178,7 @@ void CPUFrameBuffer::save_to_file(const std::filesystem::path& filePath, bool fr
     }
 }
 
-#ifndef NO_WINDOWS
+#ifdef WINDOWS_SPECIFIC
 void CPUFrameBuffer::create_texture_resource() {
     D3DContext& d3d_ctx = D3DContext::Get();
 
