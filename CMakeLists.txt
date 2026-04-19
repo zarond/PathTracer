@@ -79,7 +79,7 @@ if(ON_WINDOWS)
         get_filename_component(FILE_NAME ${SHADER} NAME_WE)
 
         # compile into build dir (config-independent)
-        set(COMPILED_SHADER ${CMAKE_CURRENT_BINARY_DIR}/${FILE_NAME}.dxil)
+        set(COMPILED_SHADER ${CMAKE_SOURCE_DIR}/src/DXR/Shaders/Compiled/${FILE_NAME}.h)
 
         # todo: better yet, compile into object file and link into executable, use extern const in code
         add_custom_command(
@@ -87,24 +87,12 @@ if(ON_WINDOWS)
             COMMAND ${DXC}
                     -T lib_6_6
                     ${DXC_FLAGS}
-                    -Fo ${COMPILED_SHADER}
+                    -Fh ${COMPILED_SHADER} -Vn g_MyShaderBytecode
                     ${CMAKE_SOURCE_DIR}/${SHADER}
             DEPENDS ${SHADER}
             COMMENT "Compiling shader ${SHADER}"
         )
         list(APPEND COMPILED_SHADERS ${COMPILED_SHADER})
-
-        # copy compiled shader next to the executable after the project is built
-        # $<TARGET_FILE_DIR:${PROJECT_NAME}> resolves per-config in multi-config generators
-        add_custom_command(
-            TARGET ${PROJECT_NAME}
-            POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    ${COMPILED_SHADER}
-                    $<TARGET_FILE_DIR:${PROJECT_NAME}>/${FILE_NAME}.dxil
-            COMMENT "Copying ${FILE_NAME}.dxil from ${COMPILED_SHADER} to target $<TARGET_FILE_DIR:${PROJECT_NAME}>/${FILE_NAME}.dxil"
-            VERBATIM
-        )
     endforeach()
 
     add_custom_target(Shaders ALL DEPENDS ${COMPILED_SHADERS})
