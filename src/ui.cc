@@ -15,10 +15,6 @@
 // Forward declare message handler from imgui_impl_win32.cpp
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
-// Forward declare functions from imgui_impl_dx12.cpp
-extern void ImGui_ImplDX12_SetupSamplerLinear(ID3D12GraphicsCommandList* command_list);
-extern void ImGui_ImplDX12_SetupSamplerNearest(ID3D12GraphicsCommandList* command_list);
-
 namespace {
 using namespace app;
 namespace fs = std::filesystem;
@@ -210,19 +206,6 @@ void HelpTooltip(const char* msg) {
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) ImGui::SetTooltip("%s", msg);
 }
 
-// For DX12 backend: Callback to modify current sampler
-void ImDrawCallback_ImplDX12_SetSamplerNearest(const ImDrawList* parent_list, const ImDrawCmd* cmd) {
-    ImGui_ImplDX12_RenderState* state = (ImGui_ImplDX12_RenderState*)ImGui::GetPlatformIO().Renderer_RenderState;
-    if (!state) return;
-    ImGui_ImplDX12_SetupSamplerNearest(state->CommandList);
-}
-
-void ImDrawCallback_ImplDX12_SetSamplerLinear(const ImDrawList* parent_list, const ImDrawCmd* cmd) {
-    ImGui_ImplDX12_RenderState* state = (ImGui_ImplDX12_RenderState*)ImGui::GetPlatformIO().Renderer_RenderState;
-    if (!state) return;
-    ImGui_ImplDX12_SetupSamplerLinear(state->CommandList);
-}
-
 void SetupImGuiStyle() {
     float main_scale = ImGui_ImplWin32_GetDpiScaleForMonitor(::MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY));
     ImGui::StyleColorsDark();
@@ -344,9 +327,10 @@ void RenderedImageUI(Viewer& viewer, const bool hardware_raytracing_support) {
     ImGui::SetCursorPos(ImVec2(scale * offset.x + WorkSize.x * 0.5f, scale * offset.y + WorkSize.y * 0.5f));
     // todo: hardware_ray_tracing_support check is a temporary fix for problem with integrated GPU and ImGui
     if (framebuffer.nearest_filtering && hardware_raytracing_support) {
-        ImGui::GetWindowDrawList()->AddCallback(ImDrawCallback_ImplDX12_SetSamplerNearest, nullptr);  // Set custom sampler
+        auto& platform_io = ImGui::GetPlatformIO();
+        ImGui::GetWindowDrawList()->AddCallback(platform_io.DrawCallback_SetSamplerNearest);  // Set custom sampler
         ImGui::Image((ImTextureID)texture_srv_gpu_handle.ptr, ImVec2(scale * (float)dims.x, scale * (float)dims.y));
-        ImGui::GetWindowDrawList()->AddCallback(ImDrawCallback_ImplDX12_SetSamplerLinear, nullptr);  // Restore sampler
+        ImGui::GetWindowDrawList()->AddCallback(platform_io.DrawCallback_ResetRenderState);  // Restore sampler
     } else {
         ImGui::Image((ImTextureID)texture_srv_gpu_handle.ptr, ImVec2(scale * (float)dims.x, scale * (float)dims.y));
     }
