@@ -12,6 +12,7 @@
 #include "../renderer.h"
 #include "GPU_model.h"
 #include "GPU_pipeline.h"
+#include "Raster_pipeline.h"
 
 namespace app {
 
@@ -63,6 +64,7 @@ class GPURenderer : public IRenderer {
     std::atomic<RenderingState> render_state_ = RenderingState::Idle;
 
     GPU_pipeline pipeline_;
+    Raster_pipeline raster_pipeline_; // todo: use one or the other pipeline, maybe implement a commmon interface
 
     size_t last_model_fence_value_ = 0;
     size_t last_envmap_fence_value_ = 0;

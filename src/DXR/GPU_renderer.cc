@@ -1,7 +1,7 @@
 #define NOMINMAX
 #include "GPU_renderer.h"
 
-#include <d3d12.h>
+#include <directx/d3d12.h>
 
 #include <cassert>
 #include <chrono>
@@ -62,13 +62,16 @@ void GPURenderer::load_model(const Model& model, size_t ModelFenceValue) {
 void GPURenderer::reload_ray_program() {
     if (envmap_ref_ == nullptr) return;
     gpu_envmap_ = std::make_unique<GPU_texture>(*envmap_ref_);
-    pipeline_.RaytracingMode = render_settings_.programMode;
+
+    pipeline_.OnEnvmapLoad(*gpu_envmap_);
 }
 void GPURenderer::reload_acceleration_structure() {
     if (model_ref_ == nullptr) return;
     auto start = std::chrono::high_resolution_clock::now();
 
     gpu_model_ = std::make_unique<GPU_model>(*model_ref_);
+
+    pipeline_.OnModelLoad(*gpu_model_);
 
     auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
     std::cout << "GPU DXR model Acceleration Structure created in " << diff.count() << " ms." << '\n';
@@ -104,18 +107,8 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
         inverse_iteration_count = 1.0f / static_cast<float>(iteration_count);
     }
 
-    pipeline_.m_rayGenCB.cameraPosition = xyz1(origin_);
-    pipeline_.m_rayGenCB.projectionToWorld = NDC2WorldMatrix_;
-    pipeline_.m_rayGenCB.subpixelOffset = jitter;
-    pipeline_.m_rayGenCB.frameID = ++frameID_;
-    pipeline_.m_rayGenCB.iteration = iteration_count;
-    pipeline_.m_rayGenCB.invIterationCount = inverse_iteration_count;
-    pipeline_.m_rayGenCB.samplesPerPixel = render_settings_.samplesPerPixel;
-    pipeline_.m_rayGenCB.invSamplesPerPixel = 1.0f / static_cast<float>(render_settings_.samplesPerPixel);
-    pipeline_.m_rayGenCB.maxNewRaysPerBounce = render_settings_.maxNewRaysPerBounce;
-    pipeline_.m_rayGenCB.invMaxNewRaysPerBounce = 1.0f / render_settings_.maxNewRaysPerBounce;
-    pipeline_.m_rayGenCB.maxRayBounces = render_settings_.maxRayBounces;
-    pipeline_.m_rayGenCB.envmapRotation = render_settings_.envmapRotation;
+    pipeline_.SetRenderingSettings(
+        render_settings_, origin_, NDC2WorldMatrix_, jitter, ++frameID_, iteration_count, inverse_iteration_count);
 
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
@@ -123,9 +116,7 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
     ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};
     d3d_ctx.m_DXRCommandList->SetDescriptorHeaps(1, desc_heap);
 
-    framebuffer.transition_from_srv_to_uav();
     pipeline_.DoRaytracing(*gpu_model_, *gpu_envmap_, framebuffer);
-    framebuffer.transition_from_uav_to_srv();
 
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();

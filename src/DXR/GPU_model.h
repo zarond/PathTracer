@@ -1,7 +1,7 @@
 #pragma once
 
 #define NOMINMAX
-#include <d3d12.h>
+#include <directx/d3d12.h>
 #include <wrl.h>
 
 #include <glm/fwd.hpp>
@@ -75,8 +75,9 @@ struct GPU_Material {  // enforce packing rules on CPU Material data
 class GPU_texture {
   public:
     GPU_texture() = default;
-    explicit GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture);
-    explicit GPU_texture(const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_ = false);
+    explicit GPU_texture(UINT64 width, UINT height, bool is_cubemap = false, bool allocate_mips = false); // constructor for float4 empty LUTS and cubemaps
+    explicit GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture, bool allocate_mips = false);
+    explicit GPU_texture(const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_ = false, bool allocate_mips = false);
     ~GPU_texture();
 
     GPU_texture(const GPU_texture&) = delete;
@@ -90,6 +91,9 @@ class GPU_texture {
 
     bool HDR = false;
     bool srgb = false;  // whether to apply sRGB to linear conversion when sampling; only relevant for SDR textures
+    bool mips = false;
+    bool isCubemap = false;
+    uint16_t mipLevels = 1;
 
   private:
     void create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT format);
@@ -128,6 +132,9 @@ class GPU_model {
 
     D3D_Handle_Pair materials_array{};
 
+    //D3D_Handle_Pair instances_info{};
+    std::vector<uint32_t> indicesOffsets; // ??? should I save it in GPU_model
+
     std::vector<GPU_texture> textures;
 
     bool isEmpty() const;
@@ -147,11 +154,13 @@ class GPU_model {
     ComPtr<ID3D12Resource> tlasScratchBuffer;
     ComPtr<ID3D12Resource> tlasBuffer;
     ComPtr<ID3D12Resource> instancesUploadBuffer;
+    //ComPtr<ID3D12Resource> instancesBuffer; // ??? should I save it in GPU_model
 
     // Combine all meshes in two buffers
     GPU_mesh combinedMesh;
     ComPtr<ID3D12Resource> MeshIndicesOffsets;
     ComPtr<ID3D12Resource> MaterialsArray;
+    std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;  // ??? should I save it in GPU_model
 
     bool isEmpty_ = true;
 

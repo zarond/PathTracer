@@ -84,5 +84,6 @@ This project uses the following libraries:
  - argparse
  - MikkTSpace
  - Dear IMGUI
+ - Microsoft DirectX-Headers
  - Google Test
 

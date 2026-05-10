@@ -337,7 +337,26 @@ void GPU_pipeline::CreateConstantBuffers() {
     ThrowIfFailed(m_perFrameConstants->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedConstantData)));
 }
 
+void GPU_pipeline::SetRenderingSettings(const RenderSettings& render_settings, fvec3 origin, const fmat4x4& NDC2WorldMatrix,
+    fvec2 subpixelOffset, unsigned int frameID, int iterationCount, float invIterationCount) {
+    m_rayGenCB.cameraPosition = xyz1(origin);
+    m_rayGenCB.projectionToWorld = NDC2WorldMatrix;
+    m_rayGenCB.subpixelOffset = subpixelOffset;
+    m_rayGenCB.frameID = frameID;
+    m_rayGenCB.iteration = iterationCount;
+    m_rayGenCB.invIterationCount = invIterationCount;
+    m_rayGenCB.samplesPerPixel = render_settings.samplesPerPixel;
+    m_rayGenCB.invSamplesPerPixel = 1.0f / static_cast<float>(render_settings.samplesPerPixel);
+    m_rayGenCB.maxNewRaysPerBounce = render_settings.maxNewRaysPerBounce;
+    m_rayGenCB.invMaxNewRaysPerBounce = 1.0f / render_settings.maxNewRaysPerBounce;
+    m_rayGenCB.maxRayBounces = render_settings.maxRayBounces;
+    m_rayGenCB.envmapRotation = render_settings.envmapRotation;
+    RaytracingMode = render_settings.programMode;
+}
+
 void GPU_pipeline::DoRaytracing(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) {
+    framebuffer.transition_from_srv_to_uav();
+
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
 
@@ -403,6 +422,14 @@ void GPU_pipeline::DoRaytracing(const GPU_model& gpu_model, const GPU_texture& e
             DispatchRays(commandList.Get(), m_dxrStateObjectRayCaster.Get(), &dispatchDesc, m_RC_hitGroupShaderTable,
                 m_RC_missShaderTable);
     }
+
+    framebuffer.transition_from_uav_to_srv();
 }
+
+// no actions required for a model in this raytracing pipeline, because it doesn't use mips
+void GPU_pipeline::OnModelLoad(GPU_model& gpu_model) {} 
+
+// no actions required for envmap in this raytracing pipeline, because it doesn't use mips and is not a cubemap
+void GPU_pipeline::OnEnvmapLoad(const GPU_texture& envmap) {} 
 
 }  // namespace app

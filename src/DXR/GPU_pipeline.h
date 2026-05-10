@@ -1,16 +1,17 @@
 #pragma once
 
 #define NOMINMAX
-#include <d3d12.h>
+#include <directx/d3d12.h>
 #include <wrl.h>
+#include <directx/d3dx12.h>
 
 #include <cstdint>
 #include <glm/fwd.hpp>
 
 #include "../arguments.h"
 #include "../cpu_framebuffer.h"
+#include "../render_settings.h"
 #include "GPU_model.h"
-#include "helpers/d3dx12.h"
 
 namespace app {
 
@@ -43,6 +44,16 @@ class GPU_pipeline {
     GPU_pipeline();
     ~GPU_pipeline();
 
+    void SetRenderingSettings(const RenderSettings& render_settings, fvec3 origin, const fmat4x4& NDC2WorldMatrix,
+        fvec2 subpixelOffset, unsigned int frameID, int iteration, float invIterationCount);
+
+    void DoRaytracing(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer);
+
+    void OnModelLoad(GPU_model& gpu_model);
+
+    void OnEnvmapLoad(const GPU_texture& envmap);
+
+  private:
     // Root signatures
     ComPtr<ID3D12RootSignature> m_raytracingGlobalRootSignature;
     ComPtr<ID3D12RootSignature> m_raytracingLocalRootSignature;
@@ -113,9 +124,6 @@ class GPU_pipeline {
     // to use in the Shader Binding Table
     ComPtr<ID3D12StateObjectProperties> m_rtStateObjectProps;
 
-    void DoRaytracing(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer);
-
-  private:
     void release_gpu_resources();
 };
 

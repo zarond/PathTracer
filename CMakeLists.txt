@@ -44,9 +44,11 @@ if(ON_WINDOWS)
         src/DXR/GPU_model.cc
         src/DXR/GPU_renderer.cc
         src/DXR/GPU_pipeline.cc
+        src/DXR/Raster_pipeline.cc
     )
     list(APPEND SHADER_SOURCES
         src/DXR/Shaders/RaytracingShaders.hlsl
+        src/DXR/Shaders/RasterizationShaders.hlsl
     )
 endif()
 
@@ -134,6 +136,9 @@ if(ON_WINDOWS)
         ${LIBS_DIR}/imgui/backends/imgui_impl_dx12.cpp
     )
     target_include_directories(imgui PUBLIC ${LIBS_DIR}/imgui)
+    # Directx12 helper headers (and <d3d12.h> is from here too named <directx/d3d12.h>)
+    add_subdirectory(${LIBS_DIR}/DirectX-Headers)
+    target_link_libraries(${PROJECT_NAME} PRIVATE Microsoft::DirectX-Headers)
 endif()
 
 add_library(argparse INTERFACE)

@@ -2,6 +2,8 @@
 
 #include "../d3d_context.h"
 
+#include <bit>
+
 namespace {
 
 using namespace app;
@@ -29,6 +31,10 @@ void CreateBufferSRV(D3DContext& d3d_ctx, const ComPtr<ID3D12Resource>& buffer, 
     const auto srvDesc = CreateSRVDescription(numElements, elementSize);
     d3d_ctx.m_d3dDevice->CreateShaderResourceView(buffer.Get(), &srvDesc, handles.cpuDescriptorHandle);
 }
+
+uint32_t CalculateMipCount(uint32_t width, uint32_t height) { return std::bit_width(std::max(width, height)); }
+
+uint32_t GetMipDimension(uint32_t baseSize, uint32_t mipLevel) { return std::max(1u, baseSize >> mipLevel); }
 
 }  // namespace
 
@@ -382,7 +388,7 @@ void GPU_model::prepare_textures_array_buffer(const Model& cpu_model) {
     for (int i = 0; i < images_size; ++i) {
         const auto& img = cpu_model.images[i];
         bool srgb = useSRGB[i];
-        textures.emplace_back(img, srgb);
+        textures.emplace_back(img, srgb, true); // todo: should allocate mips regardless of usage?
     }
 }
 
@@ -396,6 +402,7 @@ void GPU_model::release_gpu_resource() {
     tlasScratchBuffer.Reset();
     tlasBuffer.Reset();
     instancesUploadBuffer.Reset();
+    //instancesBuffer.Reset();
     MaterialsArray.Reset();
 
     if (isEmpty_) return;
@@ -404,6 +411,7 @@ void GPU_model::release_gpu_resource() {
     d3d_ctx.m_SrvDescHeapAlloc.Free(combined_mesh_vertices.cpuDescriptorHandle, combined_mesh_vertices.gpuDescriptorHandle);
     d3d_ctx.m_SrvDescHeapAlloc.Free(combined_mesh_offsets.cpuDescriptorHandle, combined_mesh_offsets.gpuDescriptorHandle);
     d3d_ctx.m_SrvDescHeapAlloc.Free(materials_array.cpuDescriptorHandle, materials_array.gpuDescriptorHandle);
+    //d3d_ctx.m_SrvDescHeapAlloc.Free(instances_info.cpuDescriptorHandle, instances_info.gpuDescriptorHandle);
 };
 
 bool GPU_model::isEmpty() const { return isEmpty_; }
@@ -416,7 +424,7 @@ void GPU_model::create_top_level_AS(const Model& cpu_model) {
     if (instanceCount == 0) return;
 
     // Prepare CPU-side instance descriptions
-    std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;
+    //std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;
     instances.resize(instanceCount);
 
     for (size_t i = 0; i < instanceCount; ++i) {
@@ -551,6 +559,11 @@ void GPU_model::create_top_level_AS(const Model& cpu_model) {
     // Build TLAS
     d3d_ctx.m_CommandList->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
 
+    // Copy Instances Info into separate GPU buffer for use in shaders
+    //ThrowIfFailed(d3d_ctx.m_d3dDevice->CreateCommittedResource(
+    //    &def_props, D3D12_HEAP_FLAG_NONE, &instances_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&instancesBuffer)));
+    //d3d_ctx.m_CommandList->CopyBufferRegion(instancesBuffer.Get(), 0, instancesUploadBuffer.Get(), 0, instancesSizeBytes);
+
     // UAV barrier
     D3D12_RESOURCE_BARRIER uavBarrier{};
     uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
@@ -568,9 +581,10 @@ void GPU_model::prepare_combined_vertex_index_buffers(const Model& cpu_model) {
     }
     std::vector<vertex> combinedVertices;
     std::vector<uint32_t> combinedIndices;
-    std::vector<uint32_t> indicesOffsets;
+    //std::vector<uint32_t> indicesOffsets;
     combinedVertices.reserve(totalVertexCount);
     combinedIndices.reserve(totalIndexCount);
+    indicesOffsets.clear();
     indicesOffsets.reserve(cpu_model.meshes.size());
 
     for (const auto& mesh : cpu_model.meshes) {
@@ -754,13 +768,20 @@ D3D12_GPU_VIRTUAL_ADDRESS GPU_model::GetGPUVirtualAddress() const { return tlasB
 
 // GPU_texture
 
-GPU_texture::GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture) : HDR(true) {
+GPU_texture::GPU_texture(UINT64 width, UINT height, bool is_cubemap, bool allocate_mips)
+    : HDR(true), mips(allocate_mips), isCubemap(is_cubemap) {
+    assert(!is_cubemap || width == height);
+    create_texture_resource(width, height, DXGI_FORMAT_R32G32B32A32_FLOAT);
+}
+
+GPU_texture::GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture, bool allocate_mips) : HDR(true), mips(allocate_mips) {
     create_texture_resource(cpu_texture.width(), cpu_texture.height(), DXGI_FORMAT_R32G32B32A32_FLOAT);
     upload_texture_to_gpu(
         cpu_texture.width(), cpu_texture.height(), cpu_texture.data(), sizeof(hdr_pixel), DXGI_FORMAT_R32G32B32A32_FLOAT);
 }
 
-GPU_texture::GPU_texture(const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_) : HDR(false), srgb(srgb_) {
+GPU_texture::GPU_texture(const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_, bool allocate_mips)
+    : HDR(false), srgb(srgb_), mips(allocate_mips) {
     DXGI_FORMAT format = srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
     create_texture_resource(cpu_texture.width(), cpu_texture.height(), format);
     upload_texture_to_gpu(cpu_texture.width(), cpu_texture.height(), cpu_texture.data(), sizeof(sdr_pixel), format);
@@ -770,14 +791,15 @@ GPU_texture::~GPU_texture() { release_gpu_resource(); }
 
 void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT format) {
     D3DContext& d3d_ctx = D3DContext::Get();
+    mipLevels = mips ? CalculateMipCount(width, height) : 1;
     if (pTexture == nullptr) {
         const D3D12_RESOURCE_DESC tex_desc{
             .Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D,
             .Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
             .Width = width,
             .Height = height,
-            .DepthOrArraySize = 1,
-            .MipLevels = 1,
+            .DepthOrArraySize = isCubemap? 6u : 1u,
+            .MipLevels = mipLevels,
             .Format = format,
             .SampleDesc = {1, 0},
             .Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN,
@@ -796,12 +818,12 @@ void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT
 
         const D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{
             .Format = format,
-            .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
+            .ViewDimension = isCubemap ? D3D12_SRV_DIMENSION_TEXTURECUBE : D3D12_SRV_DIMENSION_TEXTURE2D,
             .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
             .Texture2D =
                 D3D12_TEX2D_SRV{
                     .MostDetailedMip = 0,
-                    .MipLevels = 1,
+                    .MipLevels = mipLevels,
                 },
         };
         d3d_ctx.m_d3dDevice->CreateShaderResourceView(pTexture.Get(), &srvDesc, srv_cpu_handle);
