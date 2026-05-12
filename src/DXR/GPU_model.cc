@@ -1,4 +1,5 @@
 #include "GPU_model.h"
+#include "GPU_model.h"
 
 #include "../d3d_context.h"
 
@@ -201,6 +202,9 @@ void GPU_mesh::transition_from_copy_to_usage() {
 
 D3D12_GPU_VIRTUAL_ADDRESS GPU_mesh::get_blas_gpu_va() const { return blasBuffer ? blasBuffer->GetGPUVirtualAddress() : 0; }
 
+UINT GPU_mesh::get_vertex_count() const { return vertexCount; }
+UINT GPU_mesh::get_index_count() const { return indexCount; }
+
 void GPU_mesh::create_bottom_level_AS() {
     D3DContext& d3d_ctx = D3DContext::Get();
 
@@ -366,6 +370,7 @@ GPU_model::GPU_model(const Model& cpu_model) {
     prepare_combined_vertex_index_buffers(cpu_model);
     prepare_textures_array_buffer(cpu_model);
     prepare_materials_array_buffer(cpu_model);
+    objects = cpu_model.objects;
     isEmpty_ = false;
 }
 
@@ -411,7 +416,6 @@ void GPU_model::release_gpu_resource() {
     d3d_ctx.m_SrvDescHeapAlloc.Free(combined_mesh_vertices.cpuDescriptorHandle, combined_mesh_vertices.gpuDescriptorHandle);
     d3d_ctx.m_SrvDescHeapAlloc.Free(combined_mesh_offsets.cpuDescriptorHandle, combined_mesh_offsets.gpuDescriptorHandle);
     d3d_ctx.m_SrvDescHeapAlloc.Free(materials_array.cpuDescriptorHandle, materials_array.gpuDescriptorHandle);
-    //d3d_ctx.m_SrvDescHeapAlloc.Free(instances_info.cpuDescriptorHandle, instances_info.gpuDescriptorHandle);
 };
 
 bool GPU_model::isEmpty() const { return isEmpty_; }
@@ -424,7 +428,7 @@ void GPU_model::create_top_level_AS(const Model& cpu_model) {
     if (instanceCount == 0) return;
 
     // Prepare CPU-side instance descriptions
-    //std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;
+    std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;
     instances.resize(instanceCount);
 
     for (size_t i = 0; i < instanceCount; ++i) {
@@ -559,7 +563,7 @@ void GPU_model::create_top_level_AS(const Model& cpu_model) {
     // Build TLAS
     d3d_ctx.m_CommandList->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
 
-    // Copy Instances Info into separate GPU buffer for use in shaders
+    // Copy Instances Info into separate GPU buffer for use in shaders (if I want to do instanced rendering?)
     //ThrowIfFailed(d3d_ctx.m_d3dDevice->CreateCommittedResource(
     //    &def_props, D3D12_HEAP_FLAG_NONE, &instances_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&instancesBuffer)));
     //d3d_ctx.m_CommandList->CopyBufferRegion(instancesBuffer.Get(), 0, instancesUploadBuffer.Get(), 0, instancesSizeBytes);
@@ -586,9 +590,12 @@ void GPU_model::prepare_combined_vertex_index_buffers(const Model& cpu_model) {
     combinedIndices.reserve(totalIndexCount);
     indicesOffsets.clear();
     indicesOffsets.reserve(cpu_model.meshes.size());
+    indicesSizes.clear();
+    indicesSizes.reserve(cpu_model.meshes.size());
 
     for (const auto& mesh : cpu_model.meshes) {
         indicesOffsets.push_back(combinedIndices.size());
+        indicesSizes.push_back(mesh.indices.size());
         uint32_t vertexOffset = combinedVertices.size();
         combinedVertices.insert(combinedVertices.end(), mesh.vertices.begin(), mesh.vertices.end());
         std::transform(mesh.indices.begin(), mesh.indices.end(), 
@@ -762,16 +769,19 @@ void GPU_model::update_materials_array_buffer(const Model& cpu_model) {
     d3d_ctx.WaitForPendingCopy();
 }
 
+const GPU_mesh& GPU_model::get_combined_mesh() const { return combinedMesh; }
+
 const std::vector<GPU_mesh>& GPU_model::get_meshes() const { return meshes_; }
 
 D3D12_GPU_VIRTUAL_ADDRESS GPU_model::GetGPUVirtualAddress() const { return tlasBuffer->GetGPUVirtualAddress(); }
 
 // GPU_texture
 
-GPU_texture::GPU_texture(UINT64 width, UINT height, bool is_cubemap, bool allocate_mips)
-    : HDR(true), mips(allocate_mips), isCubemap(is_cubemap) {
+GPU_texture::GPU_texture(UINT64 width, UINT height, bool is_cubemap, bool is_render_target, bool is_depth, bool allocate_mips)
+    : HDR(true), isCubemap(is_cubemap), isRenderTarget(is_render_target), isDepth(is_depth), mips(allocate_mips) {
     assert(!is_cubemap || width == height);
-    create_texture_resource(width, height, DXGI_FORMAT_R32G32B32A32_FLOAT);
+    DXGI_FORMAT format = choose_format();
+    create_texture_resource(width, height, format);
 }
 
 GPU_texture::GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture, bool allocate_mips) : HDR(true), mips(allocate_mips) {
@@ -787,12 +797,22 @@ GPU_texture::GPU_texture(const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_, b
     upload_texture_to_gpu(cpu_texture.width(), cpu_texture.height(), cpu_texture.data(), sizeof(sdr_pixel), format);
 }
 
+DXGI_FORMAT GPU_texture::choose_format() { 
+    if (isDepth) return DXGI_FORMAT_D32_FLOAT;
+    if (HDR) return DXGI_FORMAT_R32G32B32A32_FLOAT;
+    if (srgb) return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    return DXGI_FORMAT_R8G8B8A8_UNORM;
+}
+
 GPU_texture::~GPU_texture() { release_gpu_resource(); }
 
 void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT format) {
     D3DContext& d3d_ctx = D3DContext::Get();
     mipLevels = mips ? CalculateMipCount(width, height) : 1;
     if (pTexture == nullptr) {
+        auto flags = D3D12_RESOURCE_FLAG_NONE;
+        if (isRenderTarget) flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+        if (isDepth) flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
         const D3D12_RESOURCE_DESC tex_desc{
             .Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D,
             .Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
@@ -803,7 +823,7 @@ void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT
             .Format = format,
             .SampleDesc = {1, 0},
             .Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN,
-            .Flags = D3D12_RESOURCE_FLAG_NONE
+            .Flags = flags
         };
         const D3D12_HEAP_PROPERTIES def_props{
             .Type = D3D12_HEAP_TYPE_DEFAULT,
@@ -811,22 +831,88 @@ void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT
             .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
         };
 
-        d3d_ctx.m_SrvDescHeapAlloc.Alloc(&srv_cpu_handle, &srv_gpu_handle);
+        D3D12_RESOURCE_STATES initial_state = D3D12_RESOURCE_STATE_COMMON;
+
+        if (!isDepth) {
+            d3d_ctx.m_SrvDescHeapAlloc.Alloc(&srv_cpu_handle, &srv_gpu_handle);
+        }
+        if (isRenderTarget) {
+            d3d_ctx.m_RtvDescHeapAlloc.Alloc(&rtv_cpu_handle, &rtv_gpu_handle);
+            initial_state = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        }
+        if (isDepth) {
+            d3d_ctx.m_DsvDescHeapAlloc.Alloc(&dsv_cpu_handle, &dsv_gpu_handle);
+            initial_state = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+        }
+
+        bool use_clear_value = isRenderTarget || isDepth;
+        D3D12_CLEAR_VALUE clear_value = {.Format = format, .Color = {0, 0, 0, 1}};
+        if (isDepth) clear_value.DepthStencil = {1.0f, 0};
+        const auto* clear_value_ptr = use_clear_value ? &clear_value : nullptr;
 
         d3d_ctx.m_d3dDevice->CreateCommittedResource(
-            &def_props, D3D12_HEAP_FLAG_NONE, &tex_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&pTexture));
+            &def_props, D3D12_HEAP_FLAG_NONE, &tex_desc, initial_state, clear_value_ptr, IID_PPV_ARGS(&pTexture));
 
-        const D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{
-            .Format = format,
-            .ViewDimension = isCubemap ? D3D12_SRV_DIMENSION_TEXTURECUBE : D3D12_SRV_DIMENSION_TEXTURE2D,
-            .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
-            .Texture2D =
-                D3D12_TEX2D_SRV{
+        if (!isDepth) {
+            D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{
+                .Format = format,
+                .ViewDimension = isCubemap ? D3D12_SRV_DIMENSION_TEXTURECUBE : D3D12_SRV_DIMENSION_TEXTURE2D,
+                .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                .Texture2D =
+                    D3D12_TEX2D_SRV{
+                        .MostDetailedMip = 0,
+                        .MipLevels = mipLevels,
+                    },
+            };
+            if (isCubemap) {
+                srvDesc.TextureCube = D3D12_TEXCUBE_SRV{
                     .MostDetailedMip = 0,
                     .MipLevels = mipLevels,
-                },
-        };
-        d3d_ctx.m_d3dDevice->CreateShaderResourceView(pTexture.Get(), &srvDesc, srv_cpu_handle);
+                    .ResourceMinLODClamp = 0.0f,
+                };
+            }
+            d3d_ctx.m_d3dDevice->CreateShaderResourceView(pTexture.Get(), &srvDesc, srv_cpu_handle);
+        }
+
+        if (isRenderTarget) {
+            D3D12_RENDER_TARGET_VIEW_DESC rtvDesc{
+                .Format = format,
+                .ViewDimension = isCubemap ? D3D12_RTV_DIMENSION_TEXTURE2DARRAY : D3D12_RTV_DIMENSION_TEXTURE2D,
+                .Texture2D =
+                    D3D12_TEX2D_RTV{
+                        .MipSlice = 0,
+                        .PlaneSlice = 0,
+                    },
+            };
+            if (isCubemap) {
+                rtvDesc.Texture2DArray = D3D12_TEX2D_ARRAY_RTV {
+                    .MipSlice = 0,
+                    .FirstArraySlice = 0,
+                    .ArraySize = 6,
+                    .PlaneSlice = 0,
+                };
+            }
+            d3d_ctx.m_d3dDevice->CreateRenderTargetView(pTexture.Get(), &rtvDesc, rtv_cpu_handle);
+        }
+
+        if (isDepth) {
+            D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{
+                .Format = format,
+                .ViewDimension = isCubemap ? D3D12_DSV_DIMENSION_TEXTURE2DARRAY : D3D12_DSV_DIMENSION_TEXTURE2D,
+                .Texture2D =
+                    D3D12_TEX2D_DSV{
+                        .MipSlice = 0,
+                    },
+            };
+            if (isCubemap) {
+                dsvDesc.Texture2DArray = D3D12_TEX2D_ARRAY_DSV{
+                    .MipSlice = 0,
+                    .FirstArraySlice = 0,
+                    .ArraySize = 6,
+                };
+            }
+            d3d_ctx.m_d3dDevice->CreateDepthStencilView(pTexture.Get(), &dsvDesc, dsv_cpu_handle);
+        }
     }
 }
 
@@ -904,13 +990,29 @@ void GPU_texture::upload_texture_to_gpu(int width_, int height_, const auto& dat
     d3d_ctx.WaitForPendingCopy();
 }
 
+ComPtr<ID3D12Resource> GPU_texture::get_gpu_resource() { return pTexture; }
+
 void GPU_texture::release_gpu_resource() {
     if (pTexture) {
-        D3DContext::Get().m_SrvDescHeapAlloc.Free(srv_cpu_handle, srv_gpu_handle);
+        D3DContext& d3d_ctx = D3DContext::Get();
+        if (!isDepth) {
+            d3d_ctx.m_SrvDescHeapAlloc.Free(srv_cpu_handle, srv_gpu_handle);
+        }
+        if (isRenderTarget) {
+            d3d_ctx.m_RtvDescHeapAlloc.Free(rtv_cpu_handle, rtv_gpu_handle);
+        }
+        if (isDepth) {
+            d3d_ctx.m_DsvDescHeapAlloc.Free(dsv_cpu_handle, dsv_gpu_handle);
+        }
+
         pTexture.Reset();
     }
 }
 
 D3D12_GPU_DESCRIPTOR_HANDLE GPU_texture::GetSRVHandle() const { return srv_gpu_handle; }
+
+D3D12_CPU_DESCRIPTOR_HANDLE GPU_texture::GetRTVHandle() const { return rtv_cpu_handle; }
+
+D3D12_CPU_DESCRIPTOR_HANDLE GPU_texture::GetDSVHandle() const { return dsv_cpu_handle; }
 
 }  // namespace app

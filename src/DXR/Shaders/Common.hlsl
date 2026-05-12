@@ -24,6 +24,29 @@ struct RayGenConstantBuffer {
     float envmapRotation;
 };
 
+struct RasterConstantBuffer {
+    float4x4 projectionToWorld;
+    float4x4 viewProjection;
+    float4 cameraPosition;
+    float2 subpixel_offset;
+    unsigned int frameID;
+    int iteration;
+    float invIterationCount;
+    int samplesPerPixel;
+    float invSamplesPerPixel;
+    int maxNewRaysPerBounce;
+    float invMaxNewRaysPerBounce;
+    int maxRayBounces;
+    float envmapRotation;
+};
+
+struct RasterPerDrawData {
+    float4x4 modelMatrix;
+    float4x4 normalMatrix;
+    int meshID;
+    float padding[3];
+};
+
 struct Material {
     float4 baseColorFactor;
     float4 emissiveFactor;

@@ -191,6 +191,26 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
         if (FAILED(m_d3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_SrvDescHeap)))) return false;
         m_SrvDescHeapAlloc.Create(m_d3dDevice.Get(), m_SrvDescHeap.Get());
     }
+    // Create additional RTV Heap for custom rendering passes
+    {
+        D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+        desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+        desc.NumDescriptors = 4;
+        desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+        desc.NodeMask = 0;
+        if (FAILED(m_d3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_additional_RtvDescHeap)))) return false;
+        m_RtvDescHeapAlloc.Create(m_d3dDevice.Get(), m_additional_RtvDescHeap.Get());
+    }
+    // Create additional DSV Heap for custom rendering passes
+    {
+        D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+        desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+        desc.NumDescriptors = 4;
+        desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+        desc.NodeMask = 0;
+        if (FAILED(m_d3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_additional_DsvDescHeap)))) return false;
+        m_DsvDescHeapAlloc.Create(m_d3dDevice.Get(), m_additional_DsvDescHeap.Get());
+    }
 
     hardware_ray_tracing_support = CheckRaytracingSupport();
 
@@ -249,9 +269,13 @@ void D3DContext::CleanupDeviceD3D() {
     CleanupRenderTarget();
 
     m_SrvDescHeapAlloc.Destroy();
+    m_RtvDescHeapAlloc.Destroy();
+    m_DsvDescHeapAlloc.Destroy();
 
     m_SrvDescHeap.Reset();
     m_RtvDescHeap.Reset();
+    m_additional_RtvDescHeap.Reset();
+    m_additional_DsvDescHeap.Reset();
     if (m_SwapChain) {
         m_SwapChain->SetFullscreenState(false, nullptr);
         m_SwapChain.Reset();
@@ -270,6 +294,11 @@ void D3DContext::CleanupDeviceD3D() {
     if (m_copy_fenceEvent) {
         CloseHandle(m_copy_fenceEvent);
         m_copy_fenceEvent = nullptr;
+    }
+    m_dxr_fence.Reset();
+    if (m_dxr_fenceEvent) {
+        CloseHandle(m_dxr_fenceEvent);
+        m_dxr_fenceEvent = nullptr;
     }
     m_DXRCommandList.Reset();
     m_DXRAllocator.Reset();

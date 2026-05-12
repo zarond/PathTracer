@@ -385,8 +385,9 @@ ComPtr<ID3D12Resource> CPUFrameBuffer::get_gpu_upload_resource() const { return 
 
 void CPUFrameBuffer::release_gpu_resource() {
     if (pTexture) {
-        D3DContext::Get().m_SrvDescHeapAlloc.Free(srv_cpu_handle, srv_gpu_handle);
-        D3DContext::Get().m_SrvDescHeapAlloc.Free(uav_cpu_handle, uav_gpu_handle);
+        D3DContext& d3d_ctx = D3DContext::Get();
+        d3d_ctx.m_SrvDescHeapAlloc.Free(srv_cpu_handle, srv_gpu_handle);
+        d3d_ctx.m_SrvDescHeapAlloc.Free(uav_cpu_handle, uav_gpu_handle);
         pTexture.Reset();
     }
     if (uploadBuffer) {

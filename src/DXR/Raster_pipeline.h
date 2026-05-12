@@ -24,6 +24,7 @@ using Microsoft::WRL::ComPtr;
 
 struct RasterConstantBuffer {
     fmat4x4 projectionToWorld;
+    fmat4x4 viewProjection;
     fvec4 cameraPosition;
     fvec2 subpixelOffset;
     unsigned int frameID;
@@ -37,13 +38,20 @@ struct RasterConstantBuffer {
     float envmapRotation;
 };
 
+struct RasterPerDrawData {
+    fmat4x4 modelMatrix;
+    fmat4x4 normalMatrix;
+    int meshID;
+    float padding[3];
+};
+
 class Raster_pipeline {
   public:
     Raster_pipeline();
     ~Raster_pipeline();
 
     void SetRenderingSettings(const RenderSettings& render_settings, fvec3 origin, const fmat4x4& NDC2WorldMatrix,
-        fvec2 subpixelOffset, unsigned int frameID, int iteration, float invIterationCount);
+        const fmat4x4& VPMatrix, fvec2 subpixelOffset, unsigned int frameID, int iteration, float invIterationCount);
 
     void DoRaytracing(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer);
 
@@ -54,8 +62,15 @@ class Raster_pipeline {
   private:
     void CreateRootSignatures();
     void CreatePipelineStateObjects();
+    void CreateConstantBuffers();
 
-    const wchar_t* c_dxilLibraryName = L"RasterizationShaders.dxil";  // DXIL library file name
+    void resize_render_targets(int new_width, int new_height);
+    void copy_render_target_to_framebuffer(const CPUFrameBuffer& framebuffer);
+
+    const wchar_t* c_vs_file_name = L"VS_Main.dxil";
+    const wchar_t* c_ps_file_name = L"PS_Main.dxil";
+    const wchar_t* c_vs_background_file_name = L"VS_Background.dxil";
+    const wchar_t* c_ps_background_file_name = L"PS_Background.dxil";
 
     union AlignedSceneConstantBuffer {
         RasterConstantBuffer constants;
@@ -64,15 +79,24 @@ class Raster_pipeline {
     AlignedSceneConstantBuffer* m_mappedConstantData;
 
     // Raytracing scene
-    RasterConstantBuffer m_rayGenCB;
+    RasterConstantBuffer m_rasterCB;
     ComPtr<ID3D12Resource> m_perFrameConstants;
 
     // Pipeline state objects
     CD3DX12_VIEWPORT m_viewport;
     CD3DX12_RECT m_scissorRect;
     ComPtr<ID3D12RootSignature> m_rootSignature;
-   // ComPtr<ID3D12PipelineState> m_pipelineState;
-    ComPtr<ID3D12StateObject> m_pipelineState;
+    ComPtr<ID3D12PipelineState> m_pipelineState;
+    ComPtr<ID3D12PipelineState> m_backgroundPipelineState;
+
+    // additional render targets
+    GPU_texture m_renderTarget;
+    GPU_texture m_depthTexture;
+
+    UINT64 currentWidth = 0;
+    UINT currentHeight = 0;
+
+    RayProgramMode RaytracingMode = RayProgramMode::AmbientOcclusion;
 
     void release_gpu_resources();
 };

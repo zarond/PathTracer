@@ -395,22 +395,32 @@ static void CameraUI(Viewer& viewer) {
             settings_changed = ImGui::Checkbox("Use Camera from Gltf file", &use_camera);
         }
         if (use_camera) {
-            int new_acive_camera_index = active_camera.has_value() ? static_cast<int>(active_camera.value()) : 0;
-            bool camera_changed = ImGui::SliderInt("Active Camera", &new_acive_camera_index, 0, cameras_N - 1, nullptr,
+            int new_active_camera_index = active_camera.has_value() ? static_cast<int>(active_camera.value()) : 0;
+            bool camera_changed = ImGui::SliderInt("Active Camera", &new_active_camera_index, 0, cameras_N - 1, nullptr,
                 ImGuiSliderFlags_ClampOnInput | ImGuiSliderFlags_NoInput);
             if (camera_changed || settings_changed) {
-                viewer.set_active_camera(static_cast<uint32_t>(new_acive_camera_index));
+                viewer.set_active_camera(static_cast<uint32_t>(new_active_camera_index));
             }
         } else if (settings_changed) {
             viewer.set_active_camera(std::nullopt);
         }
         if (!use_camera) {
+            auto near_far_values = viewer.get_near_far_camera_values();
+            bool near_far_changed = false;
+            near_far_changed |=
+                ImGui::SliderFloat("Camera Z Near", &near_far_values.x, 0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
+            near_far_changed |=
+                ImGui::SliderFloat("Camera Z Far", &near_far_values.y, 0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
+            if (near_far_changed) {
+                viewer.set_near_far_camera_values(near_far_values.x, near_far_values.y);
+            }
             // manual camera controls
             auto& yfov = viewer.get_yfov();
             auto euler_angles = glm::degrees(viewer.get_euler_angles_camera());
             static float camera_speed = 1.0f;
             static float camera_rotation_speed = 10.0f;
             bool transform_changed = false;
+            transform_changed |= near_far_changed;
             transform_changed |=
                 ImGui::DragFloat3("Camera Position", &viewer.position.x, camera_speed * 0.001f, 0.0f, 0.0f, "%.4f");
             transform_changed |=

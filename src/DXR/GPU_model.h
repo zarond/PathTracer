@@ -37,6 +37,9 @@ class GPU_mesh {
 
     bool positionsOnly = false;
 
+    UINT get_vertex_count() const;
+    UINT get_index_count() const;
+
   private:
     ComPtr<ID3D12Resource> scratchBuffer;
     ComPtr<ID3D12Resource> blasBuffer;
@@ -75,7 +78,8 @@ struct GPU_Material {  // enforce packing rules on CPU Material data
 class GPU_texture {
   public:
     GPU_texture() = default;
-    explicit GPU_texture(UINT64 width, UINT height, bool is_cubemap = false, bool allocate_mips = false); // constructor for float4 empty LUTS and cubemaps
+    explicit GPU_texture(UINT64 width, UINT height, bool is_cubemap = false, bool is_render_target = false, bool is_depth = false,
+        bool allocate_mips = false);  // constructor for float4 empty LUTS and cubemaps, and for render targets and depth buffers
     explicit GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture, bool allocate_mips = false);
     explicit GPU_texture(const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_ = false, bool allocate_mips = false);
     ~GPU_texture();
@@ -86,24 +90,36 @@ class GPU_texture {
     GPU_texture(GPU_texture&&) = default;
     GPU_texture& operator=(GPU_texture&&) = default;
 
-    D3D12_GPU_VIRTUAL_ADDRESS GetGPUVirtualAddress() const;
     D3D12_GPU_DESCRIPTOR_HANDLE GetSRVHandle() const;
+    D3D12_CPU_DESCRIPTOR_HANDLE GetRTVHandle() const;
+    D3D12_CPU_DESCRIPTOR_HANDLE GetDSVHandle() const;
+
+    ComPtr<ID3D12Resource> get_gpu_resource();
 
     bool HDR = false;
     bool srgb = false;  // whether to apply sRGB to linear conversion when sampling; only relevant for SDR textures
     bool mips = false;
     bool isCubemap = false;
+    bool isRenderTarget = false;
+    bool isDepth = false;
     uint16_t mipLevels = 1;
+
+    void release_gpu_resource();
 
   private:
     void create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT format);
     void upload_texture_to_gpu(int width_, int height_, const auto& data_, size_t sizeofpixel, DXGI_FORMAT format);
 
+    DXGI_FORMAT choose_format();
+
     ComPtr<ID3D12Resource> pTexture;
     D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu_handle{};
     D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle{};
+    D3D12_CPU_DESCRIPTOR_HANDLE rtv_cpu_handle{};
+    D3D12_GPU_DESCRIPTOR_HANDLE rtv_gpu_handle{};
+    D3D12_CPU_DESCRIPTOR_HANDLE dsv_cpu_handle{};
+    D3D12_GPU_DESCRIPTOR_HANDLE dsv_gpu_handle{};
     // ComPtr<ID3D12Resource> uploadBuffer;
-    void release_gpu_resource();
 };
 
 class GPU_model {
@@ -132,14 +148,18 @@ class GPU_model {
 
     D3D_Handle_Pair materials_array{};
 
-    //D3D_Handle_Pair instances_info{};
-    std::vector<uint32_t> indicesOffsets; // ??? should I save it in GPU_model
+    std::vector<uint32_t> indicesOffsets;
+    std::vector<uint32_t> indicesSizes;
+    
+    std::vector<Object> objects;
 
     std::vector<GPU_texture> textures;
 
     bool isEmpty() const;
 
     void update_materials_array_buffer(const Model& cpu_model);
+
+    const GPU_mesh& get_combined_mesh() const;
 
   private:
     std::vector<GPU_mesh> meshes_;
@@ -154,13 +174,13 @@ class GPU_model {
     ComPtr<ID3D12Resource> tlasScratchBuffer;
     ComPtr<ID3D12Resource> tlasBuffer;
     ComPtr<ID3D12Resource> instancesUploadBuffer;
-    //ComPtr<ID3D12Resource> instancesBuffer; // ??? should I save it in GPU_model
+    //ComPtr<ID3D12Resource> instancesBuffer; // ???
 
     // Combine all meshes in two buffers
     GPU_mesh combinedMesh;
     ComPtr<ID3D12Resource> MeshIndicesOffsets;
     ComPtr<ID3D12Resource> MaterialsArray;
-    std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;  // ??? should I save it in GPU_model
+    //std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;  // ??? 
 
     bool isEmpty_ = true;
 

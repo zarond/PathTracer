@@ -24,8 +24,11 @@ void GPURenderer::update_camera_transform_state(
     fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams) {
     origin_ = position;
     viewMatrix_ = glm::lookAt(position, position + direction, up);
-    projectionMatrix_ = glm::perspectiveRH(perspectiveParams.yfov, perspectiveParams.aspectRatio.value_or(1.77777777777777777f),
-        perspectiveParams.znear, perspectiveParams.zfar.value_or(1000.f));
+    projectionMatrix_ = glm::perspectiveRH(
+        perspectiveParams.yfov, 
+        perspectiveParams.aspectRatio.value_or(1.77777777777777777f),
+        perspectiveParams.znear, 
+        perspectiveParams.zfar.value_or(1000.f));
     NDC2WorldMatrix_ = glm::inverse(projectionMatrix_ * viewMatrix_);
 }
 
@@ -109,6 +112,9 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
 
     pipeline_.SetRenderingSettings(
         render_settings_, origin_, NDC2WorldMatrix_, jitter, ++frameID_, iteration_count, inverse_iteration_count);
+    raster_pipeline_.SetRenderingSettings(
+        render_settings_, origin_, NDC2WorldMatrix_, projectionMatrix_ * viewMatrix_, jitter,
+        ++frameID_, iteration_count, inverse_iteration_count);
 
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
@@ -116,7 +122,8 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
     ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};
     d3d_ctx.m_DXRCommandList->SetDescriptorHeaps(1, desc_heap);
 
-    pipeline_.DoRaytracing(*gpu_model_, *gpu_envmap_, framebuffer);
+    //pipeline_.DoRaytracing(*gpu_model_, *gpu_envmap_, framebuffer);
+    raster_pipeline_.DoRaytracing(*gpu_model_, *gpu_envmap_, framebuffer);
 
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();

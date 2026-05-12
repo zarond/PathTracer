@@ -7,21 +7,76 @@
 #include "../d3d_context.h"
 #include "helpers/DXSampleHelper.h"
 
+namespace GlobalRootSignatureParams {
+enum Value : int {
+    SceneConstantSlot = 0,
+    MaterialsBufferSlot,
+    EnvmapTex,
+    RootConstants,
+
+    Count
+};
+}
+
+namespace {
+
+std::pair<ComPtr<ID3DBlob>, D3D12_SHADER_BYTECODE> LoadShader(const wchar_t* file_name) {
+    ComPtr<ID3DBlob> shaderBlob;
+    auto hr = D3DReadFileToBlob(file_name, &shaderBlob);
+    if (FAILED(hr)) {
+        std::wcout << "Failed to read DXIL library: " << file_name << std::endl;
+        throw HrException(hr);
+    }
+    D3D12_SHADER_BYTECODE dxil = {
+        .pShaderBytecode = shaderBlob->GetBufferPointer(),
+        .BytecodeLength = shaderBlob->GetBufferSize(),
+    };
+
+    return std::make_pair(shaderBlob, dxil);
+}
+
+}
+
 namespace app {
 
 using namespace glm;  
 
 void SerializeAndCreateRaytracingRootSignature(D3D12_ROOT_SIGNATURE_DESC& desc, ComPtr<ID3D12RootSignature>* rootSig);
 
-app::Raster_pipeline::Raster_pipeline() {
+Raster_pipeline::Raster_pipeline() {
     CreateRootSignatures();
     CreatePipelineStateObjects();
+    CreateConstantBuffers();
 }
 
 Raster_pipeline::~Raster_pipeline() { release_gpu_resources(); }
 
 void Raster_pipeline::release_gpu_resources() {
+    m_rootSignature.Reset();
 
+    m_pipelineState.Reset();
+    m_backgroundPipelineState.Reset();
+
+    m_perFrameConstants.Reset();
+
+}
+
+void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings, fvec3 origin, const fmat4x4& NDC2WorldMatrix,
+    const fmat4x4& VPMatrix, fvec2 subpixelOffset, unsigned int frameID, int iterationCount, float invIterationCount) {
+    m_rasterCB.cameraPosition = xyz1(origin);
+    m_rasterCB.projectionToWorld = NDC2WorldMatrix;
+    m_rasterCB.viewProjection = VPMatrix;
+    m_rasterCB.subpixelOffset = subpixelOffset;
+    m_rasterCB.frameID = frameID;
+    m_rasterCB.iteration = iterationCount;
+    m_rasterCB.invIterationCount = invIterationCount;
+    m_rasterCB.samplesPerPixel = render_settings.samplesPerPixel;
+    m_rasterCB.invSamplesPerPixel = 1.0f / static_cast<float>(render_settings.samplesPerPixel);
+    m_rasterCB.maxNewRaysPerBounce = render_settings.maxNewRaysPerBounce;
+    m_rasterCB.invMaxNewRaysPerBounce = 1.0f / render_settings.maxNewRaysPerBounce;
+    m_rasterCB.maxRayBounces = render_settings.maxRayBounces;
+    m_rasterCB.envmapRotation = render_settings.envmapRotation;
+    RaytracingMode = render_settings.programMode;
 }
 
 void Raster_pipeline::CreateRootSignatures() {
@@ -29,116 +84,197 @@ void Raster_pipeline::CreateRootSignatures() {
     CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
     rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
+    CD3DX12_DESCRIPTOR_RANGE ranges[4];
+    ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);     // 1 scene constants buffer.
+    ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);     // 2 materials buffer.
+    ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 1);  // 3 Envmap texture.
+    ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);     // 4 per draw constants buffer.
+
+    D3D12_STATIC_SAMPLER_DESC default_sampler = {};  // Default static sampler.
+    default_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    default_sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    default_sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    default_sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    default_sampler.ShaderRegister = 0;  // s0
+    default_sampler.RegisterSpace = 1;
+    default_sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+     D3D12_STATIC_SAMPLER_DESC samplers[] = {default_sampler};
+
+    CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
+    rootParameters[GlobalRootSignatureParams::SceneConstantSlot].InitAsConstantBufferView(0);
+    rootParameters[GlobalRootSignatureParams::MaterialsBufferSlot].InitAsDescriptorTable(1, &ranges[1]);
+    rootParameters[GlobalRootSignatureParams::EnvmapTex].InitAsDescriptorTable(1, &ranges[2]);
+    rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(RasterPerDrawData) / 4, 1);
+
+    auto flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT 
+        | D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
+    rootSignatureDesc.Init(ARRAYSIZE(rootParameters), rootParameters, 1, samplers, flags);
+
     SerializeAndCreateRaytracingRootSignature(rootSignatureDesc, &m_rootSignature);
 }
 
 void Raster_pipeline::CreatePipelineStateObjects() {
-    ComPtr<ID3DBlob> shaderBlob;
-    auto hr = D3DReadFileToBlob(c_dxilLibraryName, &shaderBlob);
-    if (FAILED(hr)) {
-        std::wcout << "Failed to read DXIL library: " << c_dxilLibraryName << std::endl;
-        throw HrException(hr);
-    }
-    D3D12_SHADER_BYTECODE libdxil = {
-        .pShaderBytecode = shaderBlob->GetBufferPointer(),
-        .BytecodeLength = shaderBlob->GetBufferSize(),
-    };
-    /*
-    CD3DX12_STATE_OBJECT_DESC Pipeline{D3D12_STATE_OBJECT_TYPE_EXECUTABLE};
-    auto lib = Pipeline.CreateSubobject<CD3DX12_DXIL_LIBRARY_SUBOBJECT>();
-    lib->SetDXILLibrary(&libdxil);
-    //lib->DefineExport(L"VSMain");
-    //lib->DefineExport(L"PSMain");
-
-    // Optional flag to allow state object additions
-    auto pConfig = Pipeline.CreateSubobject<CD3DX12_STATE_OBJECT_CONFIG_SUBOBJECT>();
-    pConfig->SetFlags(D3D12_STATE_OBJECT_FLAG_ALLOW_STATE_OBJECT_ADDITIONS);
-
-    // 1. Associate a Global Root Signature
-    // This defines how resources are bound for all shaders in this state object
-    auto globalRootSig = Pipeline.CreateSubobject<CD3DX12_GLOBAL_ROOT_SIGNATURE_SUBOBJECT>();
-    globalRootSig->SetRootSignature(m_rootSignature.Get());
-
-    // 2. Define the Input Layout
-    // This maps your vertex buffer data to the VSMain input
-    D3D12_INPUT_ELEMENT_DESC inputElementDescs[] = {
-        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-        {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}};
-
-
-    auto inputLayout = Pipeline.CreateSubobject<CD3DX12_INPUT_LAYOUT_SUBOBJECT>();
-
-    for (UINT i = 0; i < _countof(inputElementDescs); i++) {
-        inputLayout->AddInputLayoutElementDesc(inputElementDescs[i]);
-    }
-
-    // 3. Define the Rasterizer State
-    auto rasterizer = Pipeline.CreateSubobject<CD3DX12_RASTERIZER_SUBOBJECT>();
-    rasterizer->SetCullMode(D3D12_CULL_MODE_BACK);
-
-    // 4. Define the Blend State
-    auto blend = Pipeline.CreateSubobject<CD3DX12_BLEND_SUBOBJECT>(CD3DX12_BLEND_DESC(D3D12_DEFAULT));
-
-    // 5. Define the Depth Stencil State
-    auto depthStencil = Pipeline.CreateSubobject<CD3DX12_DEPTH_STENCIL_SUBOBJECT>(CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT));
-
-    // 6. Define Render Target Formats (Equivalent to RTVFormats in PSO) and Depth Stencil Format (Equivalent to DSVFormat in PSO)
-    auto rtFormats = Pipeline.CreateSubobject<CD3DX12_RENDER_TARGET_FORMATS_SUBOBJECT>();
-    rtFormats->SetNumRenderTargets(1);
-    rtFormats->SetRenderTargetFormat(0, DXGI_FORMAT_R32G32B32A32_FLOAT);
-
-    auto depthFormats = Pipeline.CreateSubobject<CD3DX12_DEPTH_STENCIL_FORMAT_SUBOBJECT>();
-    depthFormats->SetDepthStencilFormat(DXGI_FORMAT_D32_FLOAT);
-
-    // 7. Set the Primitive Topology Type
-    auto topology = Pipeline.CreateSubobject<CD3DX12_PRIMITIVE_TOPOLOGY_SUBOBJECT>();
-    topology->SetPrimitiveTopologyType(D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);
-
-    // 8 . Create a Generic Program Subobject
-    auto pGenericProgram = Pipeline.CreateSubobject<CD3DX12_GENERIC_PROGRAM_SUBOBJECT>();
-    pGenericProgram->SetProgramName(L"GraphicsProgram");
-    pGenericProgram->AddExport(L"VSMain");
-    pGenericProgram->AddExport(L"PSMain");
-    pGenericProgram->AddSubobject(*inputLayout);
-    pGenericProgram->AddSubobject(*topology);
-    pGenericProgram->AddSubobject(*rtFormats);
-    pGenericProgram->AddSubobject(*depthFormats);
-
-    // 9. Create the State Object
-    D3DContext& d3d_ctx = D3DContext::Get();
-    auto device = d3d_ctx.m_d3dDevice;
-
-    hr = device->CreateStateObject(Pipeline, IID_PPV_ARGS(&m_pipelineState));
-    if (FAILED(hr)) {
-        std::wcout << "Failed to create state object." << std::endl;
-        throw HrException(hr);
-    }
-    */
+    auto [vs_shaderBlob, vs_bytecode] = LoadShader(c_vs_file_name);
+    auto [ps_shaderBlob, ps_bytecode] = LoadShader(c_ps_file_name);
+    auto [vs_background_shaderBlob, vs_background_bytecode] = LoadShader(c_vs_background_file_name);
+    auto [ps_background_shaderBlob, ps_background_bytecode] = LoadShader(c_ps_background_file_name);
 
     D3DContext& d3d_ctx = D3DContext::Get();
     auto device = d3d_ctx.m_d3dDevice;
 
     D3D12_INPUT_ELEMENT_DESC inputElementDescs[] = {
         {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-        {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}};
+        {"NORMAL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        {"TANGENT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16*2, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16*3, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}};
 
     // Describe and create the graphics pipeline state object (PSO).
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
     psoDesc.InputLayout = {inputElementDescs, _countof(inputElementDescs)};
     psoDesc.pRootSignature = m_rootSignature.Get();
-    psoDesc.VS = libdxil;
-    psoDesc.PS = libdxil;
+    psoDesc.VS = vs_bytecode;
+    psoDesc.PS = ps_bytecode;
     psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    psoDesc.RasterizerState.FrontCounterClockwise = TRUE;
     psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-    psoDesc.DepthStencilState.DepthEnable = FALSE;
+    psoDesc.DepthStencilState.DepthEnable = TRUE;
+    psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
     psoDesc.DepthStencilState.StencilEnable = FALSE;
+    psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
     psoDesc.SampleMask = UINT_MAX;
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     psoDesc.NumRenderTargets = 1;
     psoDesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
     psoDesc.SampleDesc.Count = 1;
-    //ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState)));
+    ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState)));
 
+    // PSO for background rendering
+    psoDesc.InputLayout = {nullptr, 0};
+    psoDesc.VS = vs_background_bytecode;
+    psoDesc.PS = ps_background_bytecode;
+    psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+    ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_backgroundPipelineState)));
+}
+
+void Raster_pipeline::CreateConstantBuffers() {
+    D3DContext& d3d_ctx = D3DContext::Get();
+    auto device = d3d_ctx.m_d3dDevice;
+
+    // Create the constant buffer memory and map the CPU and GPU addresses
+    const D3D12_HEAP_PROPERTIES uploadHeapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+
+    // Allocate one constant buffer per frame, since it gets updated every frame.
+    size_t cbSize = /* frameCount **/ sizeof(AlignedSceneConstantBuffer);
+    const D3D12_RESOURCE_DESC constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(cbSize);
+
+    ThrowIfFailed(device->CreateCommittedResource(&uploadHeapProperties, D3D12_HEAP_FLAG_NONE, &constantBufferDesc,
+        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_perFrameConstants)));
+
+    // Map the constant buffer and cache its heap pointers.
+    // We don't unmap this until the app closes. Keeping buffer mapped for the lifetime of the resource is okay.
+    CD3DX12_RANGE readRange(0, 0);  // We do not intend to read from this resource on the CPU.
+    ThrowIfFailed(m_perFrameConstants->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedConstantData)));
+}
+
+void Raster_pipeline::DoRaytracing(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) {
+    D3DContext& d3d_ctx = D3DContext::Get();
+    auto commandList = d3d_ctx.m_DXRCommandList;
+
+    UINT width = framebuffer.width();
+    UINT height = framebuffer.height();
+
+    resize_render_targets(width, height);
+
+    m_viewport = CD3DX12_VIEWPORT{0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)},
+    m_scissorRect = CD3DX12_RECT{0, 0, static_cast<LONG>(width), static_cast<LONG>(height)},
+
+    commandList->SetGraphicsRootSignature(m_rootSignature.Get());
+    commandList->SetPipelineState(m_pipelineState.Get());
+    commandList->RSSetViewports(1, &m_viewport);
+    commandList->RSSetScissorRects(1, &m_scissorRect);
+
+    // Copy the updated scene constant buffer to GPU.
+    memcpy(&m_mappedConstantData->constants, &m_rasterCB, sizeof(m_rasterCB));
+    auto cbGpuAddress = m_perFrameConstants->GetGPUVirtualAddress();
+    commandList->SetGraphicsRootConstantBufferView(GlobalRootSignatureParams::SceneConstantSlot, cbGpuAddress);
+    commandList->SetGraphicsRootDescriptorTable(
+        GlobalRootSignatureParams::MaterialsBufferSlot, gpu_model.materials_array.gpuDescriptorHandle);
+    commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::EnvmapTex, envmap.GetSRVHandle());
+
+    const auto& combined_mesh = gpu_model.get_combined_mesh();
+
+    UINT vertex_count = combined_mesh.get_vertex_count();
+    UINT index_count = combined_mesh.get_index_count();
+
+    D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
+    vertexBufferView.BufferLocation = combined_mesh.vertexBuffer->GetGPUVirtualAddress();
+    vertexBufferView.StrideInBytes = sizeof(vertex);
+    vertexBufferView.SizeInBytes = sizeof(vertex) * vertex_count;
+
+    D3D12_INDEX_BUFFER_VIEW indexBufferView;
+    indexBufferView.BufferLocation = combined_mesh.indexBuffer->GetGPUVirtualAddress();
+    indexBufferView.Format = DXGI_FORMAT_R32_UINT;
+    indexBufferView.SizeInBytes = sizeof(uint32_t) * index_count;
+
+    auto rtvHandle = m_renderTarget.GetRTVHandle();
+    auto depthHandle = m_depthTexture.GetDSVHandle();
+
+    const float clearColor[] = {0.0f, 0.0f, 0.0f, 1.0f};
+    commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &depthHandle);
+    commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+    commandList->ClearDepthStencilView(depthHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+    commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
+    commandList->IASetIndexBuffer(&indexBufferView);
+
+    // Draw objects
+    for (const auto& obj : gpu_model.objects) {
+        index_count = gpu_model.indicesSizes[obj.meshIndex];
+        UINT baseIndexLocation = gpu_model.indicesOffsets[obj.meshIndex];
+        RasterPerDrawData draw_data{obj.ModelMatrix, obj.NormalMatrix, obj.meshIndex};
+        constexpr int drawDataSizeInInt = sizeof(RasterPerDrawData) / 4;
+        commandList->SetGraphicsRoot32BitConstants(GlobalRootSignatureParams::RootConstants, drawDataSizeInInt, &draw_data, 0);
+        commandList->DrawIndexedInstanced(index_count, 1, baseIndexLocation, 0, 0);
+    }
+    // Draw background
+    commandList->SetPipelineState(m_backgroundPipelineState.Get());
+    commandList->DrawInstanced(3, 1, 0, 0);
+
+    copy_render_target_to_framebuffer(framebuffer);
+}
+
+void Raster_pipeline::copy_render_target_to_framebuffer(const CPUFrameBuffer& framebuffer) {
+    D3DContext& d3d_ctx = D3DContext::Get();
+    const auto& commandList = d3d_ctx.m_DXRCommandList;
+    const auto& gpuDestTarget = framebuffer.get_gpu_resource();
+    const auto& gpuRenderTarget = m_renderTarget.get_gpu_resource();
+
+    D3D12_RESOURCE_BARRIER to_barriers[2] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuRenderTarget.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE),
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuDestTarget.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+    };
+    commandList->ResourceBarrier(2, to_barriers);
+
+    commandList->CopyResource(gpuDestTarget.Get(), gpuRenderTarget.Get());
+
+    D3D12_RESOURCE_BARRIER from_barriers[2] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuRenderTarget.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET),
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuDestTarget.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
+    };
+    commandList->ResourceBarrier(2, from_barriers);
+}
+
+void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
+    if (currentWidth == new_width && currentHeight == new_height) return;
+    currentWidth = std::max(new_width, 0);
+    currentHeight = std::max(new_height, 0);
+    m_depthTexture.release_gpu_resource();
+    m_depthTexture = GPU_texture{currentWidth, currentHeight, false, false, true};
+
+    m_renderTarget.release_gpu_resource();
+    m_renderTarget = GPU_texture{currentWidth, currentHeight, false, true, false};
 }
 
 }

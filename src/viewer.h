@@ -77,6 +77,9 @@ class Viewer {
     float& get_yfov();
     fvec3 get_euler_angles_camera() const;
 
+    fvec2 get_near_far_camera_values() const;
+    void set_near_far_camera_values(float near_, float far_);
+
     bool is_using_gpu_renderer() const;
 
 #ifdef WINDOWS_SPECIFIC

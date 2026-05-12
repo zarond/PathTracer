@@ -22,6 +22,13 @@ message(STATUS "${PROJECT_NAME}: ASAN option is currently: ${ASAN}")
 set(LIBS_DIR libs)
 
 set(SHADER_SOURCES)
+set(RASTER_SHADERS_SOURCE src/DXR/Shaders/RasterizationShaders.hlsl)
+set(RASTER_SHADER_FUNCTIONS 
+    VS_Main
+    PS_Main
+    VS_Background
+    PS_Background
+)
 
 set(APP_SOURCES
     src/main.cc
@@ -48,7 +55,6 @@ if(ON_WINDOWS)
     )
     list(APPEND SHADER_SOURCES
         src/DXR/Shaders/RaytracingShaders.hlsl
-        src/DXR/Shaders/RasterizationShaders.hlsl
     )
 endif()
 
@@ -77,6 +83,7 @@ if(ON_WINDOWS)
         set(DXC_FLAGS -Zi -Qembed_debug)
     endif()
 
+    # compile shader libs (for raytracing)
     foreach(SHADER ${SHADER_SOURCES})
         get_filename_component(FILE_NAME ${SHADER} NAME_WE)
 
@@ -105,6 +112,44 @@ if(ON_WINDOWS)
                     ${COMPILED_SHADER}
                     $<TARGET_FILE_DIR:${PROJECT_NAME}>/${FILE_NAME}.dxil
             COMMENT "Copying ${FILE_NAME}.dxil from ${COMPILED_SHADER} to target $<TARGET_FILE_DIR:${PROJECT_NAME}>/${FILE_NAME}.dxil"
+            VERBATIM
+        )
+    endforeach()
+
+    # compile raster shaders (from one hlsl to many .dxil files)
+    foreach(SHADER ${RASTER_SHADER_FUNCTIONS})
+        # compile into build dir (config-independent)
+        set(COMPILED_SHADER ${CMAKE_CURRENT_BINARY_DIR}/${SHADER}.dxil)
+        set(SHADER_STAGE_TYPE)
+        if(SHADER MATCHES "^(VS_)")
+            set(SHADER_STAGE_TYPE "vs_6_6")
+        elseif(SHADER MATCHES "^(PS_)")
+            set(SHADER_STAGE_TYPE "ps_6_6")
+        endif()
+
+        # todo: better yet, compile into object file and link into executable, use extern const in code
+        add_custom_command(
+            OUTPUT ${COMPILED_SHADER}
+            COMMAND ${DXC}
+                    -T ${SHADER_STAGE_TYPE}
+                    ${DXC_FLAGS}
+                    -E ${SHADER}
+                    -Fo ${COMPILED_SHADER}
+                    ${CMAKE_SOURCE_DIR}/${RASTER_SHADERS_SOURCE}
+            DEPENDS ${RASTER_SHADERS_SOURCE}
+            COMMENT "Compiling shader ${SHADER}"
+        )
+        list(APPEND COMPILED_SHADERS ${COMPILED_SHADER})
+
+        # copy compiled shader next to the executable after the project is built
+        # $<TARGET_FILE_DIR:${PROJECT_NAME}> resolves per-config in multi-config generators
+        add_custom_command(
+            TARGET ${PROJECT_NAME}
+            POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    ${COMPILED_SHADER}
+                    $<TARGET_FILE_DIR:${PROJECT_NAME}>/${SHADER}.dxil
+            COMMENT "Copying ${SHADER}.dxil from ${COMPILED_SHADER} to target $<TARGET_FILE_DIR:${PROJECT_NAME}>/${SHADER}.dxil"
             VERBATIM
         )
     endforeach()

@@ -104,9 +104,6 @@ bool InputUInt(
 
 void HelpTooltip(const char* msg);
 
-void ImDrawCallback_ImplDX12_SetSamplerNearest(const ImDrawList* parent_list, const ImDrawCmd* cmd);
-void ImDrawCallback_ImplDX12_SetSamplerLinear(const ImDrawList* parent_list, const ImDrawCmd* cmd);
-
 void SetupImGuiStyle();
 
 void RenderedImageUI(Viewer& viewer, const bool hardware_raytracing_support);

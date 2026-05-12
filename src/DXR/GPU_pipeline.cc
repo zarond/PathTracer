@@ -314,6 +314,8 @@ void GPU_pipeline::release_gpu_resources() {
     m_PBR_hitGroupShaderTable.Reset();
 
     m_rayGenShaderTable.Reset();
+
+    m_rtStateObjectProps.Reset();
 }
 
 void GPU_pipeline::CreateConstantBuffers() {

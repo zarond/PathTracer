@@ -52,6 +52,11 @@ struct D3DContext {
     ComPtr<ID3D12DescriptorHeap> m_SrvDescHeap;
     ExampleDescriptorHeapAllocator m_SrvDescHeapAlloc;
 
+    ComPtr<ID3D12DescriptorHeap> m_additional_RtvDescHeap;  // additional render targets
+    ExampleDescriptorHeapAllocator m_RtvDescHeapAlloc;
+    ComPtr<ID3D12DescriptorHeap> m_additional_DsvDescHeap;  // additional depth textures
+    ExampleDescriptorHeapAllocator m_DsvDescHeapAlloc;
+
     ComPtr<ID3D12CommandQueue> m_CommandQueue;
     ComPtr<ID3D12GraphicsCommandList4> m_CommandList;
 

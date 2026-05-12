@@ -3,6 +3,7 @@
 #include <fastgltf/util.hpp>
 #include <glm/ext.hpp>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 #include <variant>
@@ -227,6 +228,14 @@ fvec3 Viewer::get_euler_angles_camera() const {
         glm::roll(q_shfl)    // Roll
     };
     return euler;
+}
+
+fvec2 Viewer::get_near_far_camera_values() const { 
+    return fvec2(cam_params_.znear, cam_params_.zfar.value_or(std::numeric_limits<float>::infinity()));
+}
+void Viewer::set_near_far_camera_values(float near_, float far_) { 
+    cam_params_.znear = near_; 
+    cam_params_.zfar = far_;
 }
 
 bool Viewer::is_using_gpu_renderer() const { return (active_renderer_mode_ == RendererMode::GPURenderer); }
