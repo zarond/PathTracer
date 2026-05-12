@@ -57,7 +57,7 @@ class GPURenderer : public IRenderer {
 
     fmat4x4 viewMatrix_ = fmat4x4(1.0f);
     fmat4x4 projectionMatrix_ = fmat4x4(1.0f);
-    fmat4x4 NDC2WorldMatrix_ = fmat4x4(1.0f);
+    fmat4x4 NDC2WorldMatrix_ = fmat4x4(1.0f);  // without translation component
     fvec3 origin_ = fvec3{0.0f};
 
     float progress_ = 0.0f;

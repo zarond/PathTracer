@@ -66,14 +66,14 @@ BG_VS_OUTPUT VS_Background(uint vID : SV_VERTEXID) {
     // 1. Generate NDC coordinates procedurally
     // vID 0: (-1, -1), vID 1: (-1, 3), vID 2: (3, -1)
     float2 uv = float2((vID << 1) & 2, vID & 2);
-    output.position = float4(uv * 2.0f - 1.0f, 1.0f, 1.0f);
+    output.position = float4(uv * 2.0f - 1.0f, 0.0f, 1.0f);
 
     // 2. Reconstruct World-Space direction
     float4 worldPos = mul(g_rasterCB.projectionToWorld, output.position);
 
     // Divide by W to get the actual world position,
-    // then subtract camera position to get direction.
-    output.viewDir = worldPos.xyz / worldPos.w - g_rasterCB.cameraPosition.xyz;
+    output.viewDir = worldPos.xyz / worldPos.w;
+    output.position.zw = 1.0f;
 
     return output;
 }

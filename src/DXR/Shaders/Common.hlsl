@@ -25,7 +25,7 @@ struct RayGenConstantBuffer {
 };
 
 struct RasterConstantBuffer {
-    float4x4 projectionToWorld;
+    float4x4 projectionToWorld;  // without translation component
     float4x4 viewProjection;
     float4 cameraPosition;
     float2 subpixel_offset;

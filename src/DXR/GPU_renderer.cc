@@ -29,7 +29,9 @@ void GPURenderer::update_camera_transform_state(
         perspectiveParams.aspectRatio.value_or(1.77777777777777777f),
         perspectiveParams.znear, 
         perspectiveParams.zfar.value_or(1000.f));
-    NDC2WorldMatrix_ = glm::inverse(projectionMatrix_ * viewMatrix_);
+    auto viewMatrixNoTranslation = viewMatrix_;
+    viewMatrixNoTranslation[3] = fvec4(0.0f, 0.0f, 0.0f, 1.0f);  // Remove translation from view matrix for direction calculation
+    NDC2WorldMatrix_ = glm::inverse(projectionMatrix_ * viewMatrixNoTranslation);
 }
 
 void GPURenderer::load_scene(

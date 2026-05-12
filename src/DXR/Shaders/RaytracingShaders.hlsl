@@ -42,7 +42,7 @@ inline void GenerateCameraRay(uint2 index, uint2 dims, out float3 origin, out fl
 
     world.xyz /= world.w;
     origin = g_rayGenCB.cameraPosition.xyz;
-    direction = normalize(world.xyz - origin);
+    direction = normalize(world.xyz);
 }
 
 [shader("raygeneration")] 
