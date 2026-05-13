@@ -3,6 +3,8 @@
 #include <d3dcompiler.h>
 
 #include <iostream>
+#include <algorithm>
+#include <span>
 
 #include "../d3d_context.h"
 #include "helpers/DXSampleHelper.h"
@@ -20,6 +22,9 @@ enum Value : int {
 
 namespace {
 
+using namespace app;
+using namespace glm;
+
 std::pair<ComPtr<ID3DBlob>, D3D12_SHADER_BYTECODE> LoadShader(const wchar_t* file_name) {
     ComPtr<ID3DBlob> shaderBlob;
     auto hr = D3DReadFileToBlob(file_name, &shaderBlob);
@@ -35,7 +40,7 @@ std::pair<ComPtr<ID3DBlob>, D3D12_SHADER_BYTECODE> LoadShader(const wchar_t* fil
     return std::make_pair(shaderBlob, dxil);
 }
 
-}
+}  // namespace
 
 namespace app {
 
@@ -63,6 +68,7 @@ void Raster_pipeline::release_gpu_resources() {
     m_rootSignature.Reset();
 
     m_pipelineState.Reset();
+    m_alphaBlendingPipelineState.Reset();
     m_backgroundPipelineState.Reset();
 
     m_perFrameConstants.Reset();
@@ -147,6 +153,7 @@ void Raster_pipeline::CreatePipelineStateObjects() {
     psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
     psoDesc.RasterizerState.FrontCounterClockwise = TRUE;
     psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL ^ D3D12_COLOR_WRITE_ENABLE_ALPHA;
     psoDesc.DepthStencilState.DepthEnable = TRUE;
     psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
     psoDesc.DepthStencilState.StencilEnable = FALSE;
@@ -159,11 +166,23 @@ void Raster_pipeline::CreatePipelineStateObjects() {
     psoDesc.SampleDesc.Count = 1;
     ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState)));
 
+    // PSO for alpha blending
+    psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+    psoDesc.BlendState.RenderTarget[0].BlendEnable = TRUE;
+    psoDesc.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+    psoDesc.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+    psoDesc.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
+    psoDesc.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ZERO;
+    psoDesc.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
+    psoDesc.BlendState.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+    ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_alphaBlendingPipelineState)));
+
     // PSO for background rendering
     psoDesc.InputLayout = {nullptr, 0};
     psoDesc.VS = vs_background_bytecode;
     psoDesc.PS = ps_background_bytecode;
-    psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+    psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL ^ D3D12_COLOR_WRITE_ENABLE_ALPHA;
     ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_backgroundPipelineState)));
 }
 
@@ -238,18 +257,38 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
     commandList->IASetIndexBuffer(&indexBufferView);
 
-    // Draw objects
-    for (const auto& obj : gpu_model.objects) {
+    int num_opaque_objects;
+    int num_alpha_blended_objects;
+    sort_objects_for_rendering(gpu_model, num_opaque_objects, num_alpha_blended_objects);
+    std::span<const DrawableSortingInfo> opaque_objects{
+        m_sortedDrawables.begin(), m_sortedDrawables.begin() + num_opaque_objects};
+    std::span<const DrawableSortingInfo> blend_objects{
+        m_sortedDrawables.begin() + num_opaque_objects, m_sortedDrawables.end()};
+
+    // draw mesh lambda
+    auto draw_object = [&](const DrawableSortingInfo element) {
+        const auto& obj = *element.object;
         index_count = gpu_model.indicesSizes[obj.meshIndex];
         UINT baseIndexLocation = gpu_model.indicesOffsets[obj.meshIndex];
         RasterPerDrawData draw_data{obj.ModelMatrix, obj.NormalMatrix, obj.meshIndex};
         constexpr int drawDataSizeInInt = sizeof(RasterPerDrawData) / 4;
         commandList->SetGraphicsRoot32BitConstants(GlobalRootSignatureParams::RootConstants, drawDataSizeInInt, &draw_data, 0);
         commandList->DrawIndexedInstanced(index_count, 1, baseIndexLocation, 0, 0);
+     };
+
+    // Draw opaque objects
+    for (const auto& element : opaque_objects) {
+        draw_object(element);
     }
     // Draw background
     commandList->SetPipelineState(m_backgroundPipelineState.Get());
     commandList->DrawInstanced(3, 1, 0, 0);
+
+    // Draw objects with alpha blending
+    commandList->SetPipelineState(m_alphaBlendingPipelineState.Get());
+    for (const auto& element : blend_objects) {
+        draw_object(element);
+    }
 
     copy_render_target_to_framebuffer(framebuffer);
 }
@@ -284,6 +323,40 @@ void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
 
     m_renderTarget.release_gpu_resource();
     m_renderTarget = GPU_texture{currentWidth, currentHeight, false, true, false};
+}
+
+void Raster_pipeline::sort_objects_for_rendering(const GPU_model& gpu_model, int& num_opaque_objects, int& num_alpha_blended_objects) {
+    num_opaque_objects = 0;
+    num_alpha_blended_objects = 0;
+    m_sortedDrawables.clear();
+    m_sortedDrawables.reserve(gpu_model.objects.size());
+    const auto& materials = gpu_model.get_materials_cpu_array();
+    fvec3 camera_forward = normalize(xyz(m_rasterCB.projectionToWorld * fvec4(0, 0, 0, 1)));
+    for (const auto& obj : gpu_model.objects) {
+        fvec3 v = xyz(obj.ModelMatrix[3]) - xyz(m_rasterCB.cameraPosition);
+        const auto& mat = materials[obj.meshIndex];
+        float ZDistanceToCamera = dot(camera_forward, v);
+        bool alphaBlending = mat.alphaBlending;
+        bool transmittance = mat.hasVolume;
+
+        if (alphaBlending) {
+            num_alpha_blended_objects++;
+        } else {
+            num_opaque_objects++;
+        }
+
+        m_sortedDrawables.emplace_back(&obj, ZDistanceToCamera, alphaBlending, transmittance);
+    }
+    std::sort(m_sortedDrawables.begin(), m_sortedDrawables.end(), [](const DrawableSortingInfo& a, const DrawableSortingInfo& b) {
+        if (a.alphaBlending != b.alphaBlending) {
+            return !a.alphaBlending;  // opaque first
+        }
+        if (!a.alphaBlending) {
+            return a.ZDistanceToCamera < b.ZDistanceToCamera;  // front to back for opaque objects
+        } else {
+            return a.ZDistanceToCamera > b.ZDistanceToCamera;  // back to front for alpha blended objects
+        }
+    });
 }
 
 }

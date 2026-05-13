@@ -720,12 +720,12 @@ void GPU_model::update_materials_array_buffer(const Model& cpu_model) {
     // I pack materials differently than in CPU for ease of use in shader.
     // Here, I index material by meshID, that might lead to some redundant data
     // Todo: pack the same as CPU without redundancy
-    std::vector<GPU_Material> data;
+    MaterialsCPUArray.clear();
     assert(sizeof(GPU_Material) == 112);
-    data.reserve(cpu_model.meshes.size());
+    MaterialsCPUArray.reserve(cpu_model.meshes.size());
     for (const auto& mesh : cpu_model.meshes) {
         const auto& mat = cpu_model.materials[mesh.materialIndex];
-        data.emplace_back(mat, texture_id_conversion_table_, default_white_texture_index_);
+        MaterialsCPUArray.emplace_back(mat, texture_id_conversion_table_, default_white_texture_index_);
     }
 
     D3DContext& d3d_ctx = D3DContext::Get();
@@ -733,7 +733,7 @@ void GPU_model::update_materials_array_buffer(const Model& cpu_model) {
 
     ComPtr<ID3D12Resource2> mat_uploadBuffer;
 
-    uint32_t matCount = data.size();
+    uint32_t matCount = MaterialsCPUArray.size();
     const UINT BufferSize = sizeof(GPU_Material) * matCount;
 
     const D3D12_HEAP_PROPERTIES upload_props{
@@ -762,7 +762,7 @@ void GPU_model::update_materials_array_buffer(const Model& cpu_model) {
 
     void* pDataBegin;
     ThrowIfFailed(mat_uploadBuffer->Map(0, nullptr, &pDataBegin));
-    memcpy(pDataBegin, data.data(), BufferSize);
+    memcpy(pDataBegin, MaterialsCPUArray.data(), BufferSize);
     mat_uploadBuffer->Unmap(0, nullptr);
 
     d3d_ctx.m_CopyCommandList->CopyBufferRegion(MaterialsArray.Get(), 0, mat_uploadBuffer.Get(), 0, BufferSize);
@@ -770,6 +770,8 @@ void GPU_model::update_materials_array_buffer(const Model& cpu_model) {
     d3d_ctx.DispatchCopyCommandList();
     d3d_ctx.WaitForPendingCopy();
 }
+
+const std::vector<GPU_Material>& GPU_model::get_materials_cpu_array() const { return MaterialsCPUArray; }
 
 const GPU_mesh& GPU_model::get_combined_mesh() const { return combinedMesh; }
 

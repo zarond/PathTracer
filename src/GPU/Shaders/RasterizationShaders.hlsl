@@ -49,6 +49,7 @@ PSInput VS_Main(
 float4 PS_Main(PSInput input) : SV_TARGET {
     Material mat = Materials[DrawData.meshID];
     float4 color = sample_albedo(mat, input.uv.xy, Sampler);
+    if (color.w < mat.alpha_cutoff) discard; // alpha-test in the same shader for simplicity, but it disables early-z optimisation
     return color;
 }
 
@@ -86,6 +87,5 @@ float4 PS_Background(BG_VS_OUTPUT input)
     float2 uv = float2(atan2(-dir.z, -dir.x) + y_rotation, -2.0f * asin(dir.y)) * (1.0f / PI);
     uv = uv * 0.5f + 0.5f;
     float4 envColor = EnvMap.SampleLevel(Sampler, uv, 0);
-    envColor.w = 1.0f;
     return envColor;
 }

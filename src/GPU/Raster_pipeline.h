@@ -46,6 +46,13 @@ struct RasterPerDrawData {
     float padding[3];
 };
 
+struct DrawableSortingInfo {
+    const Object* object;
+    float ZDistanceToCamera;
+    bool alphaBlending;
+    bool transmittance;
+};
+
 class Raster_pipeline : public IRender_pipeline {
   public:
     Raster_pipeline();
@@ -89,11 +96,15 @@ class Raster_pipeline : public IRender_pipeline {
     CD3DX12_RECT m_scissorRect;
     ComPtr<ID3D12RootSignature> m_rootSignature;
     ComPtr<ID3D12PipelineState> m_pipelineState;
+    ComPtr<ID3D12PipelineState> m_alphaBlendingPipelineState;
     ComPtr<ID3D12PipelineState> m_backgroundPipelineState;
 
     // additional render targets
     GPU_texture m_renderTarget;
     GPU_texture m_depthTexture;
+
+    std::vector<DrawableSortingInfo> m_sortedDrawables;  // reusable vector for sorting drawables every frame
+    void sort_objects_for_rendering(const GPU_model& gpu_model, int& num_opaque_objects, int& num_alpha_blended_objects);
 
     UINT64 currentWidth = 0;
     UINT currentHeight = 0;
