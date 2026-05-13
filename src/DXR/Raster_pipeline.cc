@@ -49,6 +49,14 @@ Raster_pipeline::Raster_pipeline() {
     CreateConstantBuffers();
 }
 
+void Raster_pipeline::OnModelLoad(GPU_model& gpu_model) {
+    // todo: generate mips
+}
+
+void Raster_pipeline::OnEnvmapLoad(const GPU_texture& envmap) {
+    // todo: generate cubemaps
+}
+
 Raster_pipeline::~Raster_pipeline() { release_gpu_resources(); }
 
 void Raster_pipeline::release_gpu_resources() {
@@ -62,10 +70,11 @@ void Raster_pipeline::release_gpu_resources() {
 }
 
 void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings, fvec3 origin, const fmat4x4& NDC2WorldMatrix,
-    const fmat4x4& VPMatrix, fvec2 subpixelOffset, unsigned int frameID, int iterationCount, float invIterationCount) {
+    const fmat4x4& ViewMatrix, const fmat4x4& ProjectionMatrix, fvec2 subpixelOffset, unsigned int frameID, int iterationCount,
+    float invIterationCount) {
     m_rasterCB.cameraPosition = xyz1(origin);
     m_rasterCB.projectionToWorld = NDC2WorldMatrix;
-    m_rasterCB.viewProjection = VPMatrix;
+    m_rasterCB.viewProjection = ProjectionMatrix * ViewMatrix;
     m_rasterCB.subpixelOffset = subpixelOffset;
     m_rasterCB.frameID = frameID;
     m_rasterCB.iteration = iterationCount;
@@ -178,7 +187,7 @@ void Raster_pipeline::CreateConstantBuffers() {
     ThrowIfFailed(m_perFrameConstants->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedConstantData)));
 }
 
-void Raster_pipeline::DoRaytracing(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) {
+void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) {
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
 

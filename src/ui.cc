@@ -7,6 +7,7 @@
 #include "brdf.h"
 #include "cpu_framebuffer.h"
 #include "d3d_context.h"
+#include "DXR/GPU_renderer.h"
 
 #include "backends/imgui_impl_dx12.h"
 #include "backends/imgui_impl_win32.h"
@@ -281,7 +282,7 @@ static void MaterialsSettingsUI(Viewer& viewer) {
     }
 }
 
-void RenderedImageUI(Viewer& viewer, const bool hardware_raytracing_support) {
+void RenderedImageUI(Viewer& viewer, const bool hardware_ray_tracing_support) {
     // Show window with image
     ImGuiIO& io = ImGui::GetIO();
     const ImGuiWindowFlags flags =  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
@@ -326,7 +327,7 @@ void RenderedImageUI(Viewer& viewer, const bool hardware_raytracing_support) {
     const auto texture_srv_gpu_handle = framebuffer.srv_gpu_handle;
     ImGui::SetCursorPos(ImVec2(scale * offset.x + WorkSize.x * 0.5f, scale * offset.y + WorkSize.y * 0.5f));
     // todo: hardware_ray_tracing_support check is a temporary fix for problem with integrated GPU and ImGui
-    if (framebuffer.nearest_filtering && hardware_raytracing_support) {
+    if (framebuffer.nearest_filtering && hardware_ray_tracing_support) {
         auto& platform_io = ImGui::GetPlatformIO();
         ImGui::GetWindowDrawList()->AddCallback(platform_io.DrawCallback_SetSamplerNearest);  // Set custom sampler
         ImGui::Image((ImTextureID)texture_srv_gpu_handle.ptr, ImVec2(scale * (float)dims.x, scale * (float)dims.y));
@@ -482,15 +483,24 @@ static void CameraUI(Viewer& viewer) {
 }
 
 static void RenderSettingsUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector<PendingDelete>& deferredDeletes,
-    const bool hardware_raytracing_support) {
-    if (hardware_raytracing_support) {
-        static RendererMode renderer_mode = viewer.get_renderer_mode();
-        bool renderer_changed = imgui_combo("Choose Renderer:", std::array{"CPU renderer", "GPU renderer"}, renderer_mode);
-        if (renderer_changed) {
-            viewer.switch_to_renderer(renderer_mode);
+    const bool hardware_ray_tracing_support) {
+    static RendererMode renderer_mode = viewer.get_renderer_mode();
+    bool renderer_changed = imgui_combo("Choose Renderer:", std::array{"CPU renderer", "GPU renderer"}, renderer_mode);
+    if (renderer_changed) {
+        viewer.switch_to_renderer(renderer_mode);
+    }
+    if (hardware_ray_tracing_support) {
+        if (viewer.is_using_gpu_renderer()) {
+            static RenderPipelineMode pipeline_mode = viewer.get_active_gpu_pipeline_mode();
+            bool pipeline_changed =
+                imgui_combo("Choose Rendering mode:", std::array{"DXR path-tracing", "Rasterization"}, pipeline_mode);
+            if (pipeline_changed) {
+                viewer.switch_gpu_pipeline_mode(pipeline_mode);
+            }
         }
-    } else {
+    } else if (renderer_mode == RendererMode::GPURenderer) {
         ImGui::Text("GPU does not support raytracing, DXR rendering mode is unavailable");
+        ImGui::Text("Rasterization rendering mode will be used");
     }
     if (!viewer.is_using_gpu_renderer()) {
         if (ImGui::Button("Clear image with black")) {
@@ -599,7 +609,7 @@ static void RenderSettingsUI(Viewer& viewer, ConsoleArgs& console_arguments, std
 }
 
 void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector<PendingDelete>& deferredDeletes,
-    const bool hardware_raytracing_support) {
+    const bool hardware_ray_tracing_support) {
     ImGui::Begin("Options", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
 
     RenderingProgressUI(viewer);
@@ -618,7 +628,7 @@ void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector
     }
     ImGui::Separator();
     if (viewer.get_rendering_state() == RenderingState::Idle) {
-        RenderSettingsUI(viewer, console_arguments, deferredDeletes, hardware_raytracing_support);
+        RenderSettingsUI(viewer, console_arguments, deferredDeletes, hardware_ray_tracing_support);
     } else {
         ImGui::Text("Stop rendering process to access rendering options");
     }

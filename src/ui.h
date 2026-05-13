@@ -106,9 +106,9 @@ void HelpTooltip(const char* msg);
 
 void SetupImGuiStyle();
 
-void RenderedImageUI(Viewer& viewer, const bool hardware_raytracing_support);
+void RenderedImageUI(Viewer& viewer, const bool hardware_ray_tracing_support);
 
 void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector<PendingDelete>& deferredDeletes,
-    const bool hardware_raytracing_support);
+    const bool hardware_ray_tracing_support);
 
 }  // namespace app

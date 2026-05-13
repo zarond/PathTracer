@@ -39,19 +39,32 @@ struct RayGenConstantBuffer {
     float envmapRotation;
 };
 
-class GPU_pipeline {
+class IRender_pipeline {
+  public:
+    virtual ~IRender_pipeline() = default;
+    virtual void SetRenderingSettings(const RenderSettings& render_settings, fvec3 origin, const fmat4x4& NDC2WorldMatrix,
+        const fmat4x4& ViewMatrix, const fmat4x4& ProjectionMatrix, fvec2 subpixelOffset, unsigned int frameID, int iteration,
+        float invIterationCount) = 0;
+    virtual void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) = 0;
+    virtual void OnModelLoad(GPU_model& gpu_model) = 0;
+    virtual void OnEnvmapLoad(const GPU_texture& envmap) = 0;
+};
+;
+
+class GPU_pipeline : public IRender_pipeline {
   public:
     GPU_pipeline();
     ~GPU_pipeline();
 
     void SetRenderingSettings(const RenderSettings& render_settings, fvec3 origin, const fmat4x4& NDC2WorldMatrix,
-        fvec2 subpixelOffset, unsigned int frameID, int iteration, float invIterationCount);
+        const fmat4x4& ViewMatrix, const fmat4x4& ProjectionMatrix, fvec2 subpixelOffset, unsigned int frameID, int iteration,
+        float invIterationCount) override;
 
-    void DoRaytracing(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer);
+    void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) override;
 
-    void OnModelLoad(GPU_model& gpu_model);
+    void OnModelLoad(GPU_model& gpu_model) override;
 
-    void OnEnvmapLoad(const GPU_texture& envmap);
+    void OnEnvmapLoad(const GPU_texture& envmap) override;
 
   private:
     // Root signatures

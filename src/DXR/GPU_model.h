@@ -124,7 +124,7 @@ class GPU_texture {
 
 class GPU_model {
   public:
-    explicit GPU_model(const Model& cpu_model);
+    explicit GPU_model(const Model& cpu_model, bool raytracing_support = true);
     ~GPU_model();
 
     GPU_model(const GPU_model&) = delete;

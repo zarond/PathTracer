@@ -44,10 +44,7 @@ void Viewer::init_GPU_renderer() {
     if (renderers_[(int)RendererMode::GPURenderer]) {
         return;
     }
-    D3DContext& d3d_ctx = D3DContext::Get();
-    if (d3d_ctx.hardware_ray_tracing_support) {
-        renderers_[(int)RendererMode::GPURenderer] = std::make_shared<GPURenderer>();
-    }
+    renderers_[(int)RendererMode::GPURenderer] = std::make_shared<GPURenderer>();
 }
 
 void Viewer::switch_to_renderer(RendererMode mode) {
@@ -239,6 +236,25 @@ void Viewer::set_near_far_camera_values(float near_, float far_) {
 }
 
 bool Viewer::is_using_gpu_renderer() const { return (active_renderer_mode_ == RendererMode::GPURenderer); }
+
+#ifdef WINDOWS_SPECIFIC
+RenderPipelineMode Viewer::get_active_gpu_pipeline_mode() const { 
+    const auto& gpu_renderer = renderers_[(int)RendererMode::GPURenderer];
+    if (gpu_renderer != nullptr) {
+        return static_cast<GPURenderer*>(gpu_renderer.get())->get_active_pipeline_mode();
+    }
+    return RenderPipelineMode::Count; 
+}
+
+void Viewer::switch_gpu_pipeline_mode(RenderPipelineMode mode) {
+    const auto& gpu_renderer = renderers_[(int)RendererMode::GPURenderer];
+    if (gpu_renderer == nullptr) return;
+    if ((int)mode < 0 || mode >= RenderPipelineMode::Count) {
+        return;
+    }
+    static_cast<GPURenderer*>(gpu_renderer.get())->set_active_pipeline_mode(mode);
+}
+#endif
 
 void Viewer::wait_for_render_start(std::stop_token stop) {
     std::unique_lock<std::mutex> lock(mtx_render_);

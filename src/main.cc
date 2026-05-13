@@ -286,7 +286,7 @@ int main(int argc, char* argv[]) {
     d3d_ctx.CleanupDeviceD3D();
     dx_window.ShutDown();
 
-    DXDebugLayer::Get().Shutdown();
+    DXDebugLayer::Get().Shutdown(); // reports false positives because viewer destructor is not yet called
 #endif  // #ifdef WINDOWS_SPECIFIC
     return 0;
 }

@@ -340,7 +340,8 @@ void GPU_pipeline::CreateConstantBuffers() {
 }
 
 void GPU_pipeline::SetRenderingSettings(const RenderSettings& render_settings, fvec3 origin, const fmat4x4& NDC2WorldMatrix,
-    fvec2 subpixelOffset, unsigned int frameID, int iterationCount, float invIterationCount) {
+    const fmat4x4& ViewMatrix, const fmat4x4& ProjectionMatrix, fvec2 subpixelOffset, unsigned int frameID, int iterationCount,
+    float invIterationCount) {
     m_rayGenCB.cameraPosition = xyz1(origin);
     m_rayGenCB.projectionToWorld = NDC2WorldMatrix;
     m_rayGenCB.subpixelOffset = subpixelOffset;
@@ -356,7 +357,7 @@ void GPU_pipeline::SetRenderingSettings(const RenderSettings& render_settings, f
     RaytracingMode = render_settings.programMode;
 }
 
-void GPU_pipeline::DoRaytracing(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) {
+void GPU_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) {
     framebuffer.transition_from_srv_to_uav();
 
     D3DContext& d3d_ctx = D3DContext::Get();

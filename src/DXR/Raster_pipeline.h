@@ -12,6 +12,7 @@
 #include "../cpu_framebuffer.h"
 #include "../render_settings.h"
 #include "GPU_model.h"
+#include "GPU_pipeline.h"
 
 namespace app {
 
@@ -45,19 +46,20 @@ struct RasterPerDrawData {
     float padding[3];
 };
 
-class Raster_pipeline {
+class Raster_pipeline : public IRender_pipeline {
   public:
     Raster_pipeline();
     ~Raster_pipeline();
 
     void SetRenderingSettings(const RenderSettings& render_settings, fvec3 origin, const fmat4x4& NDC2WorldMatrix,
-        const fmat4x4& VPMatrix, fvec2 subpixelOffset, unsigned int frameID, int iteration, float invIterationCount);
+        const fmat4x4& ViewMatrix, const fmat4x4& ProjectionMatrix, fvec2 subpixelOffset, unsigned int frameID, int iteration,
+        float invIterationCount) override;
 
-    void DoRaytracing(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer);
+    void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) override;
 
-    void OnModelLoad(GPU_model& gpu_model);
+    void OnModelLoad(GPU_model& gpu_model) override;
 
-    void OnEnvmapLoad(const GPU_texture& envmap);
+    void OnEnvmapLoad(const GPU_texture& envmap) override;
 
   private:
     void CreateRootSignatures();

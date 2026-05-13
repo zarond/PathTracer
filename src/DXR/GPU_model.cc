@@ -352,7 +352,7 @@ GPU_Material::GPU_Material(const Material& mat, const std::vector<int>& texture_
     padding0 = 0;
 }
 
-GPU_model::GPU_model(const Model& cpu_model) {
+GPU_model::GPU_model(const Model& cpu_model, bool raytracing_support) {
     if (cpu_model.meshes.size() == 0) {
         return;
     }
@@ -363,10 +363,12 @@ GPU_model::GPU_model(const Model& cpu_model) {
     for (auto& mesh : meshes_) {
         mesh.transition_from_copy_to_usage();
     }
-    for (auto& mesh : meshes_) {
-        mesh.create_bottom_level_AS();
+    if (raytracing_support) {
+        for (auto& mesh : meshes_) {
+            mesh.create_bottom_level_AS();
+        }
+        create_top_level_AS(cpu_model);
     }
-    create_top_level_AS(cpu_model);
     prepare_combined_vertex_index_buffers(cpu_model);
     prepare_textures_array_buffer(cpu_model);
     prepare_materials_array_buffer(cpu_model);

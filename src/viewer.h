@@ -18,6 +18,10 @@
 #include "render_settings.h"
 #include "renderer.h"
 
+#ifdef WINDOWS_SPECIFIC
+#include "DXR/GPU_renderer.h"
+#endif
+
 namespace app {
 
 using glm::dvec2;
@@ -83,6 +87,9 @@ class Viewer {
     bool is_using_gpu_renderer() const;
 
 #ifdef WINDOWS_SPECIFIC
+    RenderPipelineMode get_active_gpu_pipeline_mode() const;
+    void switch_gpu_pipeline_mode(RenderPipelineMode mode);
+
     void init_GPU_renderer();
     void switch_to_renderer(RendererMode mode);
     RendererMode get_renderer_mode() const;

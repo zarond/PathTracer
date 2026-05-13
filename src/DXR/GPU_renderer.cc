@@ -20,6 +20,21 @@ namespace app {
 
 using namespace glm;
 
+GPURenderer::GPURenderer() {
+    pipelines_.resize((int)RenderPipelineMode::Count);
+
+    pipelines_[(int)RenderPipelineMode::RasterPipeline] = std::make_shared<Raster_pipeline>();
+    pipeline_ = pipelines_[(int)RenderPipelineMode::RasterPipeline];
+    active_pipeline_mode_ = RenderPipelineMode::RasterPipeline;
+
+    D3DContext& d3d_ctx = D3DContext::Get();
+    if (d3d_ctx.hardware_ray_tracing_support) {
+        pipelines_[(int)RenderPipelineMode::DXRPipeline] = std::make_shared<GPU_pipeline>();
+        pipeline_ = pipelines_[(int)RenderPipelineMode::DXRPipeline];
+        active_pipeline_mode_ = RenderPipelineMode::DXRPipeline;
+    }
+}
+
 void GPURenderer::update_camera_transform_state(
     fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams) {
     origin_ = position;
@@ -68,15 +83,16 @@ void GPURenderer::reload_ray_program() {
     if (envmap_ref_ == nullptr) return;
     gpu_envmap_ = std::make_unique<GPU_texture>(*envmap_ref_);
 
-    pipeline_.OnEnvmapLoad(*gpu_envmap_);
+    pipeline_->OnEnvmapLoad(*gpu_envmap_);
 }
 void GPURenderer::reload_acceleration_structure() {
     if (model_ref_ == nullptr) return;
     auto start = std::chrono::high_resolution_clock::now();
 
-    gpu_model_ = std::make_unique<GPU_model>(*model_ref_);
+    bool raytracing_support = D3DContext::Get().hardware_ray_tracing_support;
+    gpu_model_ = std::make_unique<GPU_model>(*model_ref_, raytracing_support);
 
-    pipeline_.OnModelLoad(*gpu_model_);
+    pipeline_->OnModelLoad(*gpu_model_);
 
     auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
     std::cout << "GPU DXR model Acceleration Structure created in " << diff.count() << " ms." << '\n';
@@ -112,10 +128,7 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
         inverse_iteration_count = 1.0f / static_cast<float>(iteration_count);
     }
 
-    pipeline_.SetRenderingSettings(
-        render_settings_, origin_, NDC2WorldMatrix_, jitter, ++frameID_, iteration_count, inverse_iteration_count);
-    raster_pipeline_.SetRenderingSettings(
-        render_settings_, origin_, NDC2WorldMatrix_, projectionMatrix_ * viewMatrix_, jitter,
+    pipeline_->SetRenderingSettings(render_settings_, origin_, NDC2WorldMatrix_, viewMatrix_, projectionMatrix_, jitter, 
         ++frameID_, iteration_count, inverse_iteration_count);
 
     D3DContext& d3d_ctx = D3DContext::Get();
@@ -124,8 +137,7 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
     ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};
     d3d_ctx.m_DXRCommandList->SetDescriptorHeaps(1, desc_heap);
 
-    //pipeline_.DoRaytracing(*gpu_model_, *gpu_envmap_, framebuffer);
-    raster_pipeline_.DoRaytracing(*gpu_model_, *gpu_envmap_, framebuffer);
+    pipeline_->DoRender(*gpu_model_, *gpu_envmap_, framebuffer);
 
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();
@@ -170,6 +182,18 @@ void GPURenderer::set_render_starting_state() {
     if (render_state_ == RenderingState::Idle) {
         render_state_ = RenderingState::ReadyToStart;
     }
+}
+
+RenderPipelineMode GPURenderer::get_active_pipeline_mode() const { return active_pipeline_mode_; }
+
+void GPURenderer::set_active_pipeline_mode(RenderPipelineMode mode) {
+    if ((int)mode < 0 || mode >= RenderPipelineMode::Count) {
+        throw std::runtime_error("Invalid Pipeline Mode.");
+    }
+    if (!pipelines_[(int)mode]) {
+        throw std::runtime_error("Pipeline not initialized");
+    }
+    pipeline_ = pipelines_[(int)mode];
 }
 
 }  // namespace app
