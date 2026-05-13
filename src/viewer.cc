@@ -9,7 +9,7 @@
 #include <variant>
 
 #ifdef WINDOWS_SPECIFIC
-#include "DXR/GPU_renderer.h"
+#include "GPU/GPU_renderer.h"
 #include "d3d_context.h"
 #endif
 

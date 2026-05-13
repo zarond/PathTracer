@@ -12,7 +12,7 @@
 #include "../cpu_framebuffer.h"
 #include "../render_settings.h"
 #include "GPU_model.h"
-#include "GPU_pipeline.h"
+#include "DXR_pipeline.h"
 
 namespace app {
 

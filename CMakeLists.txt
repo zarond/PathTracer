@@ -22,7 +22,7 @@ message(STATUS "${PROJECT_NAME}: ASAN option is currently: ${ASAN}")
 set(LIBS_DIR libs)
 
 set(SHADER_SOURCES)
-set(RASTER_SHADERS_SOURCE src/DXR/Shaders/RasterizationShaders.hlsl)
+set(RASTER_SHADERS_SOURCE src/GPU/Shaders/RasterizationShaders.hlsl)
 set(RASTER_SHADER_FUNCTIONS 
     VS_Main
     PS_Main
@@ -48,13 +48,13 @@ if(ON_WINDOWS)
         src/ui.cc
         src/d3d_debug_layer.cc
         src/d3d_context.cc
-        src/DXR/GPU_model.cc
-        src/DXR/GPU_renderer.cc
-        src/DXR/GPU_pipeline.cc
-        src/DXR/Raster_pipeline.cc
+        src/GPU/GPU_model.cc
+        src/GPU/GPU_renderer.cc
+        src/GPU/DXR_pipeline.cc
+        src/GPU/Raster_pipeline.cc
     )
     list(APPEND SHADER_SOURCES
-        src/DXR/Shaders/RaytracingShaders.hlsl
+        src/GPU/Shaders/RaytracingShaders.hlsl
     )
 endif()
 

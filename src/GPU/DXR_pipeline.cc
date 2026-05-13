@@ -1,4 +1,4 @@
-#include "GPU_pipeline.h"
+#include "DXR_pipeline.h"
 
 #include <d3dcompiler.h>
 
@@ -46,16 +46,16 @@ void SerializeAndCreateRaytracingRootSignature(D3D12_ROOT_SIGNATURE_DESC& desc, 
     ThrowIfFailed(device->CreateRootSignature(1, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&(*rootSig))));
 }
 
-GPU_pipeline::GPU_pipeline() {
+DXR_pipeline::DXR_pipeline() {
     CreateRootSignatures();
     CreateRaytracingPipelines();
     CreateConstantBuffers();
     BuildAllShaderTables();
 }
 
-GPU_pipeline::~GPU_pipeline() { release_gpu_resources(); }
+DXR_pipeline::~DXR_pipeline() { release_gpu_resources(); }
 
-void GPU_pipeline::CreateRootSignatures() {
+void DXR_pipeline::CreateRootSignatures() {
     // Global Root Signature
     // This is a root signature that is shared across all raytracing shaders invoked during a DispatchRays() call.
     {
@@ -110,7 +110,7 @@ void GPU_pipeline::CreateRootSignatures() {
 
 // Local root signature and shader association
 // This is a root signature that enables a shader to have unique arguments that come from shader tables.
-void GPU_pipeline::CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline) {
+void DXR_pipeline::CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline) {
     // Hit group and miss shaders in this sample are not using a local root signature and thus one is not associated with them.
 
     // Local root signature to be used in a ray gen shader.
@@ -127,7 +127,7 @@ void GPU_pipeline::CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC*
 // Create a raytracing pipeline state object (RTPSO).
 // An RTPSO represents a full set of shaders reachable by a DispatchRays() call,
 // with all configuration options resolved, such as local signatures and other state.
-void GPU_pipeline::CreateRaytracingPipelines() {
+void DXR_pipeline::CreateRaytracingPipelines() {
     // Create 7 subobjects that combine into a RTPSO:
     // Subobjects need to be associated with DXIL exports (i.e. shaders) either by way of default or explicit associations.
     // Default association applies to every exported shader entrypoint that doesn't have any of the same type of subobject associated with it.
@@ -162,7 +162,7 @@ void GPU_pipeline::CreateRaytracingPipelines() {
         m_dxrStateObjectPBR, PBR_DXR_RECURSION_DEPTH);  // PBR
 }
 
-void GPU_pipeline::CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const wchar_t* c_anyHitShaderName,
+void DXR_pipeline::CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const wchar_t* c_anyHitShaderName,
     const wchar_t* c_closestHitShaderName, const wchar_t* c_missShaderName, ComPtr<ID3D12StateObject>& m_dxrStateObject,
     UINT maxRecursionDepth) {
     CD3DX12_STATE_OBJECT_DESC raytracingPipeline{D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE};
@@ -226,7 +226,7 @@ void GPU_pipeline::CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const
         L"Couldn't create DirectX Raytracing state object.\n");
 }
 
-void GPU_pipeline::BuildAllShaderTables() {
+void DXR_pipeline::BuildAllShaderTables() {
     BuildShaderTables(c_closestHitRCShaderName, c_missEnvmapShaderName, m_dxrStateObjectRayCaster, m_RC_missShaderTable,
         m_RC_hitGroupShaderTable);      // RayCaster
     BuildShaderTables(c_closestHitAOShaderName, c_missAOShaderName, m_dxrStateObjectAmbientOcclusion, m_AO_missShaderTable,
@@ -235,7 +235,7 @@ void GPU_pipeline::BuildAllShaderTables() {
         m_PBR_hitGroupShaderTable);     // PBR
 }
 
-void GPU_pipeline::BuildShaderTables(const wchar_t* c_closestHitShaderName, const wchar_t* c_missShaderName,
+void DXR_pipeline::BuildShaderTables(const wchar_t* c_closestHitShaderName, const wchar_t* c_missShaderName,
     ComPtr<ID3D12StateObject>& m_dxrStateObject, ComPtr<ID3D12Resource>& m_missShaderTable,
     ComPtr<ID3D12Resource>& m_hitGroupShaderTable) {
     D3DContext& d3d_ctx = D3DContext::Get();
@@ -294,7 +294,7 @@ void GPU_pipeline::BuildShaderTables(const wchar_t* c_closestHitShaderName, cons
     }
 }
 
-void GPU_pipeline::release_gpu_resources() {
+void DXR_pipeline::release_gpu_resources() {
     m_raytracingGlobalRootSignature.Reset();
     m_raytracingLocalRootSignature.Reset();
 
@@ -318,7 +318,7 @@ void GPU_pipeline::release_gpu_resources() {
     m_rtStateObjectProps.Reset();
 }
 
-void GPU_pipeline::CreateConstantBuffers() {
+void DXR_pipeline::CreateConstantBuffers() {
     D3DContext& d3d_ctx = D3DContext::Get();
     auto device = d3d_ctx.m_d3dDevice;
     // auto frameCount = m_deviceResources->GetBackBufferCount();
@@ -339,7 +339,7 @@ void GPU_pipeline::CreateConstantBuffers() {
     ThrowIfFailed(m_perFrameConstants->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedConstantData)));
 }
 
-void GPU_pipeline::SetRenderingSettings(const RenderSettings& render_settings, fvec3 origin, const fmat4x4& NDC2WorldMatrix,
+void DXR_pipeline::SetRenderingSettings(const RenderSettings& render_settings, fvec3 origin, const fmat4x4& NDC2WorldMatrix,
     const fmat4x4& ViewMatrix, const fmat4x4& ProjectionMatrix, fvec2 subpixelOffset, unsigned int frameID, int iterationCount,
     float invIterationCount) {
     m_rayGenCB.cameraPosition = xyz1(origin);
@@ -357,7 +357,7 @@ void GPU_pipeline::SetRenderingSettings(const RenderSettings& render_settings, f
     RaytracingMode = render_settings.programMode;
 }
 
-void GPU_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) {
+void DXR_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) {
     framebuffer.transition_from_srv_to_uav();
 
     D3DContext& d3d_ctx = D3DContext::Get();
@@ -430,9 +430,9 @@ void GPU_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envma
 }
 
 // no actions required for a model in this raytracing pipeline, because it doesn't use mips
-void GPU_pipeline::OnModelLoad(GPU_model& gpu_model) {} 
+void DXR_pipeline::OnModelLoad(GPU_model& gpu_model) {} 
 
 // no actions required for envmap in this raytracing pipeline, because it doesn't use mips and is not a cubemap
-void GPU_pipeline::OnEnvmapLoad(const GPU_texture& envmap) {} 
+void DXR_pipeline::OnEnvmapLoad(const GPU_texture& envmap) {} 
 
 }  // namespace app

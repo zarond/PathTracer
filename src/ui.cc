@@ -7,7 +7,7 @@
 #include "brdf.h"
 #include "cpu_framebuffer.h"
 #include "d3d_context.h"
-#include "DXR/GPU_renderer.h"
+#include "GPU/GPU_renderer.h"
 
 #include "backends/imgui_impl_dx12.h"
 #include "backends/imgui_impl_win32.h"

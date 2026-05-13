@@ -29,7 +29,7 @@ GPURenderer::GPURenderer() {
 
     D3DContext& d3d_ctx = D3DContext::Get();
     if (d3d_ctx.hardware_ray_tracing_support) {
-        pipelines_[(int)RenderPipelineMode::DXRPipeline] = std::make_shared<GPU_pipeline>();
+        pipelines_[(int)RenderPipelineMode::DXRPipeline] = std::make_shared<DXR_pipeline>();
         pipeline_ = pipelines_[(int)RenderPipelineMode::DXRPipeline];
         active_pipeline_mode_ = RenderPipelineMode::DXRPipeline;
     }

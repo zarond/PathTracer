@@ -51,10 +51,10 @@ class IRender_pipeline {
 };
 ;
 
-class GPU_pipeline : public IRender_pipeline {
+class DXR_pipeline : public IRender_pipeline {
   public:
-    GPU_pipeline();
-    ~GPU_pipeline();
+    DXR_pipeline();
+    ~DXR_pipeline();
 
     void SetRenderingSettings(const RenderSettings& render_settings, fvec3 origin, const fmat4x4& NDC2WorldMatrix,
         const fmat4x4& ViewMatrix, const fmat4x4& ProjectionMatrix, fvec2 subpixelOffset, unsigned int frameID, int iteration,
