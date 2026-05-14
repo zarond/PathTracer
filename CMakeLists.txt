@@ -21,13 +21,12 @@ message(STATUS "${PROJECT_NAME}: ASAN option is currently: ${ASAN}")
 
 set(LIBS_DIR libs)
 
-set(SHADER_SOURCES)
-set(RASTER_SHADERS_SOURCE src/GPU/Shaders/RasterizationShaders.hlsl)
-set(RASTER_SHADER_FUNCTIONS 
-    VS_Main
-    PS_Main
-    VS_Background
-    PS_Background
+set(SHADER_SOURCES
+    RaytracingShaders   RaytracingShaders.hlsl      lib_6_6      
+    VS_Main             RasterizationShaders.hlsl   vs_6_6
+    PS_Main             RasterizationShaders.hlsl   ps_6_6
+    VS_Background       RasterizationShaders.hlsl   vs_6_6
+    PS_Background       RasterizationShaders.hlsl   ps_6_6
 )
 
 set(APP_SOURCES
@@ -52,9 +51,6 @@ if(ON_WINDOWS)
         src/GPU/GPU_renderer.cc
         src/GPU/DXR_pipeline.cc
         src/GPU/Raster_pipeline.cc
-    )
-    list(APPEND SHADER_SOURCES
-        src/GPU/Shaders/RaytracingShaders.hlsl
     )
 endif()
 
@@ -83,49 +79,18 @@ if(ON_WINDOWS)
         set(DXC_FLAGS -Zi -Qembed_debug)
     endif()
 
-    # compile shader libs (for raytracing)
-    foreach(SHADER ${SHADER_SOURCES})
-        get_filename_component(FILE_NAME ${SHADER} NAME_WE)
+    # compile shaders
+    list(LENGTH SHADER_SOURCES len)
+    math(EXPR last "${len} - 1")
+    foreach(i RANGE 0 ${last} 3)
+        math(EXPR i1 "${i} + 1")
+        math(EXPR i2 "${i} + 2")
 
-        # compile into build dir (config-independent)
-        set(COMPILED_SHADER ${CMAKE_CURRENT_BINARY_DIR}/${FILE_NAME}.dxil)
-
-        # todo: better yet, compile into object file and link into executable, use extern const in code
-        add_custom_command(
-            OUTPUT ${COMPILED_SHADER}
-            COMMAND ${DXC}
-                    -T lib_6_6
-                    ${DXC_FLAGS}
-                    -Fo ${COMPILED_SHADER}
-                    ${CMAKE_SOURCE_DIR}/${SHADER}
-            DEPENDS ${SHADER}
-            COMMENT "Compiling shader ${SHADER}"
-        )
-        list(APPEND COMPILED_SHADERS ${COMPILED_SHADER})
-
-        # copy compiled shader next to the executable after the project is built
-        # $<TARGET_FILE_DIR:${PROJECT_NAME}> resolves per-config in multi-config generators
-        add_custom_command(
-            TARGET ${PROJECT_NAME}
-            POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    ${COMPILED_SHADER}
-                    $<TARGET_FILE_DIR:${PROJECT_NAME}>/${FILE_NAME}.dxil
-            COMMENT "Copying ${FILE_NAME}.dxil from ${COMPILED_SHADER} to target $<TARGET_FILE_DIR:${PROJECT_NAME}>/${FILE_NAME}.dxil"
-            VERBATIM
-        )
-    endforeach()
-
-    # compile raster shaders (from one hlsl to many .dxil files)
-    foreach(SHADER ${RASTER_SHADER_FUNCTIONS})
+        list(GET SHADER_SOURCES ${i}  SHADER)
+        list(GET SHADER_SOURCES ${i1} SHADER_SOURCE_FILE_NAME)
+        list(GET SHADER_SOURCES ${i2} SHADER_STAGE_TYPE)
         # compile into build dir (config-independent)
         set(COMPILED_SHADER ${CMAKE_CURRENT_BINARY_DIR}/${SHADER}.dxil)
-        set(SHADER_STAGE_TYPE)
-        if(SHADER MATCHES "^(VS_)")
-            set(SHADER_STAGE_TYPE "vs_6_6")
-        elseif(SHADER MATCHES "^(PS_)")
-            set(SHADER_STAGE_TYPE "ps_6_6")
-        endif()
 
         # todo: better yet, compile into object file and link into executable, use extern const in code
         add_custom_command(
@@ -135,8 +100,8 @@ if(ON_WINDOWS)
                     ${DXC_FLAGS}
                     -E ${SHADER}
                     -Fo ${COMPILED_SHADER}
-                    ${CMAKE_SOURCE_DIR}/${RASTER_SHADERS_SOURCE}
-            DEPENDS ${RASTER_SHADERS_SOURCE}
+                    ${CMAKE_SOURCE_DIR}/src/GPU/Shaders/${SHADER_SOURCE_FILE_NAME}
+            DEPENDS src/GPU/Shaders/${SHADER_SOURCE_FILE_NAME}
             COMMENT "Compiling shader ${SHADER}"
         )
         list(APPEND COMPILED_SHADERS ${COMPILED_SHADER})
