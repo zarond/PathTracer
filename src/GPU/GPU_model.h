@@ -78,8 +78,8 @@ struct GPU_Material {  // enforce packing rules on CPU Material data
 class GPU_texture {
   public:
     GPU_texture() = default;
-    explicit GPU_texture(UINT64 width, UINT height, bool is_cubemap = false, bool is_render_target = false, bool is_depth = false,
-        bool allocate_mips = false);  // constructor for float4 empty LUTS and cubemaps, and for render targets and depth buffers
+    explicit GPU_texture(UINT64 width, UINT height, bool HDR, bool srgb = false, bool is_cubemap = false, bool is_render_target = false, bool is_depth = false,
+        bool is_uav = false, bool allocate_mips = false);  // constructor for float4 empty LUTS and cubemaps, and for render targets and depth buffers
     explicit GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture, bool allocate_mips = false);
     explicit GPU_texture(const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_ = false, bool allocate_mips = false);
     ~GPU_texture();
@@ -91,6 +91,7 @@ class GPU_texture {
     GPU_texture& operator=(GPU_texture&&) = default;
 
     D3D12_GPU_DESCRIPTOR_HANDLE GetSRVHandle() const;
+    D3D12_GPU_DESCRIPTOR_HANDLE GetUAVHandle() const;
     D3D12_CPU_DESCRIPTOR_HANDLE GetRTVHandle() const;
     D3D12_CPU_DESCRIPTOR_HANDLE GetDSVHandle() const;
 
@@ -101,6 +102,7 @@ class GPU_texture {
     bool mips = false;
     bool isCubemap = false;
     bool isRenderTarget = false;
+    bool isUAV = false;
     bool isDepth = false;
     uint16_t mipLevels = 1;
 
@@ -115,6 +117,8 @@ class GPU_texture {
     ComPtr<ID3D12Resource> pTexture;
     D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu_handle{};
     D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle{};
+    D3D12_CPU_DESCRIPTOR_HANDLE uav_cpu_handle{};
+    D3D12_GPU_DESCRIPTOR_HANDLE uav_gpu_handle{};
     D3D12_CPU_DESCRIPTOR_HANDLE rtv_cpu_handle{};
     D3D12_GPU_DESCRIPTOR_HANDLE rtv_gpu_handle{};
     D3D12_CPU_DESCRIPTOR_HANDLE dsv_cpu_handle{};
@@ -166,7 +170,7 @@ class GPU_model {
     std::vector<GPU_mesh> meshes_;
 
     std::vector<int> texture_id_conversion_table_;
-    GPU_texture default_white_texture_ = GPU_texture(CPUTexture<sdr_pixel>::create_white_texture(), false);
+    GPU_texture default_white_texture_{CPUTexture<sdr_pixel>::create_white_texture(), false};
     int default_white_texture_index_ = 0;
 
     void create_top_level_AS(const Model& cpu_model);

@@ -27,6 +27,8 @@ set(SHADER_SOURCES
     PS_Main             RasterizationShaders.hlsl   ps_6_6
     VS_Background       RasterizationShaders.hlsl   vs_6_6
     PS_Background       RasterizationShaders.hlsl   ps_6_6
+    CS_DFG_Lut          DFGLut.hlsl                 cs_6_6
+    CS_Diffuse_Lut      CubemapsLut.hlsl            cs_6_6
 )
 
 set(APP_SOURCES
@@ -51,6 +53,8 @@ if(ON_WINDOWS)
         src/GPU/GPU_renderer.cc
         src/GPU/DXR_pipeline.cc
         src/GPU/Raster_pipeline.cc
+        src/GPU/DFG_Lut_helper.cc
+        src/GPU/Cubemaps_helper.cc
     )
 endif()
 

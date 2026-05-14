@@ -13,7 +13,6 @@
 #include "../renderer.h"
 #include "GPU_model.h"
 #include "DXR_pipeline.h"
-#include "Raster_pipeline.h"
 
 namespace app {
 

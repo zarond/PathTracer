@@ -781,8 +781,16 @@ D3D12_GPU_VIRTUAL_ADDRESS GPU_model::GetGPUVirtualAddress() const { return tlasB
 
 // GPU_texture
 
-GPU_texture::GPU_texture(UINT64 width, UINT height, bool is_cubemap, bool is_render_target, bool is_depth, bool allocate_mips)
-    : HDR(true), isCubemap(is_cubemap), isRenderTarget(is_render_target), isDepth(is_depth), mips(allocate_mips) {
+GPU_texture::GPU_texture(UINT64 width, UINT height, bool HDR_, bool srgb_, bool is_cubemap, bool is_render_target, bool is_depth,
+    bool is_uav, bool allocate_mips)
+    : HDR(HDR_),
+      srgb(srgb_),
+      isCubemap(is_cubemap),
+      isRenderTarget(is_render_target),
+      isDepth(is_depth),
+      isUAV(is_uav),
+      mips(allocate_mips) 
+{
     assert(!is_cubemap || width == height);
     DXGI_FORMAT format = choose_format();
     create_texture_resource(width, height, format);
@@ -817,6 +825,7 @@ void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT
         auto flags = D3D12_RESOURCE_FLAG_NONE;
         if (isRenderTarget) flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
         if (isDepth) flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+        if (isUAV) flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
         const D3D12_RESOURCE_DESC tex_desc{
             .Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D,
             .Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
@@ -847,6 +856,10 @@ void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT
         if (isDepth) {
             d3d_ctx.m_DsvDescHeapAlloc.Alloc(&dsv_cpu_handle, &dsv_gpu_handle);
             initial_state = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+        }
+        if (isUAV) {
+            d3d_ctx.m_SrvDescHeapAlloc.Alloc(&uav_cpu_handle, &uav_gpu_handle);
+            initial_state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         }
 
         bool use_clear_value = isRenderTarget || isDepth;
@@ -916,6 +929,28 @@ void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT
                 };
             }
             d3d_ctx.m_d3dDevice->CreateDepthStencilView(pTexture.Get(), &dsvDesc, dsv_cpu_handle);
+        }
+
+        if (isUAV) {
+            // Create a unordered access view for the texture
+            D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{
+                .Format = format,
+                .ViewDimension = isCubemap ? D3D12_UAV_DIMENSION_TEXTURE2DARRAY : D3D12_UAV_DIMENSION_TEXTURE2D,
+                .Texture2D =
+                    D3D12_TEX2D_UAV{
+                        .MipSlice = 0,
+                        .PlaneSlice = 0,
+                    },
+            };
+            if (isCubemap) {
+                uavDesc.Texture2DArray = D3D12_TEX2D_ARRAY_UAV{
+                    .MipSlice = 0,
+                    .FirstArraySlice = 0,
+                    .ArraySize = 6,
+                    .PlaneSlice = 0,
+                };
+            }
+            d3d_ctx.m_d3dDevice->CreateUnorderedAccessView(pTexture.Get(), nullptr, &uavDesc, uav_cpu_handle);
         }
     }
 }
@@ -1008,12 +1043,17 @@ void GPU_texture::release_gpu_resource() {
         if (isDepth) {
             d3d_ctx.m_DsvDescHeapAlloc.Free(dsv_cpu_handle, dsv_gpu_handle);
         }
+        if (isUAV) {
+            d3d_ctx.m_SrvDescHeapAlloc.Free(uav_cpu_handle, uav_gpu_handle);
+        }
 
         pTexture.Reset();
     }
 }
 
 D3D12_GPU_DESCRIPTOR_HANDLE GPU_texture::GetSRVHandle() const { return srv_gpu_handle; }
+
+D3D12_GPU_DESCRIPTOR_HANDLE GPU_texture::GetUAVHandle() const { return uav_gpu_handle; }
 
 D3D12_CPU_DESCRIPTOR_HANDLE GPU_texture::GetRTVHandle() const { return rtv_cpu_handle; }
 

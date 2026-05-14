@@ -15,6 +15,7 @@
 #include <stdexcept>
 
 #include "../d3d_context.h"
+#include "Raster_pipeline.h"
 
 namespace app {
 
@@ -194,6 +195,8 @@ void GPURenderer::set_active_pipeline_mode(RenderPipelineMode mode) {
         throw std::runtime_error("Pipeline not initialized");
     }
     pipeline_ = pipelines_[(int)mode];
+    pipeline_->OnEnvmapLoad(*gpu_envmap_);  // todo: can we avoid redundant call when switching between pipelines?
+    pipeline_->OnModelLoad(*gpu_model_);
 }
 
 }  // namespace app

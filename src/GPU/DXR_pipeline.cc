@@ -1,12 +1,9 @@
 #include "DXR_pipeline.h"
 
-#include <d3dcompiler.h>
-
-#include <iostream>
-
 #include "../d3d_context.h"
 #include "helpers/DXSampleHelper.h"
 #include "helpers/DirectXRaytracingHelper.h"
+#include "Common_helpers.h"
 
 namespace GlobalRootSignatureParams {
 enum Value : int {
@@ -34,17 +31,6 @@ enum Value : int {
 namespace app {
 
 using namespace glm;
-
-void SerializeAndCreateRaytracingRootSignature(D3D12_ROOT_SIGNATURE_DESC& desc, ComPtr<ID3D12RootSignature>* rootSig) {
-    D3DContext& d3d_ctx = D3DContext::Get();
-    auto device = d3d_ctx.m_d3dDevice;
-    ComPtr<ID3DBlob> blob;
-    ComPtr<ID3DBlob> error;
-
-    ThrowIfFailed(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &error),
-        error ? static_cast<wchar_t*>(error->GetBufferPointer()) : nullptr);
-    ThrowIfFailed(device->CreateRootSignature(1, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(&(*rootSig))));
-}
 
 DXR_pipeline::DXR_pipeline() {
     CreateRootSignatures();
@@ -143,16 +129,7 @@ void DXR_pipeline::CreateRaytracingPipelines() {
     // DXIL library
     // This contains the shaders and their entrypoints for the state object.
     // Since shaders are not considered a subobject, they need to be passed in via DXIL library subobjects.
-    ComPtr<ID3DBlob> shaderBlob;
-    auto hr = D3DReadFileToBlob(c_dxilLibraryName, &shaderBlob);
-    if (FAILED(hr)) {
-        std::wcout << "Failed to read DXIL library: " << c_dxilLibraryName << std::endl;
-        throw HrException(hr);
-    }
-    D3D12_SHADER_BYTECODE libdxil = {
-        .pShaderBytecode = shaderBlob->GetBufferPointer(),
-        .BytecodeLength = shaderBlob->GetBufferSize(),
-    };
+    auto [shaderBlob, libdxil] = LoadShader(c_dxilLibraryName);
 
     CreateRaytracingPipeline(libdxil, c_anyHitRCShaderName, c_closestHitRCShaderName, c_missEnvmapShaderName,
         m_dxrStateObjectRayCaster, PBR_DXR_RECURSION_DEPTH);  // RayCaster

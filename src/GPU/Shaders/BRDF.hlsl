@@ -58,6 +58,10 @@ float V_Schlick(float NoL, float NoV, float Roughness)  // Roughness is perceptu
     return G1(NoL, k) * G1(NoV, k);  // should be G1*G1 / 4.0;
 }
 float pow2(float x) { return x * x; }
+float pow5(float x) {
+    float x2 = x * x;
+    return x2 * x2 * x;
+}
 float f0_dielectric(float transmitted_ior, float incident_ior) {
     return pow2((transmitted_ior - incident_ior) / (transmitted_ior + incident_ior));
 }

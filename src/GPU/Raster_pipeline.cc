@@ -1,57 +1,37 @@
 #include "Raster_pipeline.h"
 
-#include <d3dcompiler.h>
-
-#include <iostream>
 #include <algorithm>
 #include <span>
 
 #include "../d3d_context.h"
+#include "Common_helpers.h"
 #include "helpers/DXSampleHelper.h"
+#include "DFG_Lut_helper.h"
+#include "Cubemaps_helper.h"
 
 namespace GlobalRootSignatureParams {
 enum Value : int {
     SceneConstantSlot = 0,
     MaterialsBufferSlot,
     EnvmapTex,
+    DFGTex,
+    DiffuseLutTex,
     RootConstants,
 
     Count
 };
 }
 
-namespace {
-
-using namespace app;
-using namespace glm;
-
-std::pair<ComPtr<ID3DBlob>, D3D12_SHADER_BYTECODE> LoadShader(const wchar_t* file_name) {
-    ComPtr<ID3DBlob> shaderBlob;
-    auto hr = D3DReadFileToBlob(file_name, &shaderBlob);
-    if (FAILED(hr)) {
-        std::wcout << "Failed to read DXIL library: " << file_name << std::endl;
-        throw HrException(hr);
-    }
-    D3D12_SHADER_BYTECODE dxil = {
-        .pShaderBytecode = shaderBlob->GetBufferPointer(),
-        .BytecodeLength = shaderBlob->GetBufferSize(),
-    };
-
-    return std::make_pair(shaderBlob, dxil);
-}
-
-}  // namespace
-
 namespace app {
 
-using namespace glm;  
-
-void SerializeAndCreateRaytracingRootSignature(D3D12_ROOT_SIGNATURE_DESC& desc, ComPtr<ID3D12RootSignature>* rootSig);
+using namespace glm;
 
 Raster_pipeline::Raster_pipeline() {
     CreateRootSignatures();
     CreatePipelineStateObjects();
     CreateConstantBuffers();
+
+    ComputeDFGLut();
 }
 
 void Raster_pipeline::OnModelLoad(GPU_model& gpu_model) {
@@ -60,6 +40,7 @@ void Raster_pipeline::OnModelLoad(GPU_model& gpu_model) {
 
 void Raster_pipeline::OnEnvmapLoad(const GPU_texture& envmap) {
     // todo: generate cubemaps
+    ComputeDiffuseLut(envmap);
 }
 
 Raster_pipeline::~Raster_pipeline() { release_gpu_resources(); }
@@ -97,13 +78,14 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
 void Raster_pipeline::CreateRootSignatures() {
     // Create an empty root signature.
     CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
-    rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
-    CD3DX12_DESCRIPTOR_RANGE ranges[4];
+    CD3DX12_DESCRIPTOR_RANGE ranges[6];
     ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);     // 1 scene constants buffer.
     ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);     // 2 materials buffer.
     ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 1);  // 3 Envmap texture.
-    ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);     // 4 per draw constants buffer.
+    ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 1);  // 4 DFG texture.
+    ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 1);  // 5 DiffuseLut texture.
+    ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);     // 6 per draw constants buffer.
 
     D3D12_STATIC_SAMPLER_DESC default_sampler = {};  // Default static sampler.
     default_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -114,17 +96,28 @@ void Raster_pipeline::CreateRootSignatures() {
     default_sampler.RegisterSpace = 1;
     default_sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-     D3D12_STATIC_SAMPLER_DESC samplers[] = {default_sampler};
+    D3D12_STATIC_SAMPLER_DESC dfg_sampler = {};
+    dfg_sampler.Filter = D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT;
+    dfg_sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    dfg_sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    dfg_sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    dfg_sampler.ShaderRegister = 1;  // s1
+    dfg_sampler.RegisterSpace = 1;
+    dfg_sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+    D3D12_STATIC_SAMPLER_DESC samplers[] = {default_sampler, dfg_sampler};
 
     CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
     rootParameters[GlobalRootSignatureParams::SceneConstantSlot].InitAsConstantBufferView(0);
     rootParameters[GlobalRootSignatureParams::MaterialsBufferSlot].InitAsDescriptorTable(1, &ranges[1]);
     rootParameters[GlobalRootSignatureParams::EnvmapTex].InitAsDescriptorTable(1, &ranges[2]);
+    rootParameters[GlobalRootSignatureParams::DFGTex].InitAsDescriptorTable(1, &ranges[3]);
+    rootParameters[GlobalRootSignatureParams::DiffuseLutTex].InitAsDescriptorTable(1, &ranges[4]);
     rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(RasterPerDrawData) / 4, 1);
 
     auto flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT 
         | D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
-    rootSignatureDesc.Init(ARRAYSIZE(rootParameters), rootParameters, 1, samplers, flags);
+    rootSignatureDesc.Init(ARRAYSIZE(rootParameters), rootParameters, 2, samplers, flags);
 
     SerializeAndCreateRaytracingRootSignature(rootSignatureDesc, &m_rootSignature);
 }
@@ -230,6 +223,8 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     commandList->SetGraphicsRootDescriptorTable(
         GlobalRootSignatureParams::MaterialsBufferSlot, gpu_model.materials_array.gpuDescriptorHandle);
     commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::EnvmapTex, envmap.GetSRVHandle());
+    commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::DFGTex, DFG_lut.GetSRVHandle());
+    commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::DiffuseLutTex, Diffuse_lut.GetSRVHandle());
 
     const auto& combined_mesh = gpu_model.get_combined_mesh();
 
@@ -319,10 +314,10 @@ void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
     currentWidth = std::max(new_width, 0);
     currentHeight = std::max(new_height, 0);
     m_depthTexture.release_gpu_resource();
-    m_depthTexture = GPU_texture{currentWidth, currentHeight, false, false, true};
+    m_depthTexture = GPU_texture{currentWidth, currentHeight, false, false, false, false, true};
 
     m_renderTarget.release_gpu_resource();
-    m_renderTarget = GPU_texture{currentWidth, currentHeight, false, true, false};
+    m_renderTarget = GPU_texture{currentWidth, currentHeight, true, false, false, true, false};
 }
 
 void Raster_pipeline::sort_objects_for_rendering(const GPU_model& gpu_model, int& num_opaque_objects, int& num_alpha_blended_objects) {
@@ -357,6 +352,32 @@ void Raster_pipeline::sort_objects_for_rendering(const GPU_model& gpu_model, int
             return a.ZDistanceToCamera > b.ZDistanceToCamera;  // back to front for alpha blended objects
         }
     });
+}
+
+void Raster_pipeline::ComputeDFGLut() {
+    DFG_Lut_helper DFG_compute_helper{};
+    DFG_compute_helper.CreateDFG_Lut();
+    DFG_lut = std::move(DFG_compute_helper.GetDFG_Lut());
+
+    D3DContext& d3d_ctx = D3DContext::Get();
+    d3d_ctx.DispatchDXRCommandList(); // WARNING: this assumes that command list is open and ready at this point
+    d3d_ctx.WaitForPendingDXR();
+
+    d3d_ctx.InitDXRCommandList();
+}
+
+void Raster_pipeline::ComputeDiffuseLut(const GPU_texture& envmap) {
+    D3DContext& d3d_ctx = D3DContext::Get();
+    d3d_ctx.InitDXRCommandList();
+    
+    EnvCube_helper EnvCube_helper{};
+    EnvCube_helper.CreateDiffuseEnvmapCube(envmap);
+    Diffuse_lut = std::move(EnvCube_helper.GetDiffuseEnvmapCube());
+
+    d3d_ctx.DispatchDXRCommandList();  // WARNING: this assumes that command list is open and ready at this point
+    d3d_ctx.WaitForPendingDXR();
+
+    //d3d_ctx.InitDXRCommandList();
 }
 
 }
