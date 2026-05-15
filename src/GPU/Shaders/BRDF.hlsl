@@ -95,7 +95,6 @@ float3 get_geometric_normal(const float3 p1, const float3 p2, const float3 p3,
 }
 float3 normal_map_sample_to_world(const float3 normal_map_sample, const float3x3 TBN) {
     float3 normal_vector = normal_map_sample * 2.0f - 1.0f;
-    normal_vector.y *= -1;
     return Tangent2World(normal_vector, TBN);
 }
 

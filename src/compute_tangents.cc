@@ -40,7 +40,7 @@ void setTSpaceBasic(
     Mesh* mesh = static_cast<Mesh*>(context->m_pUserData);
     auto index = mesh->indices[faceIdx * 3 + vertIdx];
     memcpy(&mesh->vertices[index].tangent, tangent, 3 * sizeof(fvec4::value_type));
-    mesh->vertices[index].tangent.w = sign;
+    mesh->vertices[index].tangent.w = -sign;
 }
 }  // namespace
 
