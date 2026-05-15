@@ -33,10 +33,6 @@ void CreateBufferSRV(D3DContext& d3d_ctx, const ComPtr<ID3D12Resource>& buffer, 
     d3d_ctx.m_d3dDevice->CreateShaderResourceView(buffer.Get(), &srvDesc, handles.cpuHandle);
 }
 
-uint32_t CalculateMipCount(uint32_t width, uint32_t height) { return std::bit_width(std::max(width, height)); }
-
-uint32_t GetMipDimension(uint32_t baseSize, uint32_t mipLevel) { return std::max(1u, baseSize >> mipLevel); }
-
 bool isTrue(TEXTURE_TRAITS a) { return a != TEXTURE_TRAITS::None; }
 bool isHDR(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::HDR) != TEXTURE_TRAITS::None; }
 bool isSRGB(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::sRGB) != TEXTURE_TRAITS::None; }
@@ -404,7 +400,7 @@ void GPU_model::prepare_textures_array_buffer(const Model& cpu_model) {
     for (int i = 0; i < images_size; ++i) {
         const auto& img = cpu_model.images[i];
         bool srgb = useSRGB[i];
-        textures.emplace_back(img, srgb, true); // todo: should allocate mips regardless of usage?
+        textures.emplace_back(img, srgb, true);
     }
 }
 
@@ -812,7 +808,7 @@ GPU_texture::GPU_texture(const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_, b
     upload_texture_to_gpu(cpu_texture.width(), cpu_texture.height(), cpu_texture.data(), sizeof(sdr_pixel), format);
 }
 
-DXGI_FORMAT GPU_texture::choose_format() { 
+DXGI_FORMAT GPU_texture::choose_format() const {
     if (isDepth(texture_options)) return DXGI_FORMAT_D32_FLOAT;
     if (isHDR(texture_options)) return DXGI_FORMAT_R32G32B32A32_FLOAT;
     if (isSRGB(texture_options)) return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
@@ -1038,6 +1034,38 @@ void GPU_texture::upload_texture_to_gpu(int width_, int height_, const auto& dat
 }
 
 ComPtr<ID3D12Resource> GPU_texture::get_gpu_resource() { return pTexture; }
+
+void GPU_texture::GetUAVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle) const {
+    bool isCubemap = ::isCubemap(texture_options);
+    bool isUAV = ::isUAV(texture_options);
+    if (!isUAV) {
+        return;
+    }
+    auto format = choose_format();
+    D3DContext& d3d_ctx = D3DContext::Get();
+    if (isUAV) {
+        // Create a unordered access view for the texture
+        D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{
+            .Format = format,
+            .ViewDimension = isCubemap ? D3D12_UAV_DIMENSION_TEXTURE2DARRAY : D3D12_UAV_DIMENSION_TEXTURE2D,
+            .Texture2D =
+                D3D12_TEX2D_UAV{
+                    .MipSlice = mipLevel,
+                    .PlaneSlice = 0,
+                },
+        };
+        if (isCubemap) {
+            uavDesc.Texture2DArray = D3D12_TEX2D_ARRAY_UAV{
+                .MipSlice = mipLevel,
+                .FirstArraySlice = 0,
+                .ArraySize = 6,
+                .PlaneSlice = 0,
+            };
+        }
+        d3d_ctx.m_d3dDevice->CreateUnorderedAccessView(pTexture.Get(), nullptr, &uavDesc, Handle);
+    }
+
+}
 
 void GPU_texture::release_gpu_resource() {
     if (pTexture) {

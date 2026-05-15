@@ -37,6 +37,7 @@ struct RasterConstantBuffer {
     float invMaxNewRaysPerBounce;
     int maxRayBounces;
     float envmapRotation;
+    int SpecularLutMips;
 };
 
 struct RasterPerDrawData {

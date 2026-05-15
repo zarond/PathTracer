@@ -118,20 +118,23 @@ void CS_Specular_Lut(uint3 DTid : SV_DispatchThreadID) {
     float2 jitter = float2(pcg3d16(seed).xy) / float(0xFFFF);
 
     float3 result = 0.0f;
-    const int N_samples = 256;  // todo: prefilter the envmap and use fewer samples for rougher mip levels
+    float weight = 0.0f;
+    const int N_samples = 1024;  // todo: prefilter the envmap and use fewer samples for rougher mip levels
     const float inv_N_samples = 1.0f / N_samples;
     for (int i = 0; i < N_samples; ++i) {
         float2 rand = fibonacci2D(i, inv_N_samples);
         rand = fmod(rand + jitter, 1.0f);
-        float3 l = importanceSampleGGX(rand, linear_roughness);
-        l = Tangent2World(l, TBN);
+        float3 h = importanceSampleGGX(rand, linear_roughness);
+        h = Tangent2World(h, TBN);
+        float3 l = reflect(-N, h);
 
         const float LoN = saturate(dot(l, N));
         if (LoN > 0) {
-            result += SampleEnvmap(l);
+            result += SampleEnvmap(l) * LoN;
+            weight += LoN;
         }
     }
-    result *= inv_N_samples;
+    result /= weight;
 
     gOutput[DTid.xyz] = float4(result, 1.0);
 }

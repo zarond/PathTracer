@@ -84,7 +84,7 @@ void GPURenderer::reload_ray_program() {
     if (envmap_ref_ == nullptr) return;
     gpu_envmap_ = std::make_unique<GPU_texture>(*envmap_ref_);
 
-    pipeline_->OnEnvmapLoad(*gpu_envmap_);
+    OnEnvmapLoad();
 }
 void GPURenderer::reload_acceleration_structure() {
     if (model_ref_ == nullptr) return;
@@ -93,7 +93,7 @@ void GPURenderer::reload_acceleration_structure() {
     bool raytracing_support = D3DContext::Get().hardware_ray_tracing_support;
     gpu_model_ = std::make_unique<GPU_model>(*model_ref_, raytracing_support);
 
-    pipeline_->OnModelLoad(*gpu_model_);
+    OnModelLoad();
 
     auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
     std::cout << "GPU DXR model Acceleration Structure created in " << diff.count() << " ms." << '\n';
@@ -195,8 +195,23 @@ void GPURenderer::set_active_pipeline_mode(RenderPipelineMode mode) {
         throw std::runtime_error("Pipeline not initialized");
     }
     pipeline_ = pipelines_[(int)mode];
-    pipeline_->OnEnvmapLoad(*gpu_envmap_);  // todo: can we avoid redundant call when switching between pipelines?
-    pipeline_->OnModelLoad(*gpu_model_);
+}
+
+void GPURenderer::OnEnvmapLoad() {
+    // Keep state of pipelines in sync for simpler logic
+    for (auto& pipeline : pipelines_) {
+        if (pipeline) {
+            pipeline->OnEnvmapLoad(*gpu_envmap_);
+        }
+    }
+}
+void GPURenderer::OnModelLoad() {
+    // Keep state of pipelines in sync for simpler logic
+    for (auto& pipeline : pipelines_) {
+        if (pipeline) {
+            pipeline->OnModelLoad(*gpu_model_);
+        }
+    }
 }
 
 }  // namespace app

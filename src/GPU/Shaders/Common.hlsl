@@ -38,6 +38,7 @@ struct RasterConstantBuffer {
     float invMaxNewRaysPerBounce;
     int maxRayBounces;
     float envmapRotation;
+    int SpecularLutMips;
 };
 
 struct RasterPerDrawData {
@@ -131,6 +132,12 @@ float2 sample_roughness_metallic(const Material material, const float2 uv, const
     float2 sample = float2(material.roughnessFactor, material.metallicFactor);
     Texture2D<float4> Tex = ResourceDescriptorHeap[material.metallicRoughnessTextureIndex];
     sample *= Tex.SampleLevel(Sampler, uv, 0).gb;
+    return sample;
+}
+float3 sample_occlusion_roughness_metallic(const Material material, const float2 uv, const SamplerState Sampler) {
+    float3 sample = float3(1.0, material.roughnessFactor, material.metallicFactor);
+    Texture2D<float4> Tex = ResourceDescriptorHeap[material.metallicRoughnessTextureIndex];
+    sample *= Tex.SampleLevel(Sampler, uv, 0).rgb;
     return sample;
 }
 float3 sample_normals(const Material material, const float2 uv, const SamplerState Sampler, out bool has_normal_map) {

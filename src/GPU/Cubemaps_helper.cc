@@ -26,7 +26,10 @@ EnvCube_helper::EnvCube_helper() {
     CreatePipelineStateObject();
 }
 
-EnvCube_helper::~EnvCube_helper() { release_gpu_resources(); }
+EnvCube_helper::~EnvCube_helper() { 
+    ReleaseTemporaryGPUResources();
+    release_gpu_resources(); 
+}
 
 void EnvCube_helper::CreateDiffuseEnvmapCube(const GPU_texture& envmap) {
     Diffuse_lut.release_gpu_resource();
@@ -52,7 +55,7 @@ GPU_texture&& EnvCube_helper::GetDiffuseEnvmapCube() { return std::move(Diffuse_
 
 void EnvCube_helper::CreateSpecularEnvmapCube(const GPU_texture& envmap) {
     Specular_lut.release_gpu_resource();
-    TEXTURE_TRAITS flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::Cubemap;
+    TEXTURE_TRAITS flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::Cubemap | TEXTURE_TRAITS::AllocateMips;
     Specular_lut = GPU_texture{Specular_size, Specular_size, flags};
 
     D3DContext& d3d_ctx = D3DContext::Get();
@@ -64,15 +67,42 @@ void EnvCube_helper::CreateSpecularEnvmapCube(const GPU_texture& envmap) {
     commandList->SetPipelineState(m_SpecularPipelineState.Get());
     commandList->SetComputeRootSignature(m_rootSignature.Get());
 
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, Specular_lut.GetUAVHandle());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::EnvmapTex, envmap.GetSRVHandle());
 
-    LutCSInput input{0,0,0};
-    constexpr int inputSizeInInt = sizeof(LutCSInput) / 4;
-    commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
+    m_mip_uav_handles.resize(SpecularMips);
+
+    m_mip_uav_handles[0].gpuHandle = Specular_lut.GetUAVHandle();
+    for (int mipLevel = 1; mipLevel < SpecularMips; ++mipLevel) {
+        D3D_Handle_Pair handles{};
+        d3d_ctx.m_SrvDescHeapAlloc.Alloc(&handles);
+
+        Specular_lut.GetUAVHandleForMipLevel(mipLevel, handles.cpuHandle);
+
+        m_mip_uav_handles[mipLevel] = handles;
+    }
+
+    for (int mipLevel = 0; mipLevel < SpecularMips; ++mipLevel) {
+        auto dimension = GPU_texture::GetMipDimension(Specular_size, mipLevel);
+        auto uav_gpu_handle = m_mip_uav_handles[mipLevel].gpuHandle;
+
+        commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, uav_gpu_handle);
+
+        float roughness = static_cast<float>(mipLevel) / static_cast<float>(SpecularMips - 1);
+        LutCSInput input{mipLevel, SpecularMips, roughness};
+        constexpr int inputSizeInInt = sizeof(LutCSInput) / 4;
+        commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
     
-    commandList->Dispatch(Specular_size / 8, Specular_size / 8, 6);
-    // todo
+        commandList->Dispatch((dimension + 7) / 8, (dimension + 7) / 8, 6);
+    }
+    m_mip_uav_handles[0].gpuHandle = D3D12_GPU_DESCRIPTOR_HANDLE{};  // prevent the first mip's UAV from being released
+}
+
+void EnvCube_helper::ReleaseTemporaryGPUResources() {
+    D3DContext& d3d_ctx = D3DContext::Get();
+    for (const auto& handle : m_mip_uav_handles) {
+        d3d_ctx.m_SrvDescHeapAlloc.Free(handle);
+    }
+    m_mip_uav_handles.clear();
 }
 
 GPU_texture&& EnvCube_helper::GetSpecularEnvmapCube() { return std::move(Specular_lut); }
@@ -95,6 +125,7 @@ void EnvCube_helper::CreateRootSignature() {
     envmap_sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
     envmap_sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     envmap_sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    envmap_sampler.MaxLOD = D3D12_FLOAT32_MAX;
     envmap_sampler.ShaderRegister = 0;  // s0
     envmap_sampler.RegisterSpace = 1;
     envmap_sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;

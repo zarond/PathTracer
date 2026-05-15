@@ -80,6 +80,9 @@ class GPURenderer : public IRenderer {
     size_t last_model_fence_value_ = 0;
     size_t last_envmap_fence_value_ = 0;
 
+    void OnEnvmapLoad();
+    void OnModelLoad();
+
     unsigned int frameID_ = 0;
 };
 

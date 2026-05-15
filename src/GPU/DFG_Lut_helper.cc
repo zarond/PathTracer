@@ -36,7 +36,7 @@ void DFG_Lut_helper::CreateDFG_Lut() {
 
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, DFG_lut.GetUAVHandle());
 
-    commandList->Dispatch(DFG_size / 8, DFG_size / 8, 1);
+    commandList->Dispatch((DFG_size + 7) / 8, (DFG_size + 7) / 8, 1);
 }
 
 GPU_texture&& DFG_Lut_helper::GetDFG_Lut() { return std::move(DFG_lut); }

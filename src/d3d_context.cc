@@ -34,6 +34,7 @@ void DescriptorHeapAllocator::Alloc(D3D_Handle_Pair* out_desc_handle) {
 }
 void DescriptorHeapAllocator::Free(
     D3D12_CPU_DESCRIPTOR_HANDLE cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE gpu_desc_handle) {
+    if (cpu_desc_handle.ptr == 0 || gpu_desc_handle.ptr == 0) return;
     int cpu_idx = (int)((cpu_desc_handle.ptr - HeapStartCpu.ptr) / HeapHandleIncrement);
     int gpu_idx = (int)((gpu_desc_handle.ptr - HeapStartGpu.ptr) / HeapHandleIncrement);
     assert(cpu_idx == gpu_idx);

@@ -112,13 +112,18 @@ class GPU_texture {
     TEXTURE_TRAITS texture_options = TEXTURE_TRAITS::None;
     uint8_t mipLevels = 1;
 
+    void GetUAVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle) const;
+
+    static constexpr uint32_t CalculateMipCount(uint32_t width, uint32_t height) { return std::bit_width(std::max(width, height)); }
+    static constexpr uint32_t GetMipDimension(uint32_t baseSize, uint32_t mipLevel) { return std::max(1u, baseSize >> mipLevel); }
+
     void release_gpu_resource();
 
   private:
     void create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT format);
     void upload_texture_to_gpu(int width_, int height_, const auto& data_, size_t sizeofpixel, DXGI_FORMAT format);
 
-    DXGI_FORMAT choose_format();
+    DXGI_FORMAT choose_format() const;
 
     ComPtr<ID3D12Resource> pTexture;
     D3D_Handle_Pair srv_handle{};

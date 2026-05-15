@@ -74,13 +74,14 @@ float4 PS_Main(PSInput input) : SV_TARGET {
 
     float3 emissive = sample_emissive(mat, uv, Sampler);
 
-    float2 RM = sample_roughness_metallic(mat, uv, Sampler);
-    float3 diffuse_color = (1.0f - RM.y) * albedo_color.rgb;
+    float3 ORM = sample_occlusion_roughness_metallic(mat, uv, Sampler);
+    float AO = ORM.x;  // Ambient Occlusion, do I need it? Should I add it to raytracing as well?
+    float3 diffuse_color = (1.0f - ORM.z) * albedo_color.rgb;
 
-    float3 f0 = lerp(mat.dielectric_f0, albedo_color.rgb, RM.y);
+    float3 f0 = lerp(mat.dielectric_f0, albedo_color.rgb, ORM.z);
     const float3 f90 = 1.0f;
 
-    const float roughness = RM.x;
+    const float roughness = ORM.y;
     const float linear_roughness = roughness * roughness;
 
     float3 N = input.normal.xyz;
@@ -107,9 +108,9 @@ float4 PS_Main(PSInput input) : SV_TARGET {
     N.xz = mul(envmap_rotation_matrix, N.xz);  // enmap rotation
     float3 diffuseIBL = DiffuseLut.SampleLevel(Sampler, N, 0);
     l.xz = mul(envmap_rotation_matrix, l.xz);  // enmap rotation
-    float3 specularIBL = SpecularLut.SampleLevel(Sampler, l, 0);  // todo:
+    float3 specularIBL = SpecularLut.SampleLevel(Sampler, l, roughness * (g_rasterCB.SpecularLutMips - 1));
 
-    float3 final_light = diffuse_color * diffuseIBL * (1.0f - Fresnel) + Fresnel * specularIBL + emissive;
+    float3 final_light = AO * diffuse_color * diffuseIBL * (1.0f - Fresnel) + Fresnel * specularIBL + emissive;
 
     return float4(final_light, alpha);
 }

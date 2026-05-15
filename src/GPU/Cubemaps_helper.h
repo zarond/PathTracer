@@ -19,6 +19,12 @@ class EnvCube_helper {
     void CreateSpecularEnvmapCube(const GPU_texture& envmap);
     GPU_texture&& GetSpecularEnvmapCube();
 
+    static constexpr int Diffuse_size = 32;
+    static constexpr int Specular_size = 1024;
+    static constexpr int SpecularMips = GPU_texture::CalculateMipCount(Specular_size, Specular_size) - 1; // so that max mip is 2x2 texture
+
+    void ReleaseTemporaryGPUResources();
+
   private:
     void CreateRootSignature();
     void CreatePipelineStateObject();
@@ -29,11 +35,10 @@ class EnvCube_helper {
     const wchar_t* c_cs_diffuse_file_name = L"CS_Diffuse_Lut.dxil";
     const wchar_t* c_cs_specular_file_name = L"CS_Specular_Lut.dxil";
 
-    static constexpr int Diffuse_size = 32;
-    static constexpr int Specular_size = 512;
-
     GPU_texture Diffuse_lut{};
     GPU_texture Specular_lut{};
+
+    std::vector<D3D_Handle_Pair> m_mip_uav_handles; // store temporary UAV views to mips for compute shader dispatches
 
     void release_gpu_resources();
 };

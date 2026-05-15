@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <span>
+#include <chrono>
+#include <iostream>
 
 #include "../d3d_context.h"
 #include "Common_helpers.h"
@@ -39,7 +41,6 @@ void Raster_pipeline::OnModelLoad(GPU_model& gpu_model) {
 }
 
 void Raster_pipeline::OnEnvmapLoad(const GPU_texture& envmap) {
-    // todo: generate cubemaps
     ComputeEnvmapLut(envmap);
 }
 
@@ -72,6 +73,7 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_rasterCB.invMaxNewRaysPerBounce = 1.0f / render_settings.maxNewRaysPerBounce;
     m_rasterCB.maxRayBounces = render_settings.maxRayBounces;
     m_rasterCB.envmapRotation = render_settings.envmapRotation;
+    m_rasterCB.SpecularLutMips = EnvCube_helper::SpecularMips;
     RaytracingMode = render_settings.programMode;
 }
 
@@ -92,6 +94,7 @@ void Raster_pipeline::CreateRootSignatures() {
     default_sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
     default_sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
     default_sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    default_sampler.MaxLOD = D3D12_FLOAT32_MAX;
     default_sampler.ShaderRegister = 0;  // s0
     default_sampler.RegisterSpace = 1;
     default_sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
@@ -357,6 +360,8 @@ void Raster_pipeline::sort_objects_for_rendering(const GPU_model& gpu_model, int
 }
 
 void Raster_pipeline::ComputeDFGLut() {
+    auto start = std::chrono::high_resolution_clock::now();
+
     DFG_Lut_helper DFG_compute_helper{};
     DFG_compute_helper.CreateDFG_Lut();
     DFG_lut = std::move(DFG_compute_helper.GetDFG_Lut());
@@ -366,9 +371,14 @@ void Raster_pipeline::ComputeDFGLut() {
     d3d_ctx.WaitForPendingDXR();
 
     d3d_ctx.InitDXRCommandList();
+
+    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+    std::cout << "DFG Lut computed in " << diff.count() << " ms." << '\n';
 }
 
 void Raster_pipeline::ComputeEnvmapLut(const GPU_texture& envmap) {
+    auto start = std::chrono::high_resolution_clock::now();
+
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
     
@@ -380,6 +390,9 @@ void Raster_pipeline::ComputeEnvmapLut(const GPU_texture& envmap) {
 
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();
+
+    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+    std::cout << "Diffuse and Specular Lut computed in " << diff.count() << " ms." << '\n';
 }
 
 }
