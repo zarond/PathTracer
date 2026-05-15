@@ -27,15 +27,24 @@ D3D12_SHADER_RESOURCE_VIEW_DESC CreateSRVDescription(UINT numElements, UINT elem
 }
 
 void CreateBufferSRV(D3DContext& d3d_ctx, const ComPtr<ID3D12Resource>& buffer, UINT numElements, UINT elementSize,
-    GPU_model::D3D_Handle_Pair& handles) {
-    d3d_ctx.m_SrvDescHeapAlloc.Alloc(&handles.cpuDescriptorHandle, &handles.gpuDescriptorHandle);
+    D3D_Handle_Pair& handles) {
+    d3d_ctx.m_SrvDescHeapAlloc.Alloc(&handles.cpuHandle, &handles.gpuHandle);
     const auto srvDesc = CreateSRVDescription(numElements, elementSize);
-    d3d_ctx.m_d3dDevice->CreateShaderResourceView(buffer.Get(), &srvDesc, handles.cpuDescriptorHandle);
+    d3d_ctx.m_d3dDevice->CreateShaderResourceView(buffer.Get(), &srvDesc, handles.cpuHandle);
 }
 
 uint32_t CalculateMipCount(uint32_t width, uint32_t height) { return std::bit_width(std::max(width, height)); }
 
 uint32_t GetMipDimension(uint32_t baseSize, uint32_t mipLevel) { return std::max(1u, baseSize >> mipLevel); }
+
+bool isTrue(TEXTURE_TRAITS a) { return a != TEXTURE_TRAITS::None; }
+bool isHDR(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::HDR) != TEXTURE_TRAITS::None; }
+bool isSRGB(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::sRGB) != TEXTURE_TRAITS::None; }
+bool isCubemap(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::Cubemap) != TEXTURE_TRAITS::None; }
+bool isRenderTarget(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::RenderTarget) != TEXTURE_TRAITS::None; }
+bool isDepth(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::Depth) != TEXTURE_TRAITS::None; }
+bool isUAV(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::UAV) != TEXTURE_TRAITS::None; }
+bool AllocateMips(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::AllocateMips) != TEXTURE_TRAITS::None; }
 
 }  // namespace
 
@@ -414,10 +423,10 @@ void GPU_model::release_gpu_resource() {
 
     if (isEmpty_) return;
 
-    d3d_ctx.m_SrvDescHeapAlloc.Free(combined_mesh_indices.cpuDescriptorHandle, combined_mesh_indices.gpuDescriptorHandle);
-    d3d_ctx.m_SrvDescHeapAlloc.Free(combined_mesh_vertices.cpuDescriptorHandle, combined_mesh_vertices.gpuDescriptorHandle);
-    d3d_ctx.m_SrvDescHeapAlloc.Free(combined_mesh_offsets.cpuDescriptorHandle, combined_mesh_offsets.gpuDescriptorHandle);
-    d3d_ctx.m_SrvDescHeapAlloc.Free(materials_array.cpuDescriptorHandle, materials_array.gpuDescriptorHandle);
+    d3d_ctx.m_SrvDescHeapAlloc.Free(combined_mesh_indices.cpuHandle, combined_mesh_indices.gpuHandle);
+    d3d_ctx.m_SrvDescHeapAlloc.Free(combined_mesh_vertices.cpuHandle, combined_mesh_vertices.gpuHandle);
+    d3d_ctx.m_SrvDescHeapAlloc.Free(combined_mesh_offsets.cpuHandle, combined_mesh_offsets.gpuHandle);
+    d3d_ctx.m_SrvDescHeapAlloc.Free(materials_array.cpuHandle, materials_array.gpuHandle);
 };
 
 bool GPU_model::isEmpty() const { return isEmpty_; }
@@ -781,38 +790,32 @@ D3D12_GPU_VIRTUAL_ADDRESS GPU_model::GetGPUVirtualAddress() const { return tlasB
 
 // GPU_texture
 
-GPU_texture::GPU_texture(UINT64 width, UINT height, bool HDR_, bool srgb_, bool is_cubemap, bool is_render_target, bool is_depth,
-    bool is_uav, bool allocate_mips)
-    : HDR(HDR_),
-      srgb(srgb_),
-      isCubemap(is_cubemap),
-      isRenderTarget(is_render_target),
-      isDepth(is_depth),
-      isUAV(is_uav),
-      mips(allocate_mips) 
-{
-    assert(!is_cubemap || width == height);
+GPU_texture::GPU_texture(UINT64 width, UINT height, TEXTURE_TRAITS texture_options) : texture_options(texture_options) {
+    assert((texture_options & TEXTURE_TRAITS::Cubemap) == TEXTURE_TRAITS::None || width == height);
     DXGI_FORMAT format = choose_format();
     create_texture_resource(width, height, format);
 }
 
-GPU_texture::GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture, bool allocate_mips) : HDR(true), mips(allocate_mips) {
+GPU_texture::GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture, bool allocate_mips) {
+    texture_options = TEXTURE_TRAITS::HDR;
+    if (allocate_mips) texture_options |= TEXTURE_TRAITS::AllocateMips;
     create_texture_resource(cpu_texture.width(), cpu_texture.height(), DXGI_FORMAT_R32G32B32A32_FLOAT);
     upload_texture_to_gpu(
         cpu_texture.width(), cpu_texture.height(), cpu_texture.data(), sizeof(hdr_pixel), DXGI_FORMAT_R32G32B32A32_FLOAT);
 }
 
-GPU_texture::GPU_texture(const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_, bool allocate_mips)
-    : HDR(false), srgb(srgb_), mips(allocate_mips) {
-    DXGI_FORMAT format = srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
+GPU_texture::GPU_texture(const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_, bool allocate_mips) {
+    if (srgb_) texture_options |= TEXTURE_TRAITS::sRGB;
+    if (allocate_mips) texture_options |= TEXTURE_TRAITS::AllocateMips;
+    DXGI_FORMAT format = srgb_ ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
     create_texture_resource(cpu_texture.width(), cpu_texture.height(), format);
     upload_texture_to_gpu(cpu_texture.width(), cpu_texture.height(), cpu_texture.data(), sizeof(sdr_pixel), format);
 }
 
 DXGI_FORMAT GPU_texture::choose_format() { 
-    if (isDepth) return DXGI_FORMAT_D32_FLOAT;
-    if (HDR) return DXGI_FORMAT_R32G32B32A32_FLOAT;
-    if (srgb) return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    if (isDepth(texture_options)) return DXGI_FORMAT_D32_FLOAT;
+    if (isHDR(texture_options)) return DXGI_FORMAT_R32G32B32A32_FLOAT;
+    if (isSRGB(texture_options)) return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
     return DXGI_FORMAT_R8G8B8A8_UNORM;
 }
 
@@ -820,6 +823,11 @@ GPU_texture::~GPU_texture() { release_gpu_resource(); }
 
 void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT format) {
     D3DContext& d3d_ctx = D3DContext::Get();
+    bool isRenderTarget = ::isRenderTarget(texture_options);
+    bool mips = AllocateMips(texture_options);
+    bool isCubemap = ::isCubemap(texture_options);
+    bool isDepth = ::isDepth(texture_options);
+    bool isUAV = ::isUAV(texture_options);
     mipLevels = mips ? CalculateMipCount(width, height) : 1;
     if (pTexture == nullptr) {
         auto flags = D3D12_RESOURCE_FLAG_NONE;
@@ -847,18 +855,18 @@ void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT
         D3D12_RESOURCE_STATES initial_state = D3D12_RESOURCE_STATE_COMMON;
 
         if (!isDepth) {
-            d3d_ctx.m_SrvDescHeapAlloc.Alloc(&srv_cpu_handle, &srv_gpu_handle);
+            d3d_ctx.m_SrvDescHeapAlloc.Alloc(&srv_handle);
         }
         if (isRenderTarget) {
-            d3d_ctx.m_RtvDescHeapAlloc.Alloc(&rtv_cpu_handle, &rtv_gpu_handle);
+            d3d_ctx.m_RtvDescHeapAlloc.Alloc(&rtv_handle);
             initial_state = D3D12_RESOURCE_STATE_RENDER_TARGET;
         }
         if (isDepth) {
-            d3d_ctx.m_DsvDescHeapAlloc.Alloc(&dsv_cpu_handle, &dsv_gpu_handle);
+            d3d_ctx.m_DsvDescHeapAlloc.Alloc(&dsv_handle);
             initial_state = D3D12_RESOURCE_STATE_DEPTH_WRITE;
         }
         if (isUAV) {
-            d3d_ctx.m_SrvDescHeapAlloc.Alloc(&uav_cpu_handle, &uav_gpu_handle);
+            d3d_ctx.m_SrvDescHeapAlloc.Alloc(&uav_handle);
             initial_state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         }
 
@@ -888,7 +896,7 @@ void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT
                     .ResourceMinLODClamp = 0.0f,
                 };
             }
-            d3d_ctx.m_d3dDevice->CreateShaderResourceView(pTexture.Get(), &srvDesc, srv_cpu_handle);
+            d3d_ctx.m_d3dDevice->CreateShaderResourceView(pTexture.Get(), &srvDesc, srv_handle.cpuHandle);
         }
 
         if (isRenderTarget) {
@@ -909,7 +917,7 @@ void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT
                     .PlaneSlice = 0,
                 };
             }
-            d3d_ctx.m_d3dDevice->CreateRenderTargetView(pTexture.Get(), &rtvDesc, rtv_cpu_handle);
+            d3d_ctx.m_d3dDevice->CreateRenderTargetView(pTexture.Get(), &rtvDesc, rtv_handle.cpuHandle);
         }
 
         if (isDepth) {
@@ -928,7 +936,7 @@ void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT
                     .ArraySize = 6,
                 };
             }
-            d3d_ctx.m_d3dDevice->CreateDepthStencilView(pTexture.Get(), &dsvDesc, dsv_cpu_handle);
+            d3d_ctx.m_d3dDevice->CreateDepthStencilView(pTexture.Get(), &dsvDesc, dsv_handle.cpuHandle);
         }
 
         if (isUAV) {
@@ -950,7 +958,7 @@ void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT
                     .PlaneSlice = 0,
                 };
             }
-            d3d_ctx.m_d3dDevice->CreateUnorderedAccessView(pTexture.Get(), nullptr, &uavDesc, uav_cpu_handle);
+            d3d_ctx.m_d3dDevice->CreateUnorderedAccessView(pTexture.Get(), nullptr, &uavDesc, uav_handle.cpuHandle);
         }
     }
 }
@@ -1034,29 +1042,29 @@ ComPtr<ID3D12Resource> GPU_texture::get_gpu_resource() { return pTexture; }
 void GPU_texture::release_gpu_resource() {
     if (pTexture) {
         D3DContext& d3d_ctx = D3DContext::Get();
-        if (!isDepth) {
-            d3d_ctx.m_SrvDescHeapAlloc.Free(srv_cpu_handle, srv_gpu_handle);
+        if (!isDepth(texture_options)) {
+            d3d_ctx.m_SrvDescHeapAlloc.Free(srv_handle);
         }
-        if (isRenderTarget) {
-            d3d_ctx.m_RtvDescHeapAlloc.Free(rtv_cpu_handle, rtv_gpu_handle);
+        if (isRenderTarget(texture_options)) {
+            d3d_ctx.m_RtvDescHeapAlloc.Free(rtv_handle);
         }
-        if (isDepth) {
-            d3d_ctx.m_DsvDescHeapAlloc.Free(dsv_cpu_handle, dsv_gpu_handle);
+        if (isDepth(texture_options)) {
+            d3d_ctx.m_DsvDescHeapAlloc.Free(dsv_handle);
         }
-        if (isUAV) {
-            d3d_ctx.m_SrvDescHeapAlloc.Free(uav_cpu_handle, uav_gpu_handle);
+        if (isUAV(texture_options)) {
+            d3d_ctx.m_SrvDescHeapAlloc.Free(uav_handle);
         }
 
         pTexture.Reset();
     }
 }
 
-D3D12_GPU_DESCRIPTOR_HANDLE GPU_texture::GetSRVHandle() const { return srv_gpu_handle; }
+D3D12_GPU_DESCRIPTOR_HANDLE GPU_texture::GetSRVHandle() const { return srv_handle.gpuHandle; }
 
-D3D12_GPU_DESCRIPTOR_HANDLE GPU_texture::GetUAVHandle() const { return uav_gpu_handle; }
+D3D12_GPU_DESCRIPTOR_HANDLE GPU_texture::GetUAVHandle() const { return uav_handle.gpuHandle; }
 
-D3D12_CPU_DESCRIPTOR_HANDLE GPU_texture::GetRTVHandle() const { return rtv_cpu_handle; }
+D3D12_CPU_DESCRIPTOR_HANDLE GPU_texture::GetRTVHandle() const { return rtv_handle.cpuHandle; }
 
-D3D12_CPU_DESCRIPTOR_HANDLE GPU_texture::GetDSVHandle() const { return dsv_cpu_handle; }
+D3D12_CPU_DESCRIPTOR_HANDLE GPU_texture::GetDSVHandle() const { return dsv_handle.cpuHandle; }
 
 }  // namespace app

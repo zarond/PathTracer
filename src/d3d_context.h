@@ -23,8 +23,13 @@ struct FrameContext {
     UINT64 FenceValue;
 };
 
+struct D3D_Handle_Pair {
+    D3D12_CPU_DESCRIPTOR_HANDLE cpuHandle;
+    D3D12_GPU_DESCRIPTOR_HANDLE gpuHandle;
+};
+
 // Simple free list based allocator
-class ExampleDescriptorHeapAllocator {
+class DescriptorHeapAllocator {
   private:
     ID3D12DescriptorHeap* Heap = nullptr;
     D3D12_DESCRIPTOR_HEAP_TYPE HeapType = D3D12_DESCRIPTOR_HEAP_TYPE_NUM_TYPES;
@@ -37,7 +42,9 @@ class ExampleDescriptorHeapAllocator {
     void Create(ID3D12Device* device, ID3D12DescriptorHeap* heap);
     void Destroy();
     void Alloc(D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle);
-    void Free(D3D12_CPU_DESCRIPTOR_HANDLE out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE out_gpu_desc_handle);
+    void Alloc(D3D_Handle_Pair* out_desc_handle);
+    void Free(D3D12_CPU_DESCRIPTOR_HANDLE cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE gpu_desc_handle);
+    void Free(D3D_Handle_Pair desc_handle);
     int GetIndex(D3D12_GPU_DESCRIPTOR_HANDLE gpu_desc_handle) const;
 };
 
@@ -50,12 +57,12 @@ struct D3DContext {
 
     ComPtr<ID3D12DescriptorHeap> m_RtvDescHeap;
     ComPtr<ID3D12DescriptorHeap> m_SrvDescHeap;
-    ExampleDescriptorHeapAllocator m_SrvDescHeapAlloc;
+    DescriptorHeapAllocator m_SrvDescHeapAlloc;
 
     ComPtr<ID3D12DescriptorHeap> m_additional_RtvDescHeap;  // additional render targets
-    ExampleDescriptorHeapAllocator m_RtvDescHeapAlloc;
+    DescriptorHeapAllocator m_RtvDescHeapAlloc;
     ComPtr<ID3D12DescriptorHeap> m_additional_DsvDescHeap;  // additional depth textures
-    ExampleDescriptorHeapAllocator m_DsvDescHeapAlloc;
+    DescriptorHeapAllocator m_DsvDescHeapAlloc;
 
     ComPtr<ID3D12CommandQueue> m_CommandQueue;
     ComPtr<ID3D12GraphicsCommandList4> m_CommandList;

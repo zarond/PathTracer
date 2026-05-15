@@ -9,6 +9,7 @@
 
 #include "../cpu_framebuffer.h"
 #include "../model_loader.h"
+#include "../d3d_context.h"
 
 namespace app {
 
@@ -75,11 +76,22 @@ struct GPU_Material {  // enforce packing rules on CPU Material data
     GPU_Material(const Material& mat, const std::vector<int>& texture_id_conversion_table, int default_texture);
 };
 
+enum class TEXTURE_TRAITS : uint8_t {
+    None            = 0,
+    HDR             = 1 << 0,
+    sRGB            = 1 << 1,
+    Cubemap         = 1 << 2,
+    RenderTarget    = 1 << 3,
+    Depth           = 1 << 4,
+    UAV             = 1 << 5,
+    AllocateMips    = 1 << 6
+};
+DEFINE_ENUM_FLAG_OPERATORS(TEXTURE_TRAITS)
+
 class GPU_texture {
   public:
     GPU_texture() = default;
-    explicit GPU_texture(UINT64 width, UINT height, bool HDR, bool srgb = false, bool is_cubemap = false, bool is_render_target = false, bool is_depth = false,
-        bool is_uav = false, bool allocate_mips = false);  // constructor for float4 empty LUTS and cubemaps, and for render targets and depth buffers
+    explicit GPU_texture(UINT64 width, UINT height, TEXTURE_TRAITS texture_options);
     explicit GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture, bool allocate_mips = false);
     explicit GPU_texture(const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_ = false, bool allocate_mips = false);
     ~GPU_texture();
@@ -97,14 +109,8 @@ class GPU_texture {
 
     ComPtr<ID3D12Resource> get_gpu_resource();
 
-    bool HDR = false;
-    bool srgb = false;  // whether to apply sRGB to linear conversion when sampling; only relevant for SDR textures
-    bool mips = false;
-    bool isCubemap = false;
-    bool isRenderTarget = false;
-    bool isUAV = false;
-    bool isDepth = false;
-    uint16_t mipLevels = 1;
+    TEXTURE_TRAITS texture_options = TEXTURE_TRAITS::None;
+    uint8_t mipLevels = 1;
 
     void release_gpu_resource();
 
@@ -115,14 +121,10 @@ class GPU_texture {
     DXGI_FORMAT choose_format();
 
     ComPtr<ID3D12Resource> pTexture;
-    D3D12_CPU_DESCRIPTOR_HANDLE srv_cpu_handle{};
-    D3D12_GPU_DESCRIPTOR_HANDLE srv_gpu_handle{};
-    D3D12_CPU_DESCRIPTOR_HANDLE uav_cpu_handle{};
-    D3D12_GPU_DESCRIPTOR_HANDLE uav_gpu_handle{};
-    D3D12_CPU_DESCRIPTOR_HANDLE rtv_cpu_handle{};
-    D3D12_GPU_DESCRIPTOR_HANDLE rtv_gpu_handle{};
-    D3D12_CPU_DESCRIPTOR_HANDLE dsv_cpu_handle{};
-    D3D12_GPU_DESCRIPTOR_HANDLE dsv_gpu_handle{};
+    D3D_Handle_Pair srv_handle{};
+    D3D_Handle_Pair uav_handle{};
+    D3D_Handle_Pair rtv_handle{};
+    D3D_Handle_Pair dsv_handle{};
     // ComPtr<ID3D12Resource> uploadBuffer;
 };
 
@@ -140,11 +142,6 @@ class GPU_model {
     const std::vector<GPU_mesh>& get_meshes() const;
 
     D3D12_GPU_VIRTUAL_ADDRESS GetGPUVirtualAddress() const;
-
-    struct D3D_Handle_Pair {
-        D3D12_CPU_DESCRIPTOR_HANDLE cpuDescriptorHandle{};
-        D3D12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle{};
-    };
 
     D3D_Handle_Pair combined_mesh_indices{};
     D3D_Handle_Pair combined_mesh_vertices{};

@@ -5,7 +5,7 @@
 
 namespace app {
 
-void ExampleDescriptorHeapAllocator::Create(ID3D12Device* device, ID3D12DescriptorHeap* heap) {
+void DescriptorHeapAllocator::Create(ID3D12Device* device, ID3D12DescriptorHeap* heap) {
     assert(Heap == nullptr && FreeIndices.empty());
     Heap = heap;
     D3D12_DESCRIPTOR_HEAP_DESC desc = heap->GetDesc();
@@ -16,11 +16,11 @@ void ExampleDescriptorHeapAllocator::Create(ID3D12Device* device, ID3D12Descript
     FreeIndices.reserve((int)desc.NumDescriptors);
     for (int n = desc.NumDescriptors; n > 0; n--) FreeIndices.push_back(n - 1);
 }
-void ExampleDescriptorHeapAllocator::Destroy() {
+void DescriptorHeapAllocator::Destroy() {
     Heap = nullptr;
     FreeIndices.clear();
 }
-void ExampleDescriptorHeapAllocator::Alloc(
+void DescriptorHeapAllocator::Alloc(
     D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle) {
     if (!out_cpu_desc_handle || !out_gpu_desc_handle) return;
     assert(FreeIndices.size() > 0);
@@ -29,14 +29,20 @@ void ExampleDescriptorHeapAllocator::Alloc(
     out_cpu_desc_handle->ptr = HeapStartCpu.ptr + (idx * HeapHandleIncrement);
     out_gpu_desc_handle->ptr = HeapStartGpu.ptr + (idx * HeapHandleIncrement);
 }
-void ExampleDescriptorHeapAllocator::Free(
-    D3D12_CPU_DESCRIPTOR_HANDLE out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE out_gpu_desc_handle) {
-    int cpu_idx = (int)((out_cpu_desc_handle.ptr - HeapStartCpu.ptr) / HeapHandleIncrement);
-    int gpu_idx = (int)((out_gpu_desc_handle.ptr - HeapStartGpu.ptr) / HeapHandleIncrement);
+void DescriptorHeapAllocator::Alloc(D3D_Handle_Pair* out_desc_handle) { 
+    Alloc(&out_desc_handle->cpuHandle, &out_desc_handle->gpuHandle);
+}
+void DescriptorHeapAllocator::Free(
+    D3D12_CPU_DESCRIPTOR_HANDLE cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE gpu_desc_handle) {
+    int cpu_idx = (int)((cpu_desc_handle.ptr - HeapStartCpu.ptr) / HeapHandleIncrement);
+    int gpu_idx = (int)((gpu_desc_handle.ptr - HeapStartGpu.ptr) / HeapHandleIncrement);
     assert(cpu_idx == gpu_idx);
     FreeIndices.push_back(cpu_idx);
 }
-int ExampleDescriptorHeapAllocator::GetIndex(D3D12_GPU_DESCRIPTOR_HANDLE gpu_desc_handle) const {
+void DescriptorHeapAllocator::Free(D3D_Handle_Pair desc_handle) {
+    Free(desc_handle.cpuHandle, desc_handle.gpuHandle);
+}
+int DescriptorHeapAllocator::GetIndex(D3D12_GPU_DESCRIPTOR_HANDLE gpu_desc_handle) const {
     int gpu_idx = (int)((gpu_desc_handle.ptr - HeapStartGpu.ptr) / HeapHandleIncrement);
     return gpu_idx;
 }

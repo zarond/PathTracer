@@ -22,7 +22,8 @@ DFG_Lut_helper::~DFG_Lut_helper() { release_gpu_resources(); }
 
 void DFG_Lut_helper::CreateDFG_Lut() {
     DFG_lut.release_gpu_resource();
-    DFG_lut = GPU_texture{DFG_size, DFG_size, true, false, false, false, false, true};
+    TEXTURE_TRAITS flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
+    DFG_lut = GPU_texture{DFG_size, DFG_size, flags};
 
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;

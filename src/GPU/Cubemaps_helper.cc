@@ -23,7 +23,8 @@ EnvCube_helper::~EnvCube_helper() { release_gpu_resources(); }
 
 void EnvCube_helper::CreateDiffuseEnvmapCube(const GPU_texture& envmap) {
     Diffuse_lut.release_gpu_resource();
-    Diffuse_lut = GPU_texture{Diffuse_size, Diffuse_size, true, false, true, false, false, true};
+    TEXTURE_TRAITS flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::Cubemap;
+    Diffuse_lut = GPU_texture{Diffuse_size, Diffuse_size, flags};
 
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;

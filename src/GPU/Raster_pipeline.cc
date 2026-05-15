@@ -221,7 +221,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     auto cbGpuAddress = m_perFrameConstants->GetGPUVirtualAddress();
     commandList->SetGraphicsRootConstantBufferView(GlobalRootSignatureParams::SceneConstantSlot, cbGpuAddress);
     commandList->SetGraphicsRootDescriptorTable(
-        GlobalRootSignatureParams::MaterialsBufferSlot, gpu_model.materials_array.gpuDescriptorHandle);
+        GlobalRootSignatureParams::MaterialsBufferSlot, gpu_model.materials_array.gpuHandle);
     commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::EnvmapTex, envmap.GetSRVHandle());
     commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::DFGTex, DFG_lut.GetSRVHandle());
     commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::DiffuseLutTex, Diffuse_lut.GetSRVHandle());
@@ -314,10 +314,12 @@ void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
     currentWidth = std::max(new_width, 0);
     currentHeight = std::max(new_height, 0);
     m_depthTexture.release_gpu_resource();
-    m_depthTexture = GPU_texture{currentWidth, currentHeight, false, false, false, false, true};
+    TEXTURE_TRAITS flags = TEXTURE_TRAITS::Depth;
+    m_depthTexture = GPU_texture{currentWidth, currentHeight, flags};
 
     m_renderTarget.release_gpu_resource();
-    m_renderTarget = GPU_texture{currentWidth, currentHeight, true, false, false, true, false};
+    flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::RenderTarget;
+    m_renderTarget = GPU_texture{currentWidth, currentHeight, flags};
 }
 
 void Raster_pipeline::sort_objects_for_rendering(const GPU_model& gpu_model, int& num_opaque_objects, int& num_alpha_blended_objects) {

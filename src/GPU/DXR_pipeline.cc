@@ -370,13 +370,13 @@ void DXR_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envma
 
     // Set index and successive vertex buffer decriptor tables
     commandList->SetComputeRootDescriptorTable(
-        GlobalRootSignatureParams::IndexBufferSlot, gpu_model.combined_mesh_indices.gpuDescriptorHandle);
+        GlobalRootSignatureParams::IndexBufferSlot, gpu_model.combined_mesh_indices.gpuHandle);
     commandList->SetComputeRootDescriptorTable(
-        GlobalRootSignatureParams::VertexBufferSlot, gpu_model.combined_mesh_vertices.gpuDescriptorHandle);
+        GlobalRootSignatureParams::VertexBufferSlot, gpu_model.combined_mesh_vertices.gpuHandle);
     commandList->SetComputeRootDescriptorTable(
-        GlobalRootSignatureParams::IndicesOffsetBufferSlot, gpu_model.combined_mesh_offsets.gpuDescriptorHandle);
+        GlobalRootSignatureParams::IndicesOffsetBufferSlot, gpu_model.combined_mesh_offsets.gpuHandle);
     commandList->SetComputeRootDescriptorTable(
-        GlobalRootSignatureParams::MaterialsBufferSlot, gpu_model.materials_array.gpuDescriptorHandle);
+        GlobalRootSignatureParams::MaterialsBufferSlot, gpu_model.materials_array.gpuHandle);
 
     // Envmap texture and sampler
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::EnvmapTex, envmap.GetSRVHandle());
