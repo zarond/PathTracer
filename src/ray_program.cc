@@ -121,7 +121,6 @@ inline fmat3x3 construct_TBN(const fvec3& tangent, const fvec3& bitangent, const
 }
 inline fvec3 normal_map_sample_to_world(const fvec3& normal_map_sample, const fmat3x3& TBN) {
     fvec3 n_ts = glm::fma(normal_map_sample, fvec3(2.0f), fvec3(-1.0f));
-    n_ts.y *= -1.0f;  // flip Y
     return TBN * n_ts;
 }
 fmat3x3 handle_TBN_creation(
@@ -223,6 +222,8 @@ fvec3 AOProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_inf
     if (hit.backface) {
         // ray hits backside
         if (material.doubleSided) {
+            point.tangent *= -1.0f;
+            bitangent *= -1.0f;
             point.normal *= -1.0f;
         }
     }
@@ -284,6 +285,8 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
     if (hit.backface) {
         // ray hits backside
         if (material.doubleSided) {
+            point.tangent *= -1.0f;
+            bitangent *= -1.0f;
             point.normal *= -1.0f;
         } else if (material.hasVolume) {  // according to glTF spec, volume is only for single-sided materials
             exiting_volume = true;

@@ -135,7 +135,10 @@ void ClosestHitAO(inout HitInfo payload, Attributes attr) {
     float2 uv = HitAttribute(vertexUV, attr);
 
     if (HitKind() == HIT_KIND_TRIANGLE_BACK_FACE) {
-        if (material.doubleSided) normal *= -1.0f;
+        if (material.doubleSided) {
+            normal *= -1.0f;
+            tangent *= -1.0f;
+        }
     }
 
     float3 worldRayOrigin = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
@@ -268,6 +271,7 @@ void ClosestHitPBR(inout HitInfo payload, Attributes attr) {
     if (backface_hit) {
         if (material.doubleSided) {
             normal *= -1.0f;
+            tangent *= -1.0f;
         } else if (material.hasVolume) {
             exiting_volume = true;
         }
