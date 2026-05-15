@@ -7,14 +7,14 @@ ConstantBuffer<RasterConstantBuffer> g_rasterCB : register(b0);
 // Materials data buffers
 StructuredBuffer<Material> Materials : register(t1, space0);
 
-// Envmap
-Texture2D<float4> EnvMap : register(t0, space1);
-
 // DFG LUT
-Texture2D<float4> DFGLut : register(t1, space1);
+Texture2D<float4> DFGLut : register(t0, space1);
 
 // Diffuse LUT
-TextureCube<float4> DiffuseLut : register(t2, space1);
+TextureCube<float4> DiffuseLut : register(t1, space1);
+
+// Specular LUT
+TextureCube<float4> SpecularLut : register(t2, space1);
 
 // Default sampler
 SamplerState Sampler : register(s0, space1);
@@ -67,6 +67,11 @@ float4 PS_Main(PSInput input) : SV_TARGET {
 
     //return albedo_color;
 
+    const float y_envmap_rotation = g_rasterCB.envmapRotation;  // todo: move to global variable matrix
+    const float rot_cos = cos(y_envmap_rotation);
+    const float rot_sin = sin(y_envmap_rotation);
+    const float2x2 envmap_rotation_matrix = float2x2(rot_cos, -rot_sin, rot_sin, rot_cos);
+
     float3 emissive = sample_emissive(mat, uv, Sampler);
 
     float2 RM = sample_roughness_metallic(mat, uv, Sampler);
@@ -78,8 +83,19 @@ float4 PS_Main(PSInput input) : SV_TARGET {
     const float roughness = RM.x;
     const float linear_roughness = roughness * roughness;
 
-    float3 N = normalize(input.normal.xyz);
+    float3 N = input.normal.xyz;
+    float3 T = input.tangent.xyz;
+    float tangent_sign = input.tangent.w;
+    float3 B = cross(N, T) * tangent_sign;
+
+    bool has_normal_map;
+    float3 normal_map_color = sample_normals(mat, uv, Sampler, has_normal_map);
+
+    float3x3 TBN = construct_TBN(T, B, N);
+    N = has_normal_map ? normal_map_sample_to_world(normal_map_color, TBN) : TBN[2];// new normal after normal mapping
+
     float3 v = normalize(g_rasterCB.cameraPosition.xyz - input.world_position.xyz);
+    float3 l = reflect(-v, N);
 
     float NoV = saturate(dot(N, v));
 
@@ -88,10 +104,12 @@ float4 PS_Main(PSInput input) : SV_TARGET {
     float2 DFG = DFGLut.SampleLevel(DFGSampler, DFG_uv, 0).xy;
     float3 Fresnel = f0 * DFG.x + f90 * DFG.y;
 
+    N.xz = mul(envmap_rotation_matrix, N.xz);  // enmap rotation
     float3 diffuseIBL = DiffuseLut.SampleLevel(Sampler, N, 0);
-    float3 specularIBL = DiffuseLut.SampleLevel(Sampler, N, 0); // todo:
+    l.xz = mul(envmap_rotation_matrix, l.xz);  // enmap rotation
+    float3 specularIBL = SpecularLut.SampleLevel(Sampler, l, 0);  // todo:
 
-    float3 final_light = diffuse_color * diffuseIBL * (1.0f - Fresnel) + Fresnel * specularIBL;
+    float3 final_light = diffuse_color * diffuseIBL * (1.0f - Fresnel) + Fresnel * specularIBL + emissive;
 
     return float4(final_light, alpha);
 }
@@ -123,14 +141,16 @@ BG_VS_OUTPUT VS_Background(uint vID : SV_VERTEXID) {
 }
 
 [shader("pixel")]
-float4 PS_Background(BG_VS_OUTPUT input)
-    : SV_TARGET {
-    float y_rotation = g_rasterCB.envmapRotation;
-    float3 dir = normalize(input.viewDir);
-    float2 uv = float2(atan2(-dir.z, -dir.x) + y_rotation, -2.0f * asin(dir.y)) * (1.0f / PI);
-    uv = uv * 0.5f + 0.5f;
-    float4 envColor = EnvMap.SampleLevel(Sampler, uv, 0);
-    //float3 diffuseIBL = DiffuseLut.SampleLevel(Sampler, dir, 0);
-    //return float4(diffuseIBL, 1.0);
-    return envColor;
+float4 PS_Background(BG_VS_OUTPUT input) : SV_TARGET {
+    float3 dir = input.viewDir;
+    
+    float y_envmap_rotation = g_rasterCB.envmapRotation;
+    float rot_cos = cos(y_envmap_rotation);
+    float rot_sin = sin(y_envmap_rotation);
+    const float2x2 envmap_rotation_matrix = float2x2(rot_cos, -rot_sin, rot_sin, rot_cos);
+
+    dir.xz = mul(envmap_rotation_matrix, dir.xz);  // Rotate around Y-axis
+
+    float3 SpecularIBL = SpecularLut.SampleLevel(Sampler, dir, 0);
+    return float4(SpecularIBL, 1.0);
 }

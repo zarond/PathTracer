@@ -13,9 +13,9 @@ namespace GlobalRootSignatureParams {
 enum Value : int {
     SceneConstantSlot = 0,
     MaterialsBufferSlot,
-    EnvmapTex,
     DFGTex,
     DiffuseLutTex,
+    SpecularLutTex,
     RootConstants,
 
     Count
@@ -40,7 +40,7 @@ void Raster_pipeline::OnModelLoad(GPU_model& gpu_model) {
 
 void Raster_pipeline::OnEnvmapLoad(const GPU_texture& envmap) {
     // todo: generate cubemaps
-    ComputeDiffuseLut(envmap);
+    ComputeEnvmapLut(envmap);
 }
 
 Raster_pipeline::~Raster_pipeline() { release_gpu_resources(); }
@@ -79,12 +79,12 @@ void Raster_pipeline::CreateRootSignatures() {
     // Create an empty root signature.
     CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
 
-    CD3DX12_DESCRIPTOR_RANGE ranges[6];
+    CD3DX12_DESCRIPTOR_RANGE ranges[GlobalRootSignatureParams::Count];
     ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);     // 1 scene constants buffer.
     ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);     // 2 materials buffer.
-    ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 1);  // 3 Envmap texture.
-    ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 1);  // 4 DFG texture.
-    ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 1);  // 5 DiffuseLut texture.
+    ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 1);  // 3 DFG texture.
+    ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 1);  // 4 DiffuseLut texture.
+    ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 1);  // 5 SpecularLut texture.
     ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);     // 6 per draw constants buffer.
 
     D3D12_STATIC_SAMPLER_DESC default_sampler = {};  // Default static sampler.
@@ -110,9 +110,9 @@ void Raster_pipeline::CreateRootSignatures() {
     CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
     rootParameters[GlobalRootSignatureParams::SceneConstantSlot].InitAsConstantBufferView(0);
     rootParameters[GlobalRootSignatureParams::MaterialsBufferSlot].InitAsDescriptorTable(1, &ranges[1]);
-    rootParameters[GlobalRootSignatureParams::EnvmapTex].InitAsDescriptorTable(1, &ranges[2]);
-    rootParameters[GlobalRootSignatureParams::DFGTex].InitAsDescriptorTable(1, &ranges[3]);
-    rootParameters[GlobalRootSignatureParams::DiffuseLutTex].InitAsDescriptorTable(1, &ranges[4]);
+    rootParameters[GlobalRootSignatureParams::DFGTex].InitAsDescriptorTable(1, &ranges[2]);
+    rootParameters[GlobalRootSignatureParams::DiffuseLutTex].InitAsDescriptorTable(1, &ranges[3]);
+    rootParameters[GlobalRootSignatureParams::SpecularLutTex].InitAsDescriptorTable(1, &ranges[4]);
     rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(RasterPerDrawData) / 4, 1);
 
     auto flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT 
@@ -222,9 +222,9 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     commandList->SetGraphicsRootConstantBufferView(GlobalRootSignatureParams::SceneConstantSlot, cbGpuAddress);
     commandList->SetGraphicsRootDescriptorTable(
         GlobalRootSignatureParams::MaterialsBufferSlot, gpu_model.materials_array.gpuHandle);
-    commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::EnvmapTex, envmap.GetSRVHandle());
     commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::DFGTex, DFG_lut.GetSRVHandle());
     commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::DiffuseLutTex, Diffuse_lut.GetSRVHandle());
+    commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SpecularLutTex, Specular_lut.GetSRVHandle());
 
     const auto& combined_mesh = gpu_model.get_combined_mesh();
 
@@ -368,18 +368,18 @@ void Raster_pipeline::ComputeDFGLut() {
     d3d_ctx.InitDXRCommandList();
 }
 
-void Raster_pipeline::ComputeDiffuseLut(const GPU_texture& envmap) {
+void Raster_pipeline::ComputeEnvmapLut(const GPU_texture& envmap) {
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
     
     EnvCube_helper EnvCube_helper{};
     EnvCube_helper.CreateDiffuseEnvmapCube(envmap);
+    EnvCube_helper.CreateSpecularEnvmapCube(envmap);
     Diffuse_lut = std::move(EnvCube_helper.GetDiffuseEnvmapCube());
+    Specular_lut = std::move(EnvCube_helper.GetSpecularEnvmapCube());
 
-    d3d_ctx.DispatchDXRCommandList();  // WARNING: this assumes that command list is open and ready at this point
+    d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();
-
-    //d3d_ctx.InitDXRCommandList();
 }
 
 }

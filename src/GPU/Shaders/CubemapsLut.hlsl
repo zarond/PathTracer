@@ -1,12 +1,22 @@
 #include "BRDF.hlsl"
 #include "Common.hlsl"
 
+struct LutCSInput {
+    int currentMip;
+    int numMips;
+    float roughness;
+    float padding;
+};
+
 // Output texture, accessed as a UAV
 RWTexture2DArray<float4> gOutput : register(u0);
 
 // Envmap
 Texture2D<float4> EnvMap : register(t0, space1);
 SamplerState EnvMapSampler : register(s0, space1);
+
+// Input parameters
+ConstantBuffer<LutCSInput> InputInfo : register(b0);
 
 float3 CalculateCubeDirection(float2 uv, uint faceIndex)
 {
@@ -71,6 +81,49 @@ void CS_Diffuse_Lut(uint3 DTid : SV_DispatchThreadID) {
         float2 rand = fibonacci2D(i, inv_N_samples);
         rand = fmod(rand + jitter, 1.0f);
         float3 l = ImportanceSampleCosDir(rand);
+        l = Tangent2World(l, TBN);
+
+        const float LoN = saturate(dot(l, N));
+        if (LoN > 0) {
+            result += SampleEnvmap(l);
+        }
+    }
+    result *= inv_N_samples;
+
+    gOutput[DTid.xyz] = float4(result, 1.0);
+}
+
+[numthreads(8, 8, 1)] 
+void CS_Specular_Lut(uint3 DTid : SV_DispatchThreadID) {
+    uint3 destSize;
+    gOutput.GetDimensions(destSize.x, destSize.y, destSize.z);
+
+    if (DTid.x >= (uint)destSize.x || DTid.y >= (uint)destSize.y || DTid.z >= 6) return;
+
+    float2 uv = (DTid.xy + 0.5f) / destSize;
+    uv = uv * 2.0f - 1.0f;
+    uv.y *= -1.0f;  // Flip Y because texture space is top-down
+
+    float3 N = CalculateCubeDirection(uv, DTid.z);
+    float3 T;
+    float3 B;
+    CalculateCubeClosestTangents(T, B, DTid.z);
+
+    float3x3 TBN = construct_TBN(T, B, N);
+
+    const float roughness = max(InputInfo.roughness, 0.002f);
+    const float linear_roughness = roughness * roughness;
+
+    uint3 seed = uint3(DTid.x, DTid.y, DTid.z);
+    float2 jitter = float2(pcg3d16(seed).xy) / float(0xFFFF);
+
+    float3 result = 0.0f;
+    const int N_samples = 256;  // todo: prefilter the envmap and use fewer samples for rougher mip levels
+    const float inv_N_samples = 1.0f / N_samples;
+    for (int i = 0; i < N_samples; ++i) {
+        float2 rand = fibonacci2D(i, inv_N_samples);
+        rand = fmod(rand + jitter, 1.0f);
+        float3 l = importanceSampleGGX(rand, linear_roughness);
         l = Tangent2World(l, TBN);
 
         const float LoN = saturate(dot(l, N));

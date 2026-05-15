@@ -29,6 +29,7 @@ set(SHADER_SOURCES
     PS_Background       RasterizationShaders.hlsl   ps_6_6
     CS_DFG_Lut          DFGLut.hlsl                 cs_6_6
     CS_Diffuse_Lut      CubemapsLut.hlsl            cs_6_6
+    CS_Specular_Lut     CubemapsLut.hlsl            cs_6_6
 )
 
 set(APP_SOURCES

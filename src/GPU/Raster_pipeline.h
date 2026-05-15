@@ -73,7 +73,7 @@ class Raster_pipeline : public IRender_pipeline {
     void CreatePipelineStateObjects();
     void CreateConstantBuffers();
     void ComputeDFGLut();
-    void ComputeDiffuseLut(const GPU_texture& envmap);
+    void ComputeEnvmapLut(const GPU_texture& envmap);
 
     void resize_render_targets(int new_width, int new_height);
     void copy_render_target_to_framebuffer(const CPUFrameBuffer& framebuffer);
@@ -108,6 +108,7 @@ class Raster_pipeline : public IRender_pipeline {
     // additional texture resources
     GPU_texture DFG_lut;  // precomputed DFG LUT for split-sum approximation of specular IBL
     GPU_texture Diffuse_lut;
+    GPU_texture Specular_lut;
 
     std::vector<DrawableSortingInfo> m_sortedDrawables;  // reusable vector for sorting drawables every frame
     void sort_objects_for_rendering(const GPU_model& gpu_model, int& num_opaque_objects, int& num_alpha_blended_objects);
