@@ -195,6 +195,7 @@ void GPURenderer::set_active_pipeline_mode(RenderPipelineMode mode) {
         throw std::runtime_error("Pipeline not initialized");
     }
     pipeline_ = pipelines_[(int)mode];
+    active_pipeline_mode_ = mode;
 }
 
 void GPURenderer::OnEnvmapLoad() {

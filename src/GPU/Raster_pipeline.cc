@@ -74,6 +74,7 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_rasterCB.maxRayBounces = render_settings.maxRayBounces;
     m_rasterCB.envmapRotation = render_settings.envmapRotation;
     m_rasterCB.SpecularLutMips = EnvCube_helper::SpecularMips;
+    m_rasterCB.TexturesAOStrength = render_settings.TexturesAOStrength;
     RaytracingMode = render_settings.programMode;
 }
 
@@ -382,7 +383,7 @@ void Raster_pipeline::ComputeEnvmapLut(const GPU_texture& envmap) {
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
     
-    EnvCube_helper EnvCube_helper{};
+    static EnvCube_helper EnvCube_helper{};
     EnvCube_helper.CreateDiffuseEnvmapCube(envmap);
     EnvCube_helper.CreateSpecularEnvmapCube(envmap);
     Diffuse_lut = std::move(EnvCube_helper.GetDiffuseEnvmapCube());
@@ -390,6 +391,8 @@ void Raster_pipeline::ComputeEnvmapLut(const GPU_texture& envmap) {
 
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();
+
+    EnvCube_helper.ReleaseTemporaryGPUResources();
 
     auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
     std::cout << "Diffuse and Specular Lut computed in " << diff.count() << " ms." << '\n';

@@ -484,6 +484,7 @@ static void CameraUI(Viewer& viewer) {
 
 static void RenderSettingsUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector<PendingDelete>& deferredDeletes,
     const bool hardware_ray_tracing_support) {
+    ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.5f);
     static RendererMode renderer_mode = viewer.get_renderer_mode();
     bool renderer_changed = imgui_combo("Choose Renderer:", std::array{"CPU renderer", "GPU renderer"}, renderer_mode);
     if (renderer_changed) {
@@ -608,6 +609,22 @@ static void RenderSettingsUI(Viewer& viewer, ConsoleArgs& console_arguments, std
     ImGui::PopItemWidth();
 }
 
+static void RasterRenderSettingsUI(Viewer& viewer) {
+    RenderPipelineMode pipeline_mode = viewer.get_active_gpu_pipeline_mode();
+    if (pipeline_mode == RenderPipelineMode::RasterPipeline) {
+        ImGui::Separator();
+        ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.5f);
+        auto render_settings = viewer.get_render_settings();
+        bool raster_settings_changed = false;
+        raster_settings_changed |= ImGui::SliderFloat(
+            "AO from textures strength", &render_settings.TexturesAOStrength, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
+        if (raster_settings_changed) {
+            viewer.set_render_settings(render_settings);
+        }
+        ImGui::Separator();
+    }
+}
+
 void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector<PendingDelete>& deferredDeletes,
     const bool hardware_ray_tracing_support) {
     ImGui::Begin("Options", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
@@ -632,6 +649,8 @@ void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector
     } else {
         ImGui::Text("Stop rendering process to access rendering options");
     }
+    RasterRenderSettingsUI(viewer);
+    
     ImGui::End();
     // Show materials settings window
     if (show_material_settings) {

@@ -75,10 +75,11 @@ float4 PS_Main(PSInput input) : SV_TARGET {
     float3 emissive = sample_emissive(mat, uv, Sampler);
 
     float3 ORM = sample_occlusion_roughness_metallic(mat, uv, Sampler);
-    float AO = ORM.x;  // Ambient Occlusion, do I need it? Should I add it to raytracing as well?
-    float3 diffuse_color = (1.0f - ORM.z) * albedo_color.rgb;
+    const float AO = lerp(1.0, ORM.x, g_rasterCB.TexturesAOStrength);  // Ambient Occlusion, do I need it? Should I add it to raytracing as well?
+    const float metallic = ORM.z;
+    float3 diffuse_color = (1.0f - metallic) * albedo_color.rgb;
 
-    float3 f0 = lerp(mat.dielectric_f0, albedo_color.rgb, ORM.z);
+    float3 f0 = lerp(mat.dielectric_f0, albedo_color.rgb, metallic);
     const float3 f90 = 1.0f;
 
     const float roughness = ORM.y;
@@ -96,9 +97,13 @@ float4 PS_Main(PSInput input) : SV_TARGET {
     N = has_normal_map ? normal_map_sample_to_world(normal_map_color, TBN) : TBN[2];// new normal after normal mapping
 
     float3 v = normalize(g_rasterCB.cameraPosition.xyz - input.world_position.xyz);
-    float3 l = reflect(-v, N);
+    float NoV = dot(N, v);
+    if (NoV < 0) {
+        v = reflect(v, N);
+        NoV = abs(NoV);
+    }
 
-    float NoV = saturate(dot(N, v));
+    float3 l = reflect(-v, N);
 
     float2 DFG_uv = float2(NoV, roughness);
 

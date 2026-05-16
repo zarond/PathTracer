@@ -11,6 +11,8 @@ struct RenderSettings {
     unsigned int maxTrianglesPerBVHLeaf = 8;
     float envmapRotation = 0;  // in radians
 
+    float TexturesAOStrength = 1.0f;  // only for raster pipeline
+
     RenderSettings() = default;
     explicit RenderSettings(const ConsoleArgs& args);
 
