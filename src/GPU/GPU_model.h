@@ -123,6 +123,8 @@ class GPU_texture {
 
     void release_gpu_resource();
 
+    static void copy_texture_from_uav(GPU_texture& dst, GPU_texture& src, ComPtr<ID3D12GraphicsCommandList4>& commandList);
+
   private:
     void create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT format);
     void upload_texture_to_gpu(int width_, int height_, const auto& data_, size_t sizeofpixel, DXGI_FORMAT format);

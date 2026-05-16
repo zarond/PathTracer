@@ -41,6 +41,10 @@ void DFG_Lut_helper::CreateDFG_Lut() {
 
 GPU_texture&& DFG_Lut_helper::GetDFG_Lut() { return std::move(DFG_lut); }
 
+GPU_texture DFG_Lut_helper::GetBlankSRVTexture() { 
+    return GPU_texture{DFG_size, DFG_size, TEXTURE_TRAITS::HDR}; 
+}
+
 void DFG_Lut_helper::CreateRootSignature() {
     CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
 

@@ -362,12 +362,17 @@ void Raster_pipeline::sort_objects_for_rendering(const GPU_model& gpu_model, int
 
 void Raster_pipeline::ComputeDFGLut() {
     auto start = std::chrono::high_resolution_clock::now();
+    D3DContext& d3d_ctx = D3DContext::Get();
+    DFG_lut.release_gpu_resource();
+    DFG_lut = DFG_Lut_helper::GetBlankSRVTexture();
 
     DFG_Lut_helper DFG_compute_helper{};
     DFG_compute_helper.CreateDFG_Lut();
-    DFG_lut = std::move(DFG_compute_helper.GetDFG_Lut());
+    
+    // copy texture from UAV to SRV-only texture
+    GPU_texture DFG_lut_tmp = std::move(DFG_compute_helper.GetDFG_Lut());
+    GPU_texture::copy_texture_from_uav(DFG_lut, DFG_lut_tmp, d3d_ctx.m_DXRCommandList);
 
-    D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.DispatchDXRCommandList(); // WARNING: this assumes that command list is open and ready at this point
     d3d_ctx.WaitForPendingDXR();
 
@@ -380,14 +385,24 @@ void Raster_pipeline::ComputeDFGLut() {
 void Raster_pipeline::ComputeEnvmapLut(const GPU_texture& envmap) {
     auto start = std::chrono::high_resolution_clock::now();
 
+    Diffuse_lut.release_gpu_resource();
+    Specular_lut.release_gpu_resource();
+
+    Diffuse_lut = EnvCube_helper::GetBlankSRVDiffuseTexture();
+    Specular_lut = EnvCube_helper::GetBlankSRVSpecularTexture();
+
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
     
     static EnvCube_helper EnvCube_helper{};
     EnvCube_helper.CreateDiffuseEnvmapCube(envmap);
     EnvCube_helper.CreateSpecularEnvmapCube(envmap);
-    Diffuse_lut = std::move(EnvCube_helper.GetDiffuseEnvmapCube());
-    Specular_lut = std::move(EnvCube_helper.GetSpecularEnvmapCube());
+
+    GPU_texture Diffuse_lut_tmp = std::move(EnvCube_helper.GetDiffuseEnvmapCube());
+    GPU_texture Specular_lut_tmp = std::move(EnvCube_helper.GetSpecularEnvmapCube());
+    // copy textures from UAV to SRV-only textures
+    GPU_texture::copy_texture_from_uav(Diffuse_lut, Diffuse_lut_tmp, d3d_ctx.m_DXRCommandList);
+    GPU_texture::copy_texture_from_uav(Specular_lut, Specular_lut_tmp, d3d_ctx.m_DXRCommandList);
 
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();

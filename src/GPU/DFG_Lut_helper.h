@@ -17,6 +17,10 @@ class DFG_Lut_helper {
     void CreateDFG_Lut();
     GPU_texture&& GetDFG_Lut();
 
+    static constexpr int DFG_size = 256;
+
+    static GPU_texture GetBlankSRVTexture();
+
   private:
     void CreateRootSignature();
     void CreatePipelineStateObject();
@@ -24,8 +28,6 @@ class DFG_Lut_helper {
     ComPtr<ID3D12PipelineState> m_pipelineState;
 
     const wchar_t* c_cs_file_name = L"CS_DFG_Lut.dxil";
-
-    static constexpr int DFG_size = 256;
 
     GPU_texture DFG_lut{};
 

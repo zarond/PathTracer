@@ -53,6 +53,14 @@ void EnvCube_helper::CreateDiffuseEnvmapCube(const GPU_texture& envmap) {
 
 GPU_texture&& EnvCube_helper::GetDiffuseEnvmapCube() { return std::move(Diffuse_lut); }
 
+GPU_texture EnvCube_helper::GetBlankSRVDiffuseTexture() {
+    return GPU_texture{Diffuse_size, Diffuse_size, TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::Cubemap};
+}
+GPU_texture EnvCube_helper::GetBlankSRVSpecularTexture() {
+    return
+        GPU_texture{Specular_size, Specular_size, TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::Cubemap | TEXTURE_TRAITS::AllocateMips};
+}
+
 void EnvCube_helper::CreateSpecularEnvmapCube(const GPU_texture& envmap) {
     Specular_lut.release_gpu_resource();
     TEXTURE_TRAITS flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::Cubemap | TEXTURE_TRAITS::AllocateMips;

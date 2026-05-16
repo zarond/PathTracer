@@ -4,6 +4,7 @@
 #include "../d3d_context.h"
 
 #include <bit>
+#include <directx/d3dx12.h>
 
 namespace {
 
@@ -360,7 +361,7 @@ GPU_Material::GPU_Material(const Material& mat, const std::vector<int>& texture_
     
     padding[0] = 0;
     padding[1] = 0;
-    padding[3] = 0;
+    padding[2] = 0;
 }
 
 GPU_model::GPU_model(const Model& cpu_model, bool raytracing_support) {
@@ -1091,6 +1092,25 @@ void GPU_texture::release_gpu_resource() {
 
         pTexture.Reset();
     }
+}
+
+void GPU_texture::copy_texture_from_uav(GPU_texture& dst, GPU_texture& src, ComPtr<ID3D12GraphicsCommandList4>& commandList) {
+    const auto& gpuDst = dst.get_gpu_resource();
+    const auto& gpuSrc = src.get_gpu_resource();
+
+    D3D12_RESOURCE_BARRIER to_barriers[2] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuSrc.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE),
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuDst.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
+    };
+    commandList->ResourceBarrier(2, to_barriers);
+
+    commandList->CopyResource(gpuDst.Get(), gpuSrc.Get());
+
+    D3D12_RESOURCE_BARRIER from_barriers[2] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuSrc.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuDst.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
+    };
+    commandList->ResourceBarrier(2, from_barriers);
 }
 
 D3D12_GPU_DESCRIPTOR_HANDLE GPU_texture::GetSRVHandle() const { return srv_handle.gpuHandle; }

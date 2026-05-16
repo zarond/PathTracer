@@ -23,6 +23,9 @@ class EnvCube_helper {
     static constexpr int Specular_size = 1024;
     static constexpr int SpecularMips = GPU_texture::CalculateMipCount(Specular_size, Specular_size) - 1; // so that max mip is 2x2 texture
 
+    static GPU_texture GetBlankSRVDiffuseTexture();
+    static GPU_texture GetBlankSRVSpecularTexture();
+
     void ReleaseTemporaryGPUResources();
 
   private:
