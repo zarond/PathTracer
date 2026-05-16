@@ -354,7 +354,13 @@ GPU_Material::GPU_Material(const Material& mat, const std::vector<int>& texture_
     doubleSided = mat.doubleSided;
     hasVolume = mat.hasVolume;
     alphaBlending = mat.alphaBlending;
-    padding0 = 0;
+
+    AOStrength = mat.AOStrength;
+    aoTextureIndex = lambda(mat.aoTextureIndex);
+    
+    padding[0] = 0;
+    padding[1] = 0;
+    padding[3] = 0;
 }
 
 GPU_model::GPU_model(const Model& cpu_model, bool raytracing_support) {
@@ -726,7 +732,7 @@ void GPU_model::update_materials_array_buffer(const Model& cpu_model) {
     // Here, I index material by meshID, that might lead to some redundant data
     // Todo: pack the same as CPU without redundancy
     MaterialsCPUArray.clear();
-    assert(sizeof(GPU_Material) == 112);
+    assert(sizeof(GPU_Material) == 128);
     MaterialsCPUArray.reserve(cpu_model.meshes.size());
     for (const auto& mesh : cpu_model.meshes) {
         const auto& mat = cpu_model.materials[mesh.materialIndex];

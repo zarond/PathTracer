@@ -75,7 +75,12 @@ float4 PS_Main(PSInput input) : SV_TARGET {
     float3 emissive = sample_emissive(mat, uv, Sampler);
 
     float3 ORM = sample_occlusion_roughness_metallic(mat, uv, Sampler);
-    const float AO = lerp(1.0, ORM.x, g_rasterCB.TexturesAOStrength);  // Ambient Occlusion, do I need it? Should I add it to raytracing as well?
+    float AO = ORM.x;
+    if (mat.aoTextureIndex != mat.metallicRoughnessTextureIndex) {
+        AO = sample_occlusion(mat, uv, Sampler);
+    }
+    AO = lerp(1.0, AO, mat.AOStrength);
+    AO = lerp(1.0, AO, g_rasterCB.TexturesAOStrength); 
     const float metallic = ORM.z;
     float3 diffuse_color = (1.0f - metallic) * albedo_color.rgb;
 

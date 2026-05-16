@@ -69,7 +69,11 @@ struct Material {
     int doubleSided;
     int hasVolume;
     int alphaBlending;
-    int padding0;
+
+    int aoTextureIndex;
+    float AOStrength;
+
+    float padding[3];
 };
 
 typedef BuiltInTriangleIntersectionAttributes Attributes;
@@ -140,6 +144,10 @@ float3 sample_occlusion_roughness_metallic(const Material material, const float2
     Texture2D<float4> Tex = ResourceDescriptorHeap[material.metallicRoughnessTextureIndex];
     sample *= Tex.SampleLevel(Sampler, uv, 0).rgb;
     return sample;
+}
+float sample_occlusion(const Material material, const float2 uv, const SamplerState Sampler) {
+    Texture2D<float4> Tex = ResourceDescriptorHeap[material.aoTextureIndex];
+    return Tex.SampleLevel(Sampler, uv, 0).r;
 }
 float3 sample_normals(const Material material, const float2 uv, const SamplerState Sampler, out bool has_normal_map) {
     float3 sample = float3(0.5f, 0.5f, 1.0f);

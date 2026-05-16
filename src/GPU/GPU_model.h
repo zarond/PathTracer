@@ -71,7 +71,11 @@ struct GPU_Material {  // enforce packing rules on CPU Material data
     int doubleSided;
     int hasVolume;
     int alphaBlending;
-    int padding0;
+   
+    int aoTextureIndex;
+    float AOStrength;
+
+    float padding[3];
 
     GPU_Material(const Material& mat, const std::vector<int>& texture_id_conversion_table, int default_texture);
 };

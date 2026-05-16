@@ -55,6 +55,8 @@ struct Material {
     bool hasVolume = false;    // essential for transmission, otherwise treat as thin surface
     bool alphaBlending = false;
     float alphaCutoff = -1.0f;
+    float AOStrength = 1.0f;
+    int aoTextureIndex = -1;
 };
 
 struct Camera {
