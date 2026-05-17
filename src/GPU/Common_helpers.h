@@ -30,7 +30,7 @@ inline std::pair<ComPtr<ID3DBlob>, D3D12_SHADER_BYTECODE> LoadShader(const wchar
     return std::make_pair(shaderBlob, dxil);
 }
 
-inline void SerializeAndCreateRaytracingRootSignature(D3D12_ROOT_SIGNATURE_DESC& desc, ComPtr<ID3D12RootSignature>* rootSig) {
+inline void SerializeAndCreateRootSignature(D3D12_ROOT_SIGNATURE_DESC& desc, ComPtr<ID3D12RootSignature>* rootSig) {
     D3DContext& d3d_ctx = D3DContext::Get();
     auto device = d3d_ctx.m_d3dDevice;
     ComPtr<ID3DBlob> blob;

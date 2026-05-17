@@ -10,6 +10,7 @@
 #include "helpers/DXSampleHelper.h"
 #include "DFG_Lut_helper.h"
 #include "Cubemaps_helper.h"
+#include "Mipmaps_helper.h"
 
 namespace GlobalRootSignatureParams {
 enum Value : int {
@@ -37,10 +38,24 @@ Raster_pipeline::Raster_pipeline() {
 }
 
 void Raster_pipeline::OnModelLoad(GPU_model& gpu_model) {
-    // todo: generate mips
+    auto start = std::chrono::high_resolution_clock::now();
+
+    auto& textures = gpu_model.get_textures();
+    for (auto& texture : textures) {
+        if ((texture.texture_options & TEXTURE_TRAITS::AllocateMips) != TEXTURE_TRAITS::None) {
+            ComputeMipMaps(texture);
+        }
+    }
+
+    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+    std::cout << "Model's texture's mips were computed in " << diff.count() << " ms." << '\n';
 }
 
-void Raster_pipeline::OnEnvmapLoad(const GPU_texture& envmap) {
+void Raster_pipeline::OnEnvmapLoad(GPU_texture& envmap) {
+    auto start = std::chrono::high_resolution_clock::now();
+    ComputeMipMaps(envmap);
+    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+    std::cout << "Envmap texture mips were computed in " << diff.count() << " ms." << '\n';
     ComputeEnvmapLut(envmap);
 }
 
@@ -123,7 +138,7 @@ void Raster_pipeline::CreateRootSignatures() {
         | D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
     rootSignatureDesc.Init(ARRAYSIZE(rootParameters), rootParameters, 2, samplers, flags);
 
-    SerializeAndCreateRaytracingRootSignature(rootSignatureDesc, &m_rootSignature);
+    SerializeAndCreateRootSignature(rootSignatureDesc, &m_rootSignature);
 }
 
 void Raster_pipeline::CreatePipelineStateObjects() {
@@ -411,6 +426,31 @@ void Raster_pipeline::ComputeEnvmapLut(const GPU_texture& envmap) {
 
     auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
     std::cout << "Diffuse and Specular Lut computed in " << diff.count() << " ms." << '\n';
+}
+
+void Raster_pipeline::ComputeMipMaps(GPU_texture& texture) { 
+    if (texture.mipLevels <= 1) {
+        return;
+    }
+    const auto& resource = texture.get_gpu_resource();
+    const auto description = resource->GetDesc();
+    const auto width = description.Width;
+    const auto height = description.Height;
+    TEXTURE_TRAITS flags = texture.texture_options | TEXTURE_TRAITS::AllocateMips | TEXTURE_TRAITS::UAV;
+    GPU_texture uav_texture{width, height, flags};
+    static Mipmaps_helper mip_helper{};
+
+    D3DContext& d3d_ctx = D3DContext::Get();
+    d3d_ctx.InitDXRCommandList();
+
+    GPU_texture::copy_texture_to_uav(uav_texture, texture, d3d_ctx.m_DXRCommandList); // todo: restrict to copying only the top mip level
+
+    mip_helper.CreateMips(uav_texture);
+    
+    GPU_texture::copy_texture_from_uav(texture, uav_texture, d3d_ctx.m_DXRCommandList);
+    
+    d3d_ctx.DispatchDXRCommandList();
+    d3d_ctx.WaitForPendingDXR();
 }
 
 }

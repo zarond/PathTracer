@@ -789,6 +789,8 @@ const GPU_mesh& GPU_model::get_combined_mesh() const { return combinedMesh; }
 
 const std::vector<GPU_mesh>& GPU_model::get_meshes() const { return meshes_; }
 
+std::vector<GPU_texture>& GPU_model::get_textures() { return textures; }
+
 D3D12_GPU_VIRTUAL_ADDRESS GPU_model::GetGPUVirtualAddress() const { return tlasBuffer->GetGPUVirtualAddress(); }
 
 // GPU_texture
@@ -831,6 +833,7 @@ void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT
     bool isCubemap = ::isCubemap(texture_options);
     bool isDepth = ::isDepth(texture_options);
     bool isUAV = ::isUAV(texture_options);
+    bool isSRGB = ::isSRGB(texture_options);
     mipLevels = mips ? CalculateMipCount(width, height) : 1;
     if (pTexture == nullptr) {
         auto flags = D3D12_RESOURCE_FLAG_NONE;
@@ -945,7 +948,7 @@ void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT
         if (isUAV) {
             // Create a unordered access view for the texture
             D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{
-                .Format = format,
+                .Format = isSRGB ? DXGI_FORMAT_R8G8B8A8_UNORM : format,
                 .ViewDimension = isCubemap ? D3D12_UAV_DIMENSION_TEXTURE2DARRAY : D3D12_UAV_DIMENSION_TEXTURE2D,
                 .Texture2D =
                     D3D12_TEX2D_UAV{
@@ -1048,12 +1051,13 @@ void GPU_texture::GetUAVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR
     if (!isUAV) {
         return;
     }
+    bool isSRGB = ::isSRGB(texture_options);
     auto format = choose_format();
     D3DContext& d3d_ctx = D3DContext::Get();
     if (isUAV) {
         // Create a unordered access view for the texture
         D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{
-            .Format = format,
+            .Format = isSRGB ? DXGI_FORMAT_R8G8B8A8_UNORM : format,
             .ViewDimension = isCubemap ? D3D12_UAV_DIMENSION_TEXTURE2DARRAY : D3D12_UAV_DIMENSION_TEXTURE2D,
             .Texture2D =
                 D3D12_TEX2D_UAV{
@@ -1109,6 +1113,25 @@ void GPU_texture::copy_texture_from_uav(GPU_texture& dst, GPU_texture& src, ComP
     D3D12_RESOURCE_BARRIER from_barriers[2] = {
         CD3DX12_RESOURCE_BARRIER::Transition(gpuSrc.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
         CD3DX12_RESOURCE_BARRIER::Transition(gpuDst.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
+    };
+    commandList->ResourceBarrier(2, from_barriers);
+}
+
+void GPU_texture::copy_texture_to_uav(GPU_texture& dst, GPU_texture& src, ComPtr<ID3D12GraphicsCommandList4>& commandList) {
+    const auto& gpuDst = dst.get_gpu_resource();
+    const auto& gpuSrc = src.get_gpu_resource();
+
+    D3D12_RESOURCE_BARRIER to_barriers[2] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuSrc.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuDst.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON),
+    };
+    commandList->ResourceBarrier(2, to_barriers);
+
+    commandList->CopyResource(gpuDst.Get(), gpuSrc.Get());
+
+    D3D12_RESOURCE_BARRIER from_barriers[2] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuSrc.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuDst.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
     };
     commandList->ResourceBarrier(2, from_barriers);
 }

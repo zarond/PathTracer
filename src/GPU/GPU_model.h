@@ -124,6 +124,7 @@ class GPU_texture {
     void release_gpu_resource();
 
     static void copy_texture_from_uav(GPU_texture& dst, GPU_texture& src, ComPtr<ID3D12GraphicsCommandList4>& commandList);
+    static void copy_texture_to_uav(GPU_texture& dst, GPU_texture& src, ComPtr<ID3D12GraphicsCommandList4>& commandList);
 
   private:
     void create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT format);
@@ -151,6 +152,7 @@ class GPU_model {
     GPU_model& operator=(GPU_model&&) = default;
 
     const std::vector<GPU_mesh>& get_meshes() const;
+    std::vector<GPU_texture>& get_textures();
 
     D3D12_GPU_VIRTUAL_ADDRESS GetGPUVirtualAddress() const;
 

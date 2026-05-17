@@ -57,7 +57,7 @@ void DFG_Lut_helper::CreateRootSignature() {
     auto flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
     rootSignatureDesc.Init(ARRAYSIZE(rootParameters), rootParameters, 0, nullptr, flags);
 
-    SerializeAndCreateRaytracingRootSignature(rootSignatureDesc, &m_rootSignature);
+    SerializeAndCreateRootSignature(rootSignatureDesc, &m_rootSignature);
 }
 
 void DFG_Lut_helper::CreatePipelineStateObject() {

@@ -82,7 +82,7 @@ void GPURenderer::load_model(const Model& model, size_t ModelFenceValue) {
 
 void GPURenderer::reload_ray_program() {
     if (envmap_ref_ == nullptr) return;
-    gpu_envmap_ = std::make_unique<GPU_texture>(*envmap_ref_);
+    gpu_envmap_ = std::make_unique<GPU_texture>(*envmap_ref_, true);
 
     OnEnvmapLoad();
 }

@@ -79,8 +79,7 @@ void EnvCube_helper::CreateSpecularEnvmapCube(const GPU_texture& envmap) {
 
     m_mip_uav_handles.resize(SpecularMips);
 
-    m_mip_uav_handles[0].gpuHandle = Specular_lut.GetUAVHandle();
-    for (int mipLevel = 1; mipLevel < SpecularMips; ++mipLevel) {
+    for (int mipLevel = 0; mipLevel < SpecularMips; ++mipLevel) {
         D3D_Handle_Pair handles{};
         d3d_ctx.m_SrvDescHeapAlloc.Alloc(&handles);
 
@@ -102,7 +101,6 @@ void EnvCube_helper::CreateSpecularEnvmapCube(const GPU_texture& envmap) {
     
         commandList->Dispatch((dimension + 7) / 8, (dimension + 7) / 8, 6);
     }
-    m_mip_uav_handles[0].gpuHandle = D3D12_GPU_DESCRIPTOR_HANDLE{};  // prevent the first mip's UAV from being released
 }
 
 void EnvCube_helper::ReleaseTemporaryGPUResources() {
@@ -141,7 +139,7 @@ void EnvCube_helper::CreateRootSignature() {
     auto flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
     rootSignatureDesc.Init(ARRAYSIZE(rootParameters), rootParameters, 1, &envmap_sampler, flags);
 
-    SerializeAndCreateRaytracingRootSignature(rootSignatureDesc, &m_rootSignature);
+    SerializeAndCreateRootSignature(rootSignatureDesc, &m_rootSignature);
 }
 
 void EnvCube_helper::CreatePipelineStateObject() {

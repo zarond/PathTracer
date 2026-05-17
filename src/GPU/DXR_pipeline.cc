@@ -80,7 +80,7 @@ void DXR_pipeline::CreateRootSignatures() {
 
         auto flags = D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
         CD3DX12_ROOT_SIGNATURE_DESC globalRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 2, samplers, flags);
-        SerializeAndCreateRaytracingRootSignature(globalRootSignatureDesc, &m_raytracingGlobalRootSignature);
+        SerializeAndCreateRootSignature(globalRootSignatureDesc, &m_raytracingGlobalRootSignature);
     }
 
     // Local Root Signature
@@ -90,7 +90,7 @@ void DXR_pipeline::CreateRootSignatures() {
         rootParameters[LocalRootSignatureParams::ViewportConstantSlot].InitAsConstants(SizeOfInUint32(m_rayGenCB), 1);
         CD3DX12_ROOT_SIGNATURE_DESC localRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
         localRootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
-        SerializeAndCreateRaytracingRootSignature(localRootSignatureDesc, &m_raytracingLocalRootSignature);
+        SerializeAndCreateRootSignature(localRootSignatureDesc, &m_raytracingLocalRootSignature);
     }
 }
 
@@ -410,6 +410,6 @@ void DXR_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envma
 void DXR_pipeline::OnModelLoad(GPU_model& gpu_model) {} 
 
 // no actions required for envmap in this raytracing pipeline, because it doesn't use mips and is not a cubemap
-void DXR_pipeline::OnEnvmapLoad(const GPU_texture& envmap) {} 
+void DXR_pipeline::OnEnvmapLoad(GPU_texture& envmap) {} 
 
 }  // namespace app

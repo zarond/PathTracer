@@ -68,7 +68,7 @@ class Raster_pipeline : public IRender_pipeline {
 
     void OnModelLoad(GPU_model& gpu_model) override;
 
-    void OnEnvmapLoad(const GPU_texture& envmap) override;
+    void OnEnvmapLoad(GPU_texture& envmap) override;
 
   private:
     void CreateRootSignatures();
@@ -76,6 +76,8 @@ class Raster_pipeline : public IRender_pipeline {
     void CreateConstantBuffers();
     void ComputeDFGLut();
     void ComputeEnvmapLut(const GPU_texture& envmap);
+
+    static void ComputeMipMaps(GPU_texture& envmap);
 
     void resize_render_targets(int new_width, int new_height);
     void copy_render_target_to_framebuffer(const CPUFrameBuffer& framebuffer);
