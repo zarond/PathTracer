@@ -48,6 +48,10 @@ void EnvCube_helper::CreateDiffuseEnvmapCube(const GPU_texture& envmap) {
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, Diffuse_lut.GetUAVHandle());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::EnvmapTex, envmap.GetSRVHandle());
 
+    LutCSInput input{0, envmap.mipLevels, 0.0};
+    constexpr int inputSizeInInt = sizeof(LutCSInput) / 4;
+    commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
+
     commandList->Dispatch(Diffuse_size / 8, Diffuse_size / 8, 6);
 }
 
@@ -95,7 +99,7 @@ void EnvCube_helper::CreateSpecularEnvmapCube(const GPU_texture& envmap) {
         commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, uav_gpu_handle);
 
         float roughness = static_cast<float>(mipLevel) / static_cast<float>(SpecularMips - 1);
-        LutCSInput input{mipLevel, SpecularMips, roughness};
+        LutCSInput input{mipLevel, envmap.mipLevels, roughness};
         constexpr int inputSizeInInt = sizeof(LutCSInput) / 4;
         commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
     

@@ -127,6 +127,7 @@ float3 pcg3d(uint3 v) {
     return float3(v) * (1.0 / 4294967295.0);
 }
 
+// without mips
 float4 sample_albedo(const Material material, const float2 uv, const SamplerState Sampler) {
     float4 albedo_color = material.baseColorFactor;
     Texture2D<float4> albedoTex = ResourceDescriptorHeap[material.baseColorTextureIndex];
@@ -169,5 +170,51 @@ float sample_transmission(const Material material, const float2 uv, const Sample
     float sample = material.transmisionFactor;
     Texture2D<float4> Tex = ResourceDescriptorHeap[material.transmissionTextureIndex];
     sample *= Tex.SampleLevel(Sampler, uv, 0).r;
+    return sample;
+}
+
+// with mips
+float4 sample_albedo_filtered(const Material material, const float2 uv, const SamplerState Sampler) {
+    float4 albedo_color = material.baseColorFactor;
+    Texture2D<float4> albedoTex = ResourceDescriptorHeap[material.baseColorTextureIndex];
+    albedo_color *= albedoTex.Sample(Sampler, uv);
+    return albedo_color;
+}
+float2 sample_roughness_metallic_filtered(const Material material, const float2 uv, const SamplerState Sampler) {
+    float2 sample = float2(material.roughnessFactor, material.metallicFactor);
+    Texture2D<float4> Tex = ResourceDescriptorHeap[material.metallicRoughnessTextureIndex];
+    sample *= Tex.Sample(Sampler, uv).gb;
+    return sample;
+}
+float3 sample_occlusion_roughness_metallic_filtered(const Material material, const float2 uv, const SamplerState Sampler) {
+    float3 sample = float3(1.0, material.roughnessFactor, material.metallicFactor);
+    Texture2D<float4> Tex = ResourceDescriptorHeap[material.metallicRoughnessTextureIndex];
+    sample *= Tex.Sample(Sampler, uv).rgb;
+    return sample;
+}
+float sample_occlusion_filtered(const Material material, const float2 uv, const SamplerState Sampler) {
+    Texture2D<float4> Tex = ResourceDescriptorHeap[material.aoTextureIndex];
+    return Tex.Sample(Sampler, uv).r;
+}
+float3 sample_normals_filtered(const Material material, const float2 uv, const SamplerState Sampler, out bool has_normal_map) {
+    float3 sample = float3(0.5f, 0.5f, 1.0f);
+    has_normal_map = false;
+    if (material.normalTextureIndex != -1) {
+        Texture2D<float4> Tex = ResourceDescriptorHeap[material.normalTextureIndex];
+        sample = Tex.Sample(Sampler, uv).rgb;
+        has_normal_map = true;
+    }
+    return sample;
+}
+float3 sample_emissive_filtered(const Material material, const float2 uv, const SamplerState Sampler) {
+    float3 sample = material.emissiveFactor.rgb * material.emissiveStrength;
+    Texture2D<float4> Tex = ResourceDescriptorHeap[material.emissiveTextureIndex];
+    sample *= Tex.Sample(Sampler, uv).rgb;
+    return sample;
+}
+float sample_transmission_filtered(const Material material, const float2 uv, const SamplerState Sampler) {
+    float sample = material.transmisionFactor;
+    Texture2D<float4> Tex = ResourceDescriptorHeap[material.transmissionTextureIndex];
+    sample *= Tex.Sample(Sampler, uv).r;
     return sample;
 }

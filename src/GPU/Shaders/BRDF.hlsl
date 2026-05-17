@@ -31,6 +31,14 @@ float3 importanceSampleGGX(float2 xi, float a) {
     float sin_phi = sin(phi);
     return float3(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta);
 }
+float D_GGX(float NoH, float linear_roughness) {
+    float a = NoH * linear_roughness;
+    float k = linear_roughness / (1.0f - NoH * NoH + a * a);
+    return k * k * (1.0f / PI);
+}
+float PDF_of_importanceSampleGGX(float NoH, float LoH, float a) { 
+    return D_GGX(NoH, a) * NoH / (4.0f * LoH); 
+}
 float3 fresnel_schlick(float3 f0, float3 f90, float cos_nv) {
     float x = 1.0f - cos_nv;
     float x2 = x * x;

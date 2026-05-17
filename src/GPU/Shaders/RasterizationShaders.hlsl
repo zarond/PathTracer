@@ -19,8 +19,11 @@ TextureCube<float4> SpecularLut : register(t2, space1);
 // Default sampler
 SamplerState Sampler : register(s0, space1);
 
+// Anisotropic sampler
+SamplerState ASampler : register(s1, space1);
+
 // DFG sampler
-SamplerState DFGSampler : register(s1, space1);
+SamplerState DFGSampler : register(s2, space1);
 
 // Per draw call data
 ConstantBuffer<RasterPerDrawData> DrawData : register(b1);
@@ -60,7 +63,7 @@ PSInput VS_Main(
 float4 PS_Main(PSInput input) : SV_TARGET {
     Material mat = Materials[DrawData.meshID];
     float2 uv = input.uv.xy;
-    float4 albedo_color = sample_albedo(mat, uv, Sampler);
+    float4 albedo_color = sample_albedo_filtered(mat, uv, ASampler);
     float alpha = albedo_color.w;
     if (alpha < mat.alpha_cutoff)
         discard;  // alpha-test in the same shader for simplicity, but it disables early-z optimisation
@@ -72,12 +75,12 @@ float4 PS_Main(PSInput input) : SV_TARGET {
     const float rot_sin = sin(y_envmap_rotation);
     const float2x2 envmap_rotation_matrix = float2x2(rot_cos, -rot_sin, rot_sin, rot_cos);
 
-    float3 emissive = sample_emissive(mat, uv, Sampler);
+    float3 emissive = sample_emissive_filtered(mat, uv, ASampler);
 
-    float3 ORM = sample_occlusion_roughness_metallic(mat, uv, Sampler);
+    float3 ORM = sample_occlusion_roughness_metallic_filtered(mat, uv, ASampler);
     float AO = ORM.x;
     if (mat.aoTextureIndex != mat.metallicRoughnessTextureIndex) {
-        AO = sample_occlusion(mat, uv, Sampler);
+        AO = sample_occlusion_filtered(mat, uv, ASampler);
     }
     AO = lerp(1.0, AO, mat.AOStrength);
     AO = lerp(1.0, AO, g_rasterCB.TexturesAOStrength); 
@@ -96,10 +99,10 @@ float4 PS_Main(PSInput input) : SV_TARGET {
     float3 B = cross(N, T) * tangent_sign;
 
     bool has_normal_map;
-    float3 normal_map_color = sample_normals(mat, uv, Sampler, has_normal_map);
+    float3 normal_map_color = sample_normals_filtered(mat, uv, ASampler, has_normal_map);
 
     float3x3 TBN = construct_TBN(T, B, N);
-    N = has_normal_map ? normal_map_sample_to_world(normal_map_color, TBN) : TBN[2];// new normal after normal mapping
+    N = has_normal_map ? normalize(normal_map_sample_to_world(normal_map_color, TBN)) : TBN[2]; // new normal after normal mapping
 
     float3 v = normalize(g_rasterCB.cameraPosition.xyz - input.world_position.xyz);
     float NoV = dot(N, v);

@@ -115,16 +115,21 @@ void Raster_pipeline::CreateRootSignatures() {
     default_sampler.RegisterSpace = 1;
     default_sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
+    D3D12_STATIC_SAMPLER_DESC anisotropic_sampler = default_sampler;  // Anisotropic static sampler.
+    anisotropic_sampler.MaxAnisotropy = 8;
+    anisotropic_sampler.Filter = D3D12_FILTER_ANISOTROPIC;
+    anisotropic_sampler.ShaderRegister = 1;
+
     D3D12_STATIC_SAMPLER_DESC dfg_sampler = {};
     dfg_sampler.Filter = D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT;
     dfg_sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     dfg_sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     dfg_sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-    dfg_sampler.ShaderRegister = 1;  // s1
+    dfg_sampler.ShaderRegister = 2;
     dfg_sampler.RegisterSpace = 1;
     dfg_sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-    D3D12_STATIC_SAMPLER_DESC samplers[] = {default_sampler, dfg_sampler};
+    D3D12_STATIC_SAMPLER_DESC samplers[] = {default_sampler, anisotropic_sampler, dfg_sampler};
 
     CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
     rootParameters[GlobalRootSignatureParams::SceneConstantSlot].InitAsConstantBufferView(0);
@@ -136,7 +141,7 @@ void Raster_pipeline::CreateRootSignatures() {
 
     auto flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT 
         | D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
-    rootSignatureDesc.Init(ARRAYSIZE(rootParameters), rootParameters, 2, samplers, flags);
+    rootSignatureDesc.Init(ARRAYSIZE(rootParameters), rootParameters, 3, samplers, flags);
 
     SerializeAndCreateRootSignature(rootSignatureDesc, &m_rootSignature);
 }
