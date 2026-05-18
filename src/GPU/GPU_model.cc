@@ -391,15 +391,21 @@ GPU_model::GPU_model(const Model& cpu_model, bool raytracing_support) {
 void GPU_model::prepare_textures_array_buffer(const Model& cpu_model) {
     int images_size = cpu_model.images.size();
     std::vector<bool> useSRGB;
+    std::vector<bool> isNormalMap;
     useSRGB.resize(images_size, false);
+    isNormalMap.resize(images_size, false);
     for (const auto& mat : cpu_model.materials) {
         int albedo_id = mat.baseColorTextureIndex;
         int emissive_id = mat.emissiveTextureIndex;
+        int normal_id = mat.normalTextureIndex;
         if (albedo_id >= 0 && albedo_id < images_size) {
             useSRGB[albedo_id] = true;
         }
         if (emissive_id >= 0 && emissive_id < images_size) {
             useSRGB[emissive_id] = true;
+        }
+        if (normal_id >= 0 && normal_id < images_size) {
+            isNormalMap[normal_id] = true;
         }
     }  // use SRGB for textures which are used as albedo or emmisive
 
@@ -407,7 +413,8 @@ void GPU_model::prepare_textures_array_buffer(const Model& cpu_model) {
     for (int i = 0; i < images_size; ++i) {
         const auto& img = cpu_model.images[i];
         bool srgb = useSRGB[i];
-        textures.emplace_back(img, srgb, true);
+        bool is_normal_map = isNormalMap[i];
+        textures.emplace_back(img, srgb, true, is_normal_map);
     }
 }
 
@@ -801,17 +808,19 @@ GPU_texture::GPU_texture(UINT64 width, UINT height, TEXTURE_TRAITS texture_optio
     create_texture_resource(width, height, format);
 }
 
-GPU_texture::GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture, bool allocate_mips) {
+GPU_texture::GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture, bool allocate_mips, bool is_normal_map) {
     texture_options = TEXTURE_TRAITS::HDR;
     if (allocate_mips) texture_options |= TEXTURE_TRAITS::AllocateMips;
+    if (is_normal_map) texture_options |= TEXTURE_TRAITS::NormalMap;
     create_texture_resource(cpu_texture.width(), cpu_texture.height(), DXGI_FORMAT_R32G32B32A32_FLOAT);
     upload_texture_to_gpu(
         cpu_texture.width(), cpu_texture.height(), cpu_texture.data(), sizeof(hdr_pixel), DXGI_FORMAT_R32G32B32A32_FLOAT);
 }
 
-GPU_texture::GPU_texture(const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_, bool allocate_mips) {
+GPU_texture::GPU_texture(const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_, bool allocate_mips, bool is_normal_map) {
     if (srgb_) texture_options |= TEXTURE_TRAITS::sRGB;
     if (allocate_mips) texture_options |= TEXTURE_TRAITS::AllocateMips;
+    if (is_normal_map) texture_options |= TEXTURE_TRAITS::NormalMap;
     DXGI_FORMAT format = srgb_ ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
     create_texture_resource(cpu_texture.width(), cpu_texture.height(), format);
     upload_texture_to_gpu(cpu_texture.width(), cpu_texture.height(), cpu_texture.data(), sizeof(sdr_pixel), format);

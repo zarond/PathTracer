@@ -32,11 +32,13 @@ Mipmaps_helper::~Mipmaps_helper() {
     release_gpu_resources();
 }
 
-void Mipmaps_helper::CreateMips(GPU_texture& uav_texture) { // on input uav texture
+void Mipmaps_helper::CreateMips(GPU_texture& uav_texture) {  // on input uav texture
     const auto& resource = uav_texture.get_gpu_resource();
     const auto description = resource->GetDesc();
     const auto width = description.Width;
     const auto height = description.Height;
+    const bool isSRGB = (uav_texture.texture_options & TEXTURE_TRAITS::sRGB) != TEXTURE_TRAITS::None;
+    const bool isNormalMap = (uav_texture.texture_options & TEXTURE_TRAITS::NormalMap) != TEXTURE_TRAITS::None;
 
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
@@ -50,8 +52,8 @@ void Mipmaps_helper::CreateMips(GPU_texture& uav_texture) { // on input uav text
     int NumMips = GPU_texture::CalculateMipCount(width, height);
     NumMips = std::min(NumMips, MipsLimit);
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(HeapStartCpu, HeapHandleIncrement);
-    CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(HeapStartGpu, HeapHandleIncrement);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(HeapStartCpu);
+    CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(HeapStartGpu);
 
     for (int mipLevel = 0; mipLevel < NumMips; ++mipLevel) {
         uav_texture.GetUAVHandleForMipLevel(mipLevel, cpuHandle);
@@ -64,20 +66,23 @@ void Mipmaps_helper::CreateMips(GPU_texture& uav_texture) { // on input uav text
     uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
     uavBarrier.UAV.pResource = uav_texture.get_gpu_resource().Get();
 
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, gpuHandle);
     //commandList->SetComputeRootUnorderedAccessView(GlobalRootSignatureParams::GroupCounters, GroupCounters->GetGPUVirtualAddress());
 
     // todo: replace multipass with single pass
-    for (int mipLevel = 0; mipLevel < NumMips; mipLevel += 5) {
+    for (int mipLevel = 0; mipLevel < NumMips - 1; mipLevel += 5) {
         int next_mip_width = GPU_texture::GetMipDimension(width, mipLevel + 1);
         int next_mip_height = GPU_texture::GetMipDimension(width, mipLevel + 1);
 
-        MipCSInput input{NumMips, 0, 0, mipLevel};
+        commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, gpuHandle);
+        int localNumMips = std::min(6, NumMips - mipLevel);
+        MipCSInput input{localNumMips, isSRGB, isNormalMap, mipLevel};
         constexpr int inputSizeInInt = sizeof(MipCSInput) / 4;
         commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
 
         commandList->Dispatch((next_mip_width + 15) / 16, (next_mip_height + 15) / 16, 1);
         commandList->ResourceBarrier(1, &uavBarrier);
+
+        gpuHandle.Offset(5, HeapHandleIncrement);
     }
 }
 

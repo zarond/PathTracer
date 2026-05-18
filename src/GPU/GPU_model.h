@@ -88,7 +88,8 @@ enum class TEXTURE_TRAITS : uint8_t {
     RenderTarget    = 1 << 3,
     Depth           = 1 << 4,
     UAV             = 1 << 5,
-    AllocateMips    = 1 << 6
+    AllocateMips    = 1 << 6,
+    NormalMap       = 1 << 7,
 };
 DEFINE_ENUM_FLAG_OPERATORS(TEXTURE_TRAITS)
 
@@ -96,8 +97,9 @@ class GPU_texture {
   public:
     GPU_texture() = default;
     explicit GPU_texture(UINT64 width, UINT height, TEXTURE_TRAITS texture_options);
-    explicit GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture, bool allocate_mips = false);
-    explicit GPU_texture(const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_ = false, bool allocate_mips = false);
+    explicit GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture, bool allocate_mips = false, bool is_normal_map = false);
+    explicit GPU_texture(
+        const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_ = false, bool allocate_mips = false, bool is_normal_map = false);
     ~GPU_texture();
 
     GPU_texture(const GPU_texture&) = delete;

@@ -15,7 +15,7 @@ class Mipmaps_helper {
     Mipmaps_helper();
     ~Mipmaps_helper();
 
-    void CreateMips(GPU_texture& envmap);
+    void CreateMips(GPU_texture& uav_texture);
 
   private:
     void CreateRootSignature();
