@@ -126,3 +126,11 @@ float3x3 handle_TBN_creation(const float3x3 NormalMatrixTransposed, const float3
     }
     return TBN;
 }
+
+// [Moving Frostbite to Physically Based Rendering 3.0]
+// getSpecularDominantDir page 69
+float3 DominantReflectionVector(float3 l, float3 n, float linear_roughness) {
+    float factor = saturate(1.0f - linear_roughness);
+    factor *= (sqrt(factor) + linear_roughness);
+    return lerp(n, l, factor);  // return vector is not unit length
+}

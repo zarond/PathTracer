@@ -118,10 +118,13 @@ float4 PS_Main(PSInput input) : SV_TARGET {
     float2 DFG = DFGLut.SampleLevel(DFGSampler, DFG_uv, 0).xy;
     float3 Fresnel = f0 * DFG.x + f90 * DFG.y;
 
-    N.xz = mul(envmap_rotation_matrix, N.xz);  // enmap rotation
-    float3 diffuseIBL = DiffuseLut.SampleLevel(Sampler, N, 0);
-    l.xz = mul(envmap_rotation_matrix, l.xz);  // enmap rotation
-    float3 specularIBL = SpecularLut.SampleLevel(Sampler, l, roughness * (g_rasterCB.SpecularLutMips - 1));
+    float3 DiffuseSampleDir = N;
+    DiffuseSampleDir.xz = mul(envmap_rotation_matrix, DiffuseSampleDir.xz);  // enmap rotation
+    float3 diffuseIBL = DiffuseLut.SampleLevel(Sampler, DiffuseSampleDir, 0);
+    
+    float3 SpecularSampleDir = DominantReflectionVector(l, N, linear_roughness);
+    SpecularSampleDir.xz = mul(envmap_rotation_matrix, SpecularSampleDir.xz);  // enmap rotation
+    float3 specularIBL = SpecularLut.SampleLevel(Sampler, SpecularSampleDir, roughness * (g_rasterCB.SpecularLutMips - 1));
 
     float3 final_light = AO * diffuse_color * diffuseIBL * (1.0f - Fresnel) + Fresnel * specularIBL + emissive;
 
