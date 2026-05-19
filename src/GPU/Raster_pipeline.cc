@@ -47,15 +47,17 @@ void Raster_pipeline::OnModelLoad(GPU_model& gpu_model) {
         }
     }
 
-    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
-    std::cout << "Model's texture's mips were computed in " << diff.count() << " ms." << '\n';
+    auto diff = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start);
+    float time_ms = static_cast<float>(diff.count()) / 1000.0f;
+    std::cout << "Model's texture's mips were computed in " << std::fixed << std::setprecision(2) << time_ms << " ms." << '\n';
 }
 
 void Raster_pipeline::OnEnvmapLoad(GPU_texture& envmap) {
     auto start = std::chrono::high_resolution_clock::now();
     ComputeMipMaps(envmap);
-    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
-    std::cout << "Envmap texture mips were computed in " << diff.count() << " ms." << '\n';
+    auto diff = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start);
+    float time_ms = static_cast<float>(diff.count()) / 1000.0f;
+    std::cout << "Envmap texture mips were computed in " << std::fixed << std::setprecision(2) << time_ms << " ms." << '\n';
     ComputeEnvmapLut(envmap);
 }
 
@@ -184,14 +186,15 @@ void Raster_pipeline::CreatePipelineStateObjects() {
     ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState)));
 
     // PSO for alpha blending
+    D3D12_RENDER_TARGET_BLEND_DESC& rtBlend = psoDesc.BlendState.RenderTarget[0];
     psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
-    psoDesc.BlendState.RenderTarget[0].BlendEnable = TRUE;
-    psoDesc.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
-    psoDesc.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
-    psoDesc.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
-    psoDesc.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ZERO;
-    psoDesc.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;
-    psoDesc.BlendState.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
+    rtBlend.BlendEnable = TRUE;
+    rtBlend.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+    rtBlend.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+    rtBlend.BlendOp = D3D12_BLEND_OP_ADD;
+    rtBlend.SrcBlendAlpha = D3D12_BLEND_ZERO;
+    rtBlend.DestBlendAlpha = D3D12_BLEND_ONE;
+    rtBlend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
     ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_alphaBlendingPipelineState)));
 
     // PSO for background rendering
@@ -277,12 +280,17 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     commandList->IASetIndexBuffer(&indexBufferView);
 
     int num_opaque_objects;
+    int num_transmissive_objects;
     int num_alpha_blended_objects;
-    sort_objects_for_rendering(gpu_model, num_opaque_objects, num_alpha_blended_objects);
+    int offset = 0;
+    sort_objects_for_rendering(gpu_model, num_opaque_objects, num_transmissive_objects, num_alpha_blended_objects);
     std::span<const DrawableSortingInfo> opaque_objects{
         m_sortedDrawables.begin(), m_sortedDrawables.begin() + num_opaque_objects};
-    std::span<const DrawableSortingInfo> blend_objects{
-        m_sortedDrawables.begin() + num_opaque_objects, m_sortedDrawables.end()};
+    offset += num_opaque_objects;
+    std::span<const DrawableSortingInfo> transmissive_objects{
+        m_sortedDrawables.begin() + offset, m_sortedDrawables.begin() + offset + num_transmissive_objects};
+    offset += num_transmissive_objects;
+    std::span<const DrawableSortingInfo> blend_objects{m_sortedDrawables.begin() + offset, m_sortedDrawables.end()};
 
     // draw mesh lambda
     auto draw_object = [&](const DrawableSortingInfo element) {
@@ -302,6 +310,12 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     // Draw background
     commandList->SetPipelineState(m_backgroundPipelineState.Get());
     commandList->DrawInstanced(3, 1, 0, 0);
+
+    // todo: Draw transmissive objects with rendered image so far as background
+    commandList->SetPipelineState(m_pipelineState.Get());
+    for (const auto& element : transmissive_objects) {
+        draw_object(element);
+    }
 
     // Draw objects with alpha blending
     commandList->SetPipelineState(m_alphaBlendingPipelineState.Get());
@@ -346,8 +360,10 @@ void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
     m_renderTarget = GPU_texture{currentWidth, currentHeight, flags};
 }
 
-void Raster_pipeline::sort_objects_for_rendering(const GPU_model& gpu_model, int& num_opaque_objects, int& num_alpha_blended_objects) {
+void Raster_pipeline::sort_objects_for_rendering(
+    const GPU_model& gpu_model, int& num_opaque_objects, int& num_transmissive_objects, int& num_alpha_blended_objects) {
     num_opaque_objects = 0;
+    num_transmissive_objects = 0;
     num_alpha_blended_objects = 0;
     m_sortedDrawables.clear();
     m_sortedDrawables.reserve(gpu_model.objects.size());
@@ -362,7 +378,10 @@ void Raster_pipeline::sort_objects_for_rendering(const GPU_model& gpu_model, int
 
         if (alphaBlending) {
             num_alpha_blended_objects++;
-        } else {
+        } else if (transmittance) {
+            num_transmissive_objects++;
+        }
+        else {
             num_opaque_objects++;
         }
 
@@ -371,6 +390,9 @@ void Raster_pipeline::sort_objects_for_rendering(const GPU_model& gpu_model, int
     std::sort(m_sortedDrawables.begin(), m_sortedDrawables.end(), [](const DrawableSortingInfo& a, const DrawableSortingInfo& b) {
         if (a.alphaBlending != b.alphaBlending) {
             return !a.alphaBlending;  // opaque first
+        }
+        if (a.transmittance != b.transmittance) {
+            return !a.transmittance;  // without transmittance first
         }
         if (!a.alphaBlending) {
             return a.ZDistanceToCamera < b.ZDistanceToCamera;  // front to back for opaque objects

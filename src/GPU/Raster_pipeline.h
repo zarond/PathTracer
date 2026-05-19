@@ -115,7 +115,8 @@ class Raster_pipeline : public IRender_pipeline {
     GPU_texture Specular_lut;
 
     std::vector<DrawableSortingInfo> m_sortedDrawables;  // reusable vector for sorting drawables every frame
-    void sort_objects_for_rendering(const GPU_model& gpu_model, int& num_opaque_objects, int& num_alpha_blended_objects);
+    void sort_objects_for_rendering(
+        const GPU_model& gpu_model, int& num_opaque_objects, int& num_transmissive_objects, int& num_alpha_blended_objects);
 
     UINT64 currentWidth = 0;
     UINT currentHeight = 0;
