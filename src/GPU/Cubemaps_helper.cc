@@ -52,7 +52,7 @@ void EnvCube_helper::CreateDiffuseEnvmapCube(const GPU_texture& envmap) {
     constexpr int inputSizeInInt = sizeof(LutCSInput) / 4;
     commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
 
-    commandList->Dispatch(Diffuse_size / 8, Diffuse_size / 8, 6);
+    commandList->Dispatch(Diffuse_size / 16, Diffuse_size / 16, 6);
 }
 
 GPU_texture&& EnvCube_helper::GetDiffuseEnvmapCube() { return std::move(Diffuse_lut); }
@@ -103,7 +103,7 @@ void EnvCube_helper::CreateSpecularEnvmapCube(const GPU_texture& envmap) {
         constexpr int inputSizeInInt = sizeof(LutCSInput) / 4;
         commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
     
-        commandList->Dispatch((dimension + 7) / 8, (dimension + 7) / 8, 6);
+        commandList->Dispatch((dimension + 15) / 16, (dimension + 15) / 16, 6);
     }
 }
 

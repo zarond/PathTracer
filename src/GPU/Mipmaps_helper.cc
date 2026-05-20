@@ -19,13 +19,14 @@ struct MipCSInput {
     int numMips;
     int isSRGB;
     int isNormalMap;
-    int startingMip;
+    int numGroups;
 };
 
 Mipmaps_helper::Mipmaps_helper() {
     CreateRootSignature();
     CreatePipelineStateObject();
     CreateDescriptorHeap();
+    CreateCounterBuffer();
 }
 
 Mipmaps_helper::~Mipmaps_helper() {
@@ -60,30 +61,26 @@ void Mipmaps_helper::CreateMips(GPU_texture& uav_texture) {  // on input uav tex
         cpuHandle.Offset(1, HeapHandleIncrement);
     }
 
-    // UAV Barrier forces the GPU to fully finish writing the new mip before the next pass reads it
-    D3D12_RESOURCE_BARRIER uavBarrier = {};
-    uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-    uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-    uavBarrier.UAV.pResource = uav_texture.get_gpu_resource().Get();
+    int GroupsX = (GPU_texture::GetMipDimension(width, 1) + 15) / 16;
+    int GroupsY = (GPU_texture::GetMipDimension(height, 1) + 15) / 16;
+    int numGroups = GroupsX * GroupsY;
 
-    //commandList->SetComputeRootUnorderedAccessView(GlobalRootSignatureParams::GroupCounters, GroupCounters->GetGPUVirtualAddress());
+    commandList->SetComputeRootUnorderedAccessView(GlobalRootSignatureParams::GroupCounters, GroupCounters->GetGPUVirtualAddress());
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, gpuHandle);
+    MipCSInput input{NumMips, isSRGB, isNormalMap, numGroups};
+    constexpr int inputSizeInInt = sizeof(MipCSInput) / 4;
+    commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
 
-    // todo: replace multipass with single pass
-    for (int mipLevel = 0; mipLevel < NumMips - 1; mipLevel += 5) {
-        int next_mip_width = GPU_texture::GetMipDimension(width, mipLevel + 1);
-        int next_mip_height = GPU_texture::GetMipDimension(width, mipLevel + 1);
+    commandList->Dispatch(GroupsX, GroupsY, 1);
+}
 
-        commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, gpuHandle);
-        int localNumMips = std::min(6, NumMips - mipLevel);
-        MipCSInput input{localNumMips, isSRGB, isNormalMap, mipLevel};
-        constexpr int inputSizeInInt = sizeof(MipCSInput) / 4;
-        commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
-
-        commandList->Dispatch((next_mip_width + 15) / 16, (next_mip_height + 15) / 16, 1);
-        commandList->ResourceBarrier(1, &uavBarrier);
-
-        gpuHandle.Offset(5, HeapHandleIncrement);
-    }
+GPU_texture Mipmaps_helper::GetBlankCompatibleUAVTex(GPU_texture& texture) {
+    const auto& resource = texture.get_gpu_resource();
+    const auto description = resource->GetDesc();
+    const auto width = description.Width;
+    const auto height = description.Height;
+    TEXTURE_TRAITS flags = texture.texture_options | TEXTURE_TRAITS::AllocateMips | TEXTURE_TRAITS::UAV;
+    return GPU_texture{width, height, flags};
 }
 
 void Mipmaps_helper::CreateRootSignature() {
@@ -135,10 +132,77 @@ void Mipmaps_helper::CreateDescriptorHeap() {
     HeapHandleIncrement = device->GetDescriptorHandleIncrementSize(desc.Type);
 }
 
+void Mipmaps_helper::CreateCounterBuffer() {
+    D3DContext& d3d_ctx = D3DContext::Get();
+    const auto& device = d3d_ctx.m_d3dDevice;
+
+    const UINT bufferSize = 4;
+
+    D3D12_RESOURCE_DESC desc = {};
+    desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    desc.Alignment = 0;
+    desc.Width = bufferSize;
+    desc.Height = 1;
+    desc.DepthOrArraySize = 1;
+    desc.MipLevels = 1;
+    desc.Format = DXGI_FORMAT_UNKNOWN;
+    desc.SampleDesc.Count = 1;
+    desc.SampleDesc.Quality = 0;
+    desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+    D3D12_HEAP_PROPERTIES heapProps = {};
+    heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+    // Create the actual VRAM allocation
+    HRESULT hr = device->CreateCommittedResource(
+        &heapProps, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&GroupCounters));
+
+    ComPtr<ID3D12Resource2> zero_uploadBuffer;
+
+    const D3D12_HEAP_PROPERTIES upload_props{
+        .Type = D3D12_HEAP_TYPE_UPLOAD,
+        .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
+        .CreationNodeMask = 1,
+        .VisibleNodeMask = 1,
+    };
+
+    const D3D12_RESOURCE_DESC upload_desc{
+        .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
+        .Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+        .Width = bufferSize,
+        .Height = 1,
+        .DepthOrArraySize = 1,
+        .MipLevels = 1,
+        .Format = DXGI_FORMAT_UNKNOWN,
+        .SampleDesc = {1, 0},
+        .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+        .Flags = D3D12_RESOURCE_FLAG_NONE,
+    };
+
+    ThrowIfFailed(d3d_ctx.m_d3dDevice->CreateCommittedResource(&upload_props, D3D12_HEAP_FLAG_NONE, &upload_desc,
+        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&zero_uploadBuffer)));
+
+    void* pDataBegin = nullptr;
+    int zero = 0;
+    ThrowIfFailed(zero_uploadBuffer->Map(0, nullptr, &pDataBegin));
+    memcpy(pDataBegin, &zero, bufferSize);
+    zero_uploadBuffer->Unmap(0, nullptr);
+
+    d3d_ctx.InitDXRCommandList();
+
+    d3d_ctx.m_DXRCommandList->CopyBufferRegion(GroupCounters.Get(), 0, zero_uploadBuffer.Get(), 0, bufferSize);
+
+    d3d_ctx.DispatchDXRCommandList();
+    d3d_ctx.WaitForPendingDXR();
+}
+
 void Mipmaps_helper::release_gpu_resources() {
     m_rootSignature.Reset();
     m_PipelineState.Reset();
     m_SrvDescHeap.Reset();
+    GroupCounters.Reset();
 }
 
 }  // namespace app

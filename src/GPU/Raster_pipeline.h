@@ -77,7 +77,7 @@ class Raster_pipeline : public IRender_pipeline {
     void ComputeDFGLut();
     void ComputeEnvmapLut(const GPU_texture& envmap);
 
-    static void ComputeMipMaps(GPU_texture& envmap);
+    static void ComputeMipMaps(GPU_texture& texture);
 
     void resize_render_targets(int new_width, int new_height);
     void copy_render_target_to_framebuffer(const CPUFrameBuffer& framebuffer);

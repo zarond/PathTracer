@@ -459,18 +459,13 @@ void Raster_pipeline::ComputeMipMaps(GPU_texture& texture) {
     if (texture.mipLevels <= 1) {
         return;
     }
-    const auto& resource = texture.get_gpu_resource();
-    const auto description = resource->GetDesc();
-    const auto width = description.Width;
-    const auto height = description.Height;
-    TEXTURE_TRAITS flags = texture.texture_options | TEXTURE_TRAITS::AllocateMips | TEXTURE_TRAITS::UAV;
-    GPU_texture uav_texture{width, height, flags};
+    GPU_texture uav_texture = Mipmaps_helper::GetBlankCompatibleUAVTex(texture);
     static Mipmaps_helper mip_helper{};
 
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
 
-    GPU_texture::copy_texture_to_uav(uav_texture, texture, d3d_ctx.m_DXRCommandList); // todo: restrict to copying only the top mip level
+    GPU_texture::copy_texture_to_uav_mip0_only(uav_texture, texture, d3d_ctx.m_DXRCommandList);
 
     mip_helper.CreateMips(uav_texture);
     

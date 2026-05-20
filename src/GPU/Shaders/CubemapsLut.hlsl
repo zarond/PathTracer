@@ -62,7 +62,7 @@ float3 SampleEnvmap(float3 dir, float lod) {  // dir is expected to be normalize
     return EnvMap.SampleLevel(EnvMapSampler, uv, lod).xyz;
 }
 
-[numthreads(8, 8, 1)] 
+[numthreads(16, 16, 1)] 
 void CS_Diffuse_Lut(uint3 DTid : SV_DispatchThreadID) {
     uint3 destSize;
     gOutput.GetDimensions(destSize.x, destSize.y, destSize.z);
@@ -104,7 +104,7 @@ void CS_Diffuse_Lut(uint3 DTid : SV_DispatchThreadID) {
     gOutput[DTid.xyz] = float4(result, 1.0);
 }
 
-[numthreads(8, 8, 1)] 
+[numthreads(16, 16, 1)] 
 void CS_Specular_Lut(uint3 DTid : SV_DispatchThreadID) {
     uint3 destSize;
     gOutput.GetDimensions(destSize.x, destSize.y, destSize.z);

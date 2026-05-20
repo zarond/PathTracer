@@ -127,6 +127,7 @@ class GPU_texture {
 
     static void copy_texture_from_uav(GPU_texture& dst, GPU_texture& src, ComPtr<ID3D12GraphicsCommandList4>& commandList);
     static void copy_texture_to_uav(GPU_texture& dst, GPU_texture& src, ComPtr<ID3D12GraphicsCommandList4>& commandList);
+    static void copy_texture_to_uav_mip0_only(GPU_texture& dst, GPU_texture& src, ComPtr<ID3D12GraphicsCommandList4>& commandList);
 
   private:
     void create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT format);

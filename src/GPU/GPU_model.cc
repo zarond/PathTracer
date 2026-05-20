@@ -1144,6 +1144,27 @@ void GPU_texture::copy_texture_to_uav(GPU_texture& dst, GPU_texture& src, ComPtr
     };
     commandList->ResourceBarrier(2, from_barriers);
 }
+void GPU_texture::copy_texture_to_uav_mip0_only(
+    GPU_texture& dst, GPU_texture& src, ComPtr<ID3D12GraphicsCommandList4>& commandList) {
+    const auto& gpuDst = dst.get_gpu_resource();
+    const auto& gpuSrc = src.get_gpu_resource();
+
+    D3D12_RESOURCE_BARRIER to_barriers[2] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuSrc.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COPY_SOURCE),
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuDst.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON),
+    };
+    commandList->ResourceBarrier(2, to_barriers);
+
+    CD3DX12_TEXTURE_COPY_LOCATION dstLocation = {gpuDst.Get(), 0};
+    CD3DX12_TEXTURE_COPY_LOCATION srcLocation = {gpuSrc.Get(), 0};
+    commandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, nullptr);
+
+    D3D12_RESOURCE_BARRIER from_barriers[2] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuSrc.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuDst.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS),
+    };
+    commandList->ResourceBarrier(2, from_barriers);
+}
 
 D3D12_GPU_DESCRIPTOR_HANDLE GPU_texture::GetSRVHandle() const { return srv_handle.gpuHandle; }
 

@@ -17,10 +17,13 @@ class Mipmaps_helper {
 
     void CreateMips(GPU_texture& uav_texture);
 
+    static GPU_texture GetBlankCompatibleUAVTex(GPU_texture& texture);
+
   private:
     void CreateRootSignature();
     void CreatePipelineStateObject();
     void CreateDescriptorHeap();
+    void CreateCounterBuffer();
 
     ComPtr<ID3D12RootSignature> m_rootSignature;
     ComPtr<ID3D12PipelineState> m_PipelineState;
@@ -31,6 +34,8 @@ class Mipmaps_helper {
     D3D12_CPU_DESCRIPTOR_HANDLE HeapStartCpu = {};
     D3D12_GPU_DESCRIPTOR_HANDLE HeapStartGpu = {};
     UINT HeapHandleIncrement = 0;
+
+    ComPtr<ID3D12Resource> GroupCounters;
 
     constexpr static int MipsLimit = 16;
 

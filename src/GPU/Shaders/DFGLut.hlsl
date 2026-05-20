@@ -3,7 +3,7 @@
 // Output texture, accessed as a UAV
 RWTexture2D<float4> gOutput : register(u0);
 
-[numthreads(8, 8, 1)] 
+[numthreads(16, 16, 1)] 
 void CS_DFG_Lut(uint3 DTid : SV_DispatchThreadID) {
     uint2 destSize;
     gOutput.GetDimensions(destSize.x, destSize.y);
@@ -33,7 +33,7 @@ void CS_DFG_Lut(uint3 DTid : SV_DispatchThreadID) {
         if (LoN > 0) {
             const float G = V_SmithGGXCorrelated(NoV, LoN, linear_roughness);
             const float visibility = G * LoN * VoM / NoM;
-            const float3 F = pow5(1.0f - VoM);
+            const float F = pow5(1.0f - VoM);
             result.x += visibility * (1.0f - F);
             result.y += visibility * F;
         }
