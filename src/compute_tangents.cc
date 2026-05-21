@@ -65,8 +65,7 @@ void TangentSpaceHelper::compute_tangents(Mesh& mesh) {
 
 void TangentSpaceHelper::compute_tangents_no_uv(Mesh& mesh) {
     std::for_each(mesh.vertices.begin(), mesh.vertices.end(), [](auto& vertex) {
-        auto diff = (vertex.normal - fvec3{0.0f, 1.0f, 0.0f});
-        auto up = (dot(diff, diff) > 1e-4f) ? fvec3{0.0f, 1.0f, 0.0f} : fvec3{0.0f, -1.0f, 0.0f};
+        auto up = (glm::abs(vertex.normal.y) < 0.999f) ? fvec3{0.0f, 1.0f, 0.0f} : fvec3{1.0f, 0.0f, 0.0f};
         vertex.tangent = xyz1(normalize(cross(vertex.normal, up)));
     });
 }
