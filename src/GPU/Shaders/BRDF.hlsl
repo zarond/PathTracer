@@ -138,3 +138,13 @@ float3 DominantReflectionVector(float3 l, float3 n, float linear_roughness) {
 float transmission_roughness(float linear_roughness, float ior) { // returns linear roughness
     return saturate(linear_roughness * abs(1.0f - 1.0f / ior));
 }
+
+// [http://www.jp.square-enix.com/tech/library/pdf/ImprovedGeometricSpecularAA.pdf]
+float SpecularAntialiasing(float roughness, float3 n, float SIGMA2, float KAPPA) {
+    float3 du = ddx(n);
+    float3 dv = ddy(n);
+    float variance = SIGMA2 * (dot(du, du) + dot(dv, dv));
+    float kernel_roughness2 = min(2.0 * variance, KAPPA);
+    float square_roughness = saturate(roughness * roughness + kernel_roughness2);
+    return sqrt(square_roughness);
+}

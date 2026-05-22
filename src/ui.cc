@@ -635,6 +635,11 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
         bool raster_settings_changed = false;
         raster_settings_changed |= ImGui::SliderFloat(
             "AO from textures strength", &render_settings.TexturesAOStrength, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
+        raster_settings_changed |= ImGui::Checkbox("Enable specular AA", &render_settings.specular_aa_enabled);
+        raster_settings_changed |= ImGui::SliderFloat(
+            "Specular AA Variance", &render_settings.specular_aa_variance, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
+        raster_settings_changed |= ImGui::SliderFloat(
+            "Specular AA Threshold", &render_settings.specular_aa_threshold, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
         if (raster_settings_changed) {
             viewer.set_render_settings(render_settings);
         }

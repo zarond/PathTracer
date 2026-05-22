@@ -143,9 +143,6 @@ float4 PS_Main(PSInput input) : SV_TARGET {
     float3 f0 = lerp(mat.dielectric_f0, albedo_color.rgb, metallic);
     const float3 f90 = 1.0f;
 
-    const float roughness = ORM.y;
-    const float linear_roughness = roughness * roughness;
-
     float3 N = input.normal.xyz;
     float3 T = input.tangent.xyz;
     float tangent_sign = input.tangent.w;
@@ -156,6 +153,12 @@ float4 PS_Main(PSInput input) : SV_TARGET {
 
     float3x3 TBN = construct_TBN(T, B, N);
     N = has_normal_map ? normalize(normal_map_sample_to_world(normal_map_color, TBN)) : TBN[2]; // new normal after normal mapping
+
+    float roughness = ORM.y;
+    if (g_rasterCB.specular_aa_enabled) {
+        roughness = SpecularAntialiasing(roughness, N, g_rasterCB.specular_aa_variance, g_rasterCB.specular_aa_threshold);
+    }
+    const float linear_roughness = roughness * roughness;
 
     float3 v = normalize(g_rasterCB.cameraPosition.xyz - input.world_position.xyz);
     float NoV = dot(N, v);
