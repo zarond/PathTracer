@@ -134,3 +134,7 @@ float3 DominantReflectionVector(float3 l, float3 n, float linear_roughness) {
     factor *= (sqrt(factor) + linear_roughness);
     return lerp(n, l, factor);  // return vector is not unit length
 }
+// Rasterization Approximation
+float transmission_roughness(float linear_roughness, float ior) { // returns linear roughness
+    return saturate(linear_roughness * abs(1.0f - 1.0f / ior));
+}

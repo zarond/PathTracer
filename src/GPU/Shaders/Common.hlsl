@@ -40,13 +40,16 @@ struct RasterConstantBuffer {
     float envmapRotation;
     int SpecularLutMips;
     float TexturesAOStrength;
+    int RenderFrameMips;
+    int2 FrameSize;
 };
 
 struct RasterPerDrawData {
     float4x4 modelMatrix;
     float4x4 normalMatrix;
     int meshID;
-    float padding[3];
+    float modelScale;
+    float padding[2];
 };
 
 struct Material {
@@ -73,7 +76,9 @@ struct Material {
     int aoTextureIndex;
     float AOStrength;
 
-    float padding[3];
+    int thicknessTextureIndex;
+    float thicknessFactor;
+    float padding;
 };
 
 typedef BuiltInTriangleIntersectionAttributes Attributes;
@@ -210,6 +215,18 @@ float3 sample_emissive_filtered(const Material material, const float2 uv, const 
     float3 sample = material.emissiveFactor.rgb * material.emissiveStrength;
     Texture2D<float4> Tex = ResourceDescriptorHeap[material.emissiveTextureIndex];
     sample *= Tex.Sample(Sampler, uv).rgb;
+    return sample;
+}
+float sample_thickness_filtered(const Material material, const float2 uv, const SamplerState Sampler) {
+    float sample = material.thicknessFactor;
+    Texture2D<float4> Tex = ResourceDescriptorHeap[material.thicknessTextureIndex];
+    sample *= Tex.Sample(Sampler, uv).g;
+    return sample;
+}
+float2 sample_transmission_thickness_filtered(const Material material, const float2 uv, const SamplerState Sampler) {
+    float2 sample = float2(material.transmisionFactor, material.thicknessFactor);
+    Texture2D<float4> Tex = ResourceDescriptorHeap[material.transmissionTextureIndex];
+    sample *= Tex.Sample(Sampler, uv).rg;
     return sample;
 }
 float sample_transmission_filtered(const Material material, const float2 uv, const SamplerState Sampler) {

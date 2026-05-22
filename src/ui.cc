@@ -226,6 +226,21 @@ void SetupImGuiStyle() {
     }
 }
 
+static bool AttenuationColorSettings(Material& material) {
+    bool settings_changed = ImGui::ColorEdit3(
+        "Attenuation Col.", reinterpret_cast<float*>(&material.attenuationColor), ImGuiColorEditFlags_Float);
+    settings_changed |= ImGui::SliderFloat(
+        "Attenuation Distance", &material.attenuationDistance, 0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
+    settings_changed |= ImGui::Checkbox("Use Blender attenuation", &material.useBlenderAttenuation);
+    HelpTooltip("Calculate attenuation coefficient as in Blender, otherwise do as defined in KHR Extension Volume");
+    if (material.useBlenderAttenuation) {
+        material.attenuationFactor = (1.0f - material.attenuationColor) / glm::max(1e-5f, material.attenuationDistance);
+    } else {
+        material.attenuationFactor = -log(material.attenuationColor) / glm::max(1e-5f, material.attenuationDistance);
+    }
+    return settings_changed;
+}
+
 static void MaterialsSettingsUI(Viewer& viewer) {
     auto& model = viewer.get_model();
     const int materials_size = model.materials.size();
@@ -248,13 +263,14 @@ static void MaterialsSettingsUI(Viewer& viewer) {
         useTextureCheckbox("Use Transmission Texture", current_material.transmissionTextureIndex, original_material.transmissionTextureIndex);
     settings_changed |= 
         useTextureCheckbox("Use Emissive Texture", current_material.emissiveTextureIndex, original_material.emissiveTextureIndex);
+    settings_changed |=
+        useTextureCheckbox("Use Thickness Texture", current_material.thicknessTextureIndex, original_material.thicknessTextureIndex);
 
     settings_changed |=
         ImGui::ColorEdit4("BaseColor F.", reinterpret_cast<float*>(&current_material.baseColorFactor), ImGuiColorEditFlags_Float);
     settings_changed |=
         ImGui::ColorEdit3("Emissive F.", reinterpret_cast<float*>(&current_material.emissiveFactor), ImGuiColorEditFlags_Float);
-    settings_changed |= 
-        ImGui::ColorEdit3("Attenuation F.", reinterpret_cast<float*>(&current_material.attenuationFactor), ImGuiColorEditFlags_Float);
+    settings_changed |= AttenuationColorSettings(current_material);
     settings_changed |=
         ImGui::SliderFloat("Metallic F.", &current_material.metallicFactor, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
     settings_changed |=
@@ -269,6 +285,7 @@ static void MaterialsSettingsUI(Viewer& viewer) {
     settings_changed |= 
         ImGui::SliderFloat("Transmission F.", &current_material.transmisionFactor, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
     settings_changed |= ImGui::SliderFloat("Emissive Strength F.", &current_material.emissiveStrength, 0.0f, 10.0f, "%.3f");
+    settings_changed |= ImGui::SliderFloat("Thickness F.", &current_material.thicknessFactor, 0.0f, 10.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
     settings_changed |= ImGui::Checkbox("Double Sided", &current_material.doubleSided);
     settings_changed |= ImGui::Checkbox("Has Volume", &current_material.hasVolume);
     settings_changed |= ImGui::Checkbox("Alpha Blending", &current_material.alphaBlending);

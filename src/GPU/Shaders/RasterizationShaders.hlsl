@@ -16,6 +16,9 @@ TextureCube<float4> DiffuseLut : register(t1, space1);
 // Specular LUT
 TextureCube<float4> SpecularLut : register(t2, space1);
 
+// Frame
+Texture2D<float4> Frame : register(t3, space1);
+
 // Default sampler
 SamplerState Sampler : register(s0, space1);
 
@@ -57,6 +60,56 @@ PSInput VS_Main(
     result.uv = uv;
 
     return result;
+}
+
+struct RefractResult {
+    float3 pos;
+    float3 dir;
+    float dist;
+};
+
+RefractResult SimulateRefraction(float3 ws_pos, float3 v, float3 N, float ior, float thickness) {  // thin slab approximation
+    float3 refract_dir = refract(-v, N, 1.0f / ior);
+    //thickness /= min(-dot(refract_dir, N), 0.01f);
+    ws_pos += refract_dir * thickness;
+
+    RefractResult r;
+    r.pos = ws_pos;
+    r.dir = refract_dir;
+    r.dist = thickness;
+    return r;
+}
+
+float3 sampleBackgroundAndIBL(float3 ws_pos, float3 refract_dir, float t_roughness) {
+    float4 ndc = mul(g_rasterCB.viewProjection, float4(ws_pos, 1.0f));
+    ndc /= ndc.w;
+    ndc.y *= -1.0f;
+    float2 uv = ndc.xy * 0.5f + 0.5f;
+    float3 refractedIBL = Frame.SampleLevel(DFGSampler, uv, t_roughness * (g_rasterCB.RenderFrameMips - 1));
+    //if (any(abs(ndc.xy) > 1.0f)) {
+    //    refractedIBL = SpecularLut.SampleLevel(Sampler, refract_dir, t_roughness * (g_rasterCB.SpecularLutMips - 1));
+    //}
+    return refractedIBL;
+}
+
+float3 calculateTransmittedLight(float3 ws_pos, float4 ndc_position, float3 v, float3 N, const Material mat, float3 Fresnel, float linear_roughness,
+    float transmission, float thickness) 
+{
+    if (transmission == 0.0f) return 0.0f;
+    float t_roughness = sqrt(transmission_roughness(linear_roughness, mat.ior));
+    if (!mat.hasVolume) {
+        float2 uv = ndc_position.xy / g_rasterCB.FrameSize;
+        return (1.0f - Fresnel) * Frame.SampleLevel(DFGSampler, uv, t_roughness * (g_rasterCB.RenderFrameMips - 1));
+    }
+    float3 transmitted_light = 0.0f;
+    RefractResult refraction = SimulateRefraction(ws_pos, v, N, mat.ior, thickness); 
+    if (any(refraction.dir != 0.0f)) {
+        // refract_dir.xz = mul(envmap_rotation_matrix, refract_dir.xz);  // enmap rotation
+        float3 refractedIBL = sampleBackgroundAndIBL(refraction.pos, refraction.dir, t_roughness);
+        float3 attenuation = min(exp(-mat.attenuationFactor.rgb * refraction.dist), 1.0f);  // Volume absorption
+        transmitted_light = (1.0f - Fresnel) * attenuation * refractedIBL;
+    }
+    return transmitted_light;
 }
 
 [shader("pixel")]
@@ -118,6 +171,15 @@ float4 PS_Main(PSInput input) : SV_TARGET {
     float2 DFG = DFGLut.SampleLevel(DFGSampler, DFG_uv, 0).xy;
     float3 Fresnel = f0 * DFG.x + f90 * DFG.y;
 
+    float2 transmission_thickness = sample_transmission_thickness_filtered(mat, uv, ASampler);
+    if (mat.thicknessTextureIndex != mat.transmissionTextureIndex) {
+        transmission_thickness.g = sample_thickness_filtered(mat, uv, ASampler);
+    }
+    transmission_thickness.g *= DrawData.modelScale;
+    float transmission = transmission_thickness.r;
+    float3 transmissionIBL = calculateTransmittedLight(
+        input.world_position, input.ndc_position, v, N, mat, Fresnel, linear_roughness, transmission, transmission_thickness.g);
+
     float3 DiffuseSampleDir = N;
     DiffuseSampleDir.xz = mul(envmap_rotation_matrix, DiffuseSampleDir.xz);  // enmap rotation
     float3 diffuseIBL = DiffuseLut.SampleLevel(Sampler, DiffuseSampleDir, 0);
@@ -126,7 +188,8 @@ float4 PS_Main(PSInput input) : SV_TARGET {
     SpecularSampleDir.xz = mul(envmap_rotation_matrix, SpecularSampleDir.xz);  // enmap rotation
     float3 specularIBL = SpecularLut.SampleLevel(Sampler, SpecularSampleDir, roughness * (g_rasterCB.SpecularLutMips - 1));
 
-    float3 final_light = AO * diffuse_color * diffuseIBL * (1.0f - Fresnel) + Fresnel * specularIBL + emissive;
+    float3 diffuse_light = diffuse_color * lerp(AO * diffuseIBL, transmissionIBL, transmission);
+    float3 final_light = lerp(diffuse_light, specularIBL, Fresnel) + emissive;
 
     return float4(final_light, alpha);
 }

@@ -19,6 +19,7 @@ enum Value : int {
     DFGTex,
     DiffuseLutTex,
     SpecularLutTex,
+    FrameTex,
     RootConstants,
 
     Count
@@ -33,6 +34,8 @@ Raster_pipeline::Raster_pipeline() {
     CreateRootSignatures();
     CreatePipelineStateObjects();
     CreateConstantBuffers();
+
+    m_mip_helper.Init();
 
     ComputeDFGLut();
 }
@@ -105,7 +108,8 @@ void Raster_pipeline::CreateRootSignatures() {
     ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 1);  // 3 DFG texture.
     ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 1);  // 4 DiffuseLut texture.
     ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 1);  // 5 SpecularLut texture.
-    ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);     // 6 per draw constants buffer.
+    ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3, 1);  // 6 SpecularLut texture.
+    ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);     // 7 per draw constants buffer.
 
     D3D12_STATIC_SAMPLER_DESC default_sampler = {};  // Default static sampler.
     default_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -123,7 +127,7 @@ void Raster_pipeline::CreateRootSignatures() {
     anisotropic_sampler.ShaderRegister = 1;
 
     D3D12_STATIC_SAMPLER_DESC dfg_sampler = {};
-    dfg_sampler.Filter = D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT;
+    dfg_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
     dfg_sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     dfg_sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     dfg_sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
@@ -139,6 +143,7 @@ void Raster_pipeline::CreateRootSignatures() {
     rootParameters[GlobalRootSignatureParams::DFGTex].InitAsDescriptorTable(1, &ranges[2]);
     rootParameters[GlobalRootSignatureParams::DiffuseLutTex].InitAsDescriptorTable(1, &ranges[3]);
     rootParameters[GlobalRootSignatureParams::SpecularLutTex].InitAsDescriptorTable(1, &ranges[4]);
+    rootParameters[GlobalRootSignatureParams::FrameTex].InitAsDescriptorTable(1, &ranges[5]);
     rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(RasterPerDrawData) / 4, 1);
 
     auto flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT 
@@ -233,6 +238,9 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     UINT width = framebuffer.width();
     UINT height = framebuffer.height();
 
+    m_rasterCB.RenderFrameMips = GPU_texture::CalculateMipCount(width, height);
+    m_rasterCB.FrameSize = {width, height};
+
     resize_render_targets(width, height);
 
     m_viewport = CD3DX12_VIEWPORT{0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)},
@@ -297,7 +305,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
         const auto& obj = *element.object;
         index_count = gpu_model.indicesSizes[obj.meshIndex];
         UINT baseIndexLocation = gpu_model.indicesOffsets[obj.meshIndex];
-        RasterPerDrawData draw_data{obj.ModelMatrix, obj.NormalMatrix, obj.meshIndex};
+        RasterPerDrawData draw_data{obj.ModelMatrix, obj.NormalMatrix, obj.meshIndex, element.modelScale};
         constexpr int drawDataSizeInInt = sizeof(RasterPerDrawData) / 4;
         commandList->SetGraphicsRoot32BitConstants(GlobalRootSignatureParams::RootConstants, drawDataSizeInInt, &draw_data, 0);
         commandList->DrawIndexedInstanced(index_count, 1, baseIndexLocation, 0, 0);
@@ -312,9 +320,19 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     commandList->DrawInstanced(3, 1, 0, 0);
 
     // todo: Draw transmissive objects with rendered image so far as background
-    commandList->SetPipelineState(m_pipelineState.Get());
-    for (const auto& element : transmissive_objects) {
-        draw_object(element);
+    if (!transmissive_objects.empty()) {
+        GPU_texture::copy_texture_mip0_only(m_frameCopy, m_renderTarget, 
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RENDER_TARGET, commandList);
+        m_mip_helper.CreateMips(m_frameCopy);   // Todo: replace with proper blur pass
+
+        ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()}; // todo: don't replace heap?
+        commandList->SetDescriptorHeaps(1, desc_heap);
+
+        commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::FrameTex, m_frameCopy.GetSRVHandle());
+        commandList->SetPipelineState(m_pipelineState.Get());
+        for (const auto& element : transmissive_objects) {
+            draw_object(element);
+        }
     }
 
     // Draw objects with alpha blending
@@ -332,19 +350,7 @@ void Raster_pipeline::copy_render_target_to_framebuffer(const CPUFrameBuffer& fr
     const auto& gpuDestTarget = framebuffer.get_gpu_resource();
     const auto& gpuRenderTarget = m_renderTarget.get_gpu_resource();
 
-    D3D12_RESOURCE_BARRIER to_barriers[2] = {
-        CD3DX12_RESOURCE_BARRIER::Transition(gpuRenderTarget.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE),
-        CD3DX12_RESOURCE_BARRIER::Transition(gpuDestTarget.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-    };
-    commandList->ResourceBarrier(2, to_barriers);
-
-    commandList->CopyResource(gpuDestTarget.Get(), gpuRenderTarget.Get());
-
-    D3D12_RESOURCE_BARRIER from_barriers[2] = {
-        CD3DX12_RESOURCE_BARRIER::Transition(gpuRenderTarget.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET),
-        CD3DX12_RESOURCE_BARRIER::Transition(gpuDestTarget.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
-    };
-    commandList->ResourceBarrier(2, from_barriers);
+    GPU_texture::copy_texture_from_rtv(gpuDestTarget, gpuRenderTarget, commandList);
 }
 
 void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
@@ -358,6 +364,9 @@ void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
     m_renderTarget.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::RenderTarget;
     m_renderTarget = GPU_texture{currentWidth, currentHeight, flags};
+    m_frameCopy.release_gpu_resource();
+    flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;
+    m_frameCopy = GPU_texture{currentWidth, currentHeight, flags};
 }
 
 void Raster_pipeline::sort_objects_for_rendering(
@@ -374,7 +383,13 @@ void Raster_pipeline::sort_objects_for_rendering(
         const auto& mat = materials[obj.meshIndex];
         float ZDistanceToCamera = dot(camera_forward, v);
         bool alphaBlending = mat.alphaBlending;
-        bool transmittance = mat.hasVolume;
+        bool transmittance = mat.hasVolume || (mat.transmisionFactor != 0.0f);
+
+        glm::fvec3 scale;
+        scale.x = glm::length(glm::fvec3(obj.ModelMatrix[0]));
+        scale.y = glm::length(glm::fvec3(obj.ModelMatrix[1]));
+        scale.z = glm::length(glm::fvec3(obj.ModelMatrix[2]));
+        float model_scale = max(max(scale.x,scale.y),scale.z);
 
         if (alphaBlending) {
             num_alpha_blended_objects++;
@@ -385,7 +400,7 @@ void Raster_pipeline::sort_objects_for_rendering(
             num_opaque_objects++;
         }
 
-        m_sortedDrawables.emplace_back(&obj, ZDistanceToCamera, alphaBlending, transmittance);
+        m_sortedDrawables.emplace_back(&obj, model_scale, ZDistanceToCamera, alphaBlending, transmittance);
     }
     std::sort(m_sortedDrawables.begin(), m_sortedDrawables.end(), [](const DrawableSortingInfo& a, const DrawableSortingInfo& b) {
         if (a.alphaBlending != b.alphaBlending) {
@@ -413,7 +428,8 @@ void Raster_pipeline::ComputeDFGLut() {
     
     // copy texture from UAV to SRV-only texture
     GPU_texture DFG_lut_tmp = std::move(DFG_compute_helper.GetDFG_Lut());
-    GPU_texture::copy_texture_from_uav(DFG_lut, DFG_lut_tmp, d3d_ctx.m_DXRCommandList);
+    GPU_texture::copy_texture(DFG_lut, DFG_lut_tmp, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS, d3d_ctx.m_DXRCommandList);
 
     d3d_ctx.DispatchDXRCommandList(); // WARNING: this assumes that command list is open and ready at this point
     d3d_ctx.WaitForPendingDXR();
@@ -443,8 +459,10 @@ void Raster_pipeline::ComputeEnvmapLut(const GPU_texture& envmap) {
     GPU_texture Diffuse_lut_tmp = std::move(EnvCube_helper.GetDiffuseEnvmapCube());
     GPU_texture Specular_lut_tmp = std::move(EnvCube_helper.GetSpecularEnvmapCube());
     // copy textures from UAV to SRV-only textures
-    GPU_texture::copy_texture_from_uav(Diffuse_lut, Diffuse_lut_tmp, d3d_ctx.m_DXRCommandList);
-    GPU_texture::copy_texture_from_uav(Specular_lut, Specular_lut_tmp, d3d_ctx.m_DXRCommandList);
+    GPU_texture::copy_texture(Diffuse_lut, Diffuse_lut_tmp, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS, d3d_ctx.m_DXRCommandList);
+    GPU_texture::copy_texture(Specular_lut, Specular_lut_tmp, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS, d3d_ctx.m_DXRCommandList);
 
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();
@@ -464,12 +482,15 @@ void Raster_pipeline::ComputeMipMaps(GPU_texture& texture) {
 
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
+    mip_helper.Init();
 
-    GPU_texture::copy_texture_to_uav_mip0_only(uav_texture, texture, d3d_ctx.m_DXRCommandList);
+    GPU_texture::copy_texture_mip0_only(uav_texture, texture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, d3d_ctx.m_DXRCommandList);
 
     mip_helper.CreateMips(uav_texture);
     
-    GPU_texture::copy_texture_from_uav(texture, uav_texture, d3d_ctx.m_DXRCommandList);
+    GPU_texture::copy_texture(texture, uav_texture, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS, d3d_ctx.m_DXRCommandList);
     
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();

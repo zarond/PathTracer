@@ -15,6 +15,8 @@ class Mipmaps_helper {
     Mipmaps_helper();
     ~Mipmaps_helper();
 
+    void Init(); // must call this once before use, contains GPU command list instructions
+
     void CreateMips(GPU_texture& uav_texture);
 
     static GPU_texture GetBlankCompatibleUAVTex(GPU_texture& texture);
@@ -36,6 +38,8 @@ class Mipmaps_helper {
     UINT HeapHandleIncrement = 0;
 
     ComPtr<ID3D12Resource> GroupCounters;
+
+    ComPtr<ID3D12Resource2> zero_uploadBuffer;
 
     constexpr static int MipsLimit = 16;
 

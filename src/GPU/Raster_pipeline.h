@@ -13,6 +13,7 @@
 #include "../render_settings.h"
 #include "GPU_model.h"
 #include "DXR_pipeline.h"
+#include "Mipmaps_helper.h"
 
 namespace app {
 
@@ -39,17 +40,21 @@ struct RasterConstantBuffer {
     float envmapRotation;
     int SpecularLutMips;
     float TexturesAOStrength;
+    int RenderFrameMips;
+    glm::ivec2 FrameSize;
 };
 
 struct RasterPerDrawData {
     fmat4x4 modelMatrix;
     fmat4x4 normalMatrix;
     int meshID;
-    float padding[3];
+    float modelScale;
+    float padding[2];
 };
 
 struct DrawableSortingInfo {
     const Object* object;
+    float modelScale;
     float ZDistanceToCamera;
     bool alphaBlending;
     bool transmittance;
@@ -104,10 +109,13 @@ class Raster_pipeline : public IRender_pipeline {
     ComPtr<ID3D12PipelineState> m_pipelineState;
     ComPtr<ID3D12PipelineState> m_alphaBlendingPipelineState;
     ComPtr<ID3D12PipelineState> m_backgroundPipelineState;
+    
+    Mipmaps_helper m_mip_helper{};  // todo: replace with proper blur pass
 
     // additional render targets
     GPU_texture m_renderTarget;
     GPU_texture m_depthTexture;
+    GPU_texture m_frameCopy;
 
     // additional texture resources
     GPU_texture DFG_lut;  // precomputed DFG LUT for split-sum approximation of specular IBL

@@ -26,14 +26,13 @@ Mipmaps_helper::Mipmaps_helper() {
     CreateRootSignature();
     CreatePipelineStateObject();
     CreateDescriptorHeap();
-    CreateCounterBuffer();
 }
 
 Mipmaps_helper::~Mipmaps_helper() {
     release_gpu_resources();
 }
 
-void Mipmaps_helper::CreateMips(GPU_texture& uav_texture) {  // on input uav texture
+void Mipmaps_helper::CreateMips(GPU_texture& uav_texture) {  // works on the input uav texture
     const auto& resource = uav_texture.get_gpu_resource();
     const auto description = resource->GetDesc();
     const auto width = description.Width;
@@ -87,7 +86,6 @@ void Mipmaps_helper::CreateRootSignature() {
     CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
 
     CD3DX12_DESCRIPTOR_RANGE ranges[GlobalRootSignatureParams::Count];
-    //auto flags = D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE | D3D12_DESCRIPTOR_RANGE_FLAG_DATA_VOLATILE;
     ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 16, 0, 0);  // 1 all mips texture
     ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 1);   // 1 atomic counters buffer texture
     ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);      // 1 constant buffer.
@@ -132,6 +130,12 @@ void Mipmaps_helper::CreateDescriptorHeap() {
     HeapHandleIncrement = device->GetDescriptorHandleIncrementSize(desc.Type);
 }
 
+void Mipmaps_helper::Init() { 
+    if (!GroupCounters) {
+        CreateCounterBuffer();
+    }
+}
+
 void Mipmaps_helper::CreateCounterBuffer() {
     D3DContext& d3d_ctx = D3DContext::Get();
     const auto& device = d3d_ctx.m_d3dDevice;
@@ -157,8 +161,6 @@ void Mipmaps_helper::CreateCounterBuffer() {
     // Create the actual VRAM allocation
     HRESULT hr = device->CreateCommittedResource(
         &heapProps, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&GroupCounters));
-
-    ComPtr<ID3D12Resource2> zero_uploadBuffer;
 
     const D3D12_HEAP_PROPERTIES upload_props{
         .Type = D3D12_HEAP_TYPE_UPLOAD,
@@ -190,12 +192,7 @@ void Mipmaps_helper::CreateCounterBuffer() {
     memcpy(pDataBegin, &zero, bufferSize);
     zero_uploadBuffer->Unmap(0, nullptr);
 
-    d3d_ctx.InitDXRCommandList();
-
     d3d_ctx.m_DXRCommandList->CopyBufferRegion(GroupCounters.Get(), 0, zero_uploadBuffer.Get(), 0, bufferSize);
-
-    d3d_ctx.DispatchDXRCommandList();
-    d3d_ctx.WaitForPendingDXR();
 }
 
 void Mipmaps_helper::release_gpu_resources() {
