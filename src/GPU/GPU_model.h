@@ -121,6 +121,7 @@ class GPU_texture {
     uint8_t mipLevels = 1;
 
     void GetUAVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle) const;
+    void GetSRVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle) const;
 
     static constexpr uint32_t CalculateMipCount(uint32_t width, uint32_t height) { return std::bit_width(std::max(width, height)); }
     static constexpr uint32_t GetMipDimension(uint32_t baseSize, uint32_t mipLevel) { return std::max(1u, baseSize >> mipLevel); }

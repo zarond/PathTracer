@@ -1084,7 +1084,32 @@ void GPU_texture::GetUAVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR
         }
         d3d_ctx.m_d3dDevice->CreateUnorderedAccessView(pTexture.Get(), nullptr, &uavDesc, Handle);
     }
+}
 
+void GPU_texture::GetSRVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle) const {
+    bool isCubemap = ::isCubemap(texture_options);
+    bool isSRGB = ::isSRGB(texture_options);
+    auto format = choose_format();
+    D3DContext& d3d_ctx = D3DContext::Get();
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{
+        .Format = format,
+        .ViewDimension = isCubemap ? D3D12_SRV_DIMENSION_TEXTURECUBE : D3D12_SRV_DIMENSION_TEXTURE2D,
+        .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+        .Texture2D =
+            D3D12_TEX2D_SRV{
+                .MostDetailedMip = mipLevel,
+                .MipLevels = 1,
+            },
+    };
+    if (isCubemap) {
+        srvDesc.TextureCube = D3D12_TEXCUBE_SRV{
+            .MostDetailedMip = mipLevel,
+            .MipLevels = 1,
+            .ResourceMinLODClamp = 0.0f,
+        };
+    }
+    d3d_ctx.m_d3dDevice->CreateShaderResourceView(pTexture.Get(), &srvDesc, Handle);
 }
 
 void GPU_texture::release_gpu_resource() {

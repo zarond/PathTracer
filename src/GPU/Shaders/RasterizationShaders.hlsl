@@ -80,16 +80,21 @@ RefractResult SimulateRefraction(float3 ws_pos, float3 v, float3 N, float ior, f
     return r;
 }
 
+float4 SampleFrameBicubic(float2 uv, float lod) {
+    if (lod < 0.8f) {
+        return Frame.SampleLevel(DFGSampler, uv, lod);
+    } else {
+        return SampleTextureBicubicMip(Frame, DFGSampler, uv, g_rasterCB.FrameSize, lod);
+    }
+}
+
 float3 sampleBackgroundAndIBL(float3 ws_pos, float3 refract_dir, float t_roughness) {
     float4 ndc = mul(g_rasterCB.viewProjection, float4(ws_pos, 1.0f));
     ndc /= ndc.w;
     ndc.y *= -1.0f;
     float2 uv = ndc.xy * 0.5f + 0.5f;
-    float3 refractedIBL = Frame.SampleLevel(DFGSampler, uv, t_roughness * (g_rasterCB.RenderFrameMips - 1));
-    //if (any(abs(ndc.xy) > 1.0f)) {
-    //    refractedIBL = SpecularLut.SampleLevel(Sampler, refract_dir, t_roughness * (g_rasterCB.SpecularLutMips - 1));
-    //}
-    return refractedIBL;
+    float lod = t_roughness * (g_rasterCB.RenderFrameMips - 1);
+    return SampleFrameBicubic(uv, lod);
 }
 
 float3 calculateTransmittedLight(float3 ws_pos, float4 ndc_position, float3 v, float3 N, const Material mat, float3 Fresnel, float linear_roughness,
@@ -99,7 +104,8 @@ float3 calculateTransmittedLight(float3 ws_pos, float4 ndc_position, float3 v, f
     float t_roughness = sqrt(transmission_roughness(linear_roughness, mat.ior));
     if (!mat.hasVolume) {
         float2 uv = ndc_position.xy / g_rasterCB.FrameSize;
-        return (1.0f - Fresnel) * Frame.SampleLevel(DFGSampler, uv, t_roughness * (g_rasterCB.RenderFrameMips - 1));
+        float lod = t_roughness * (g_rasterCB.RenderFrameMips - 1);
+        return (1.0f - Fresnel) * SampleFrameBicubic(uv, lod);
     }
     float3 transmitted_light = 0.0f;
     RefractResult refraction = SimulateRefraction(ws_pos, v, N, mat.ior, thickness); 

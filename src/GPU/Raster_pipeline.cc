@@ -35,8 +35,6 @@ Raster_pipeline::Raster_pipeline() {
     CreatePipelineStateObjects();
     CreateConstantBuffers();
 
-    m_mip_helper.Init();
-
     ComputeDFGLut();
 }
 
@@ -134,6 +132,7 @@ void Raster_pipeline::CreateRootSignatures() {
     dfg_sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     dfg_sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     dfg_sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    dfg_sampler.MaxLOD = D3D12_FLOAT32_MAX;
     dfg_sampler.ShaderRegister = 2;
     dfg_sampler.RegisterSpace = 1;
     dfg_sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
@@ -241,7 +240,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     UINT width = framebuffer.width();
     UINT height = framebuffer.height();
 
-    m_rasterCB.RenderFrameMips = GPU_texture::CalculateMipCount(width, height);
+    m_rasterCB.RenderFrameMips = std::min(GPU_texture::CalculateMipCount(width, height), static_cast<unsigned int>(Kawase_blur_helper::BlurIterations));
     m_rasterCB.FrameSize = {width, height};
 
     resize_render_targets(width, height);
@@ -322,13 +321,20 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     commandList->SetPipelineState(m_backgroundPipelineState.Get());
     commandList->DrawInstanced(3, 1, 0, 0);
 
-    // todo: Draw transmissive objects with rendered image so far as background
+    // Draw transmissive objects with rendered image so far as background
     if (!transmissive_objects.empty()) {
-        GPU_texture::copy_texture_mip0_only(m_frameCopy, m_renderTarget, 
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RENDER_TARGET, commandList);
-        m_mip_helper.CreateMips(m_frameCopy);   // Todo: replace with proper blur pass
+        GPU_texture::copy_texture_mip0_only(m_frameCopy, m_renderTarget,
+            frameCopy_uav_state ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS : D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+            D3D12_RESOURCE_STATE_RENDER_TARGET, commandList);
+        if (!frameCopy_uav_state) {
+            const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_frameCopy.get_gpu_resource().Get(),
+                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            commandList->ResourceBarrier(1, &barrier);
+        }
+        m_blur_helper.CreateBlurMips(m_frameCopy);
+        frameCopy_uav_state = false;
 
-        ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()}; // todo: don't replace heap?
+        ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()}; // todo: don't replace heap during blur pass?
         commandList->SetDescriptorHeaps(1, desc_heap);
 
         commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::FrameTex, m_frameCopy.GetSRVHandle());
@@ -370,6 +376,7 @@ void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
     m_frameCopy.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;
     m_frameCopy = GPU_texture{currentWidth, currentHeight, flags};
+    frameCopy_uav_state = true;
 }
 
 void Raster_pipeline::sort_objects_for_rendering(

@@ -13,7 +13,7 @@
 #include "../render_settings.h"
 #include "GPU_model.h"
 #include "DXR_pipeline.h"
-#include "Mipmaps_helper.h"
+#include "Kawase_blur_helper.h"
 
 namespace app {
 
@@ -42,7 +42,7 @@ struct RasterConstantBuffer {
     float TexturesAOStrength;
     int RenderFrameMips;
     glm::ivec2 FrameSize;
-    bool specular_aa_enabled;
+    int specular_aa_enabled;
     float specular_aa_variance;
     float specular_aa_threshold;
 };
@@ -113,12 +113,13 @@ class Raster_pipeline : public IRender_pipeline {
     ComPtr<ID3D12PipelineState> m_alphaBlendingPipelineState;
     ComPtr<ID3D12PipelineState> m_backgroundPipelineState;
     
-    Mipmaps_helper m_mip_helper{};  // todo: replace with proper blur pass
+    Kawase_blur_helper m_blur_helper{};
 
     // additional render targets
     GPU_texture m_renderTarget;
     GPU_texture m_depthTexture;
     GPU_texture m_frameCopy;
+    bool frameCopy_uav_state = true;
 
     // additional texture resources
     GPU_texture DFG_lut;  // precomputed DFG LUT for split-sum approximation of specular IBL

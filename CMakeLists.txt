@@ -31,6 +31,8 @@ set(SHADER_SOURCES
     CS_Diffuse_Lut      CubemapsLut.hlsl            cs_6_6
     CS_Specular_Lut     CubemapsLut.hlsl            cs_6_6
     CS_SinglePassMips   MipMapsShaders.hlsl         cs_6_6
+    CS_KawaseBlurDownsample_13  KawaseBlur.hlsl     cs_6_6
+    CS_KawaseBlurUpsample       KawaseBlur.hlsl     cs_6_6
 )
 
 set(APP_SOURCES
@@ -58,6 +60,7 @@ if(ON_WINDOWS)
         src/GPU/DFG_Lut_helper.cc
         src/GPU/Cubemaps_helper.cc
         src/GPU/Mipmaps_helper.cc
+        src/GPU/Kawase_blur_helper.cc
     )
 endif()
 

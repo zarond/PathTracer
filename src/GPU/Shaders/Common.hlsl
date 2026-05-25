@@ -42,7 +42,7 @@ struct RasterConstantBuffer {
     float TexturesAOStrength;
     int RenderFrameMips;
     int2 FrameSize;
-    bool specular_aa_enabled;
+    int specular_aa_enabled;
     float specular_aa_variance;
     float specular_aa_threshold;
 };
@@ -133,6 +133,59 @@ float3 pcg3d(uint3 v) {
 
     // Convert to float using the full 32-bit range
     return float3(v) * (1.0 / 4294967295.0);
+}
+
+// Functions for Bicubic interpolation
+float4 cubic(float v) {
+    float4 n = float4(1.0, 2.0, 3.0, 4.0) - v;
+    float4 s = n * n * n;
+    float x = s.x;
+    float y = s.y - 4.0 * s.x;
+    float z = s.z - 4.0 * s.y + 6.0 * s.x;
+    float w = 6.0 - x - y - z;
+    return float4(x, y, z, w) / 6.0;
+}
+
+float4 SampleTextureBicubic(Texture2D tex, SamplerState linearSampler, float2 uv, int2 texSize, float lod) {
+    // Convert normalized UV to absolute pixel/texel coordinates
+    float2 texelPos = uv * texSize - 0.5f;
+    float2 f = frac(texelPos);
+    float2 texelIdx = floor(texelPos);
+
+    // Calculate sub-pixel weights for X and Y axes
+    float4 wx = cubic(f.x);
+    float4 wy = cubic(f.y);
+
+    // Compute the optimized 4-tap offset coordinates
+    float4 c = texelIdx.xxyy + float2(-0.5f, 1.5f).xyxy;
+
+    float4 s = float4(wx.xz + wx.yw, wy.xz + wy.yw);
+    float4 offset = c + float4(wx.yw, wy.yw) / s;
+
+    offset /= texSize.xxyy;
+
+    // Perform the 4 hardware bilinear samples
+    float4 sample0 = tex.SampleLevel(linearSampler, offset.xz, lod);
+    float4 sample1 = tex.SampleLevel(linearSampler, offset.yz, lod);
+    float4 sample2 = tex.SampleLevel(linearSampler, offset.xw, lod);
+    float4 sample3 = tex.SampleLevel(linearSampler, offset.yw, lod);
+
+    float sx = s.x / (s.x + s.y);
+    float sy = s.z / (s.z + s.w);
+
+    // Final blending based on calculated weights
+    return lerp(lerp(sample3, sample2, sx), lerp(sample1, sample0, sx), sy);
+}
+
+float4 SampleTextureBicubicMip(Texture2D tex, SamplerState linearSampler, float2 uv, int2 texSize, float lod) {
+    float floor_lod = floor(lod);
+    float ceil_lod = ceil(lod);
+    int2 floor_texSize = max(1, texSize >> (int)floor_lod);
+    int2 ceil_texSize = max(1, texSize >> (int)ceil_lod);
+    float4 floor_sample = SampleTextureBicubic(tex, linearSampler, uv, floor_texSize, floor_lod);
+    float4 ceil_sample = SampleTextureBicubic(tex, linearSampler, uv, ceil_texSize, ceil_lod);
+
+    return lerp(floor_sample, ceil_sample, frac(lod));
 }
 
 // without mips
