@@ -40,7 +40,7 @@ void GPURenderer::update_camera_transform_state(
     fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams) {
     origin_ = position;
     viewMatrix_ = glm::lookAt(position, position + direction, up);
-    projectionMatrix_ = glm::perspectiveRH(
+    projectionMatrix_ = glm::perspectiveRH_ZO(
         perspectiveParams.yfov, 
         perspectiveParams.aspectRatio.value_or(1.77777777777777777f),
         perspectiveParams.znear, 
