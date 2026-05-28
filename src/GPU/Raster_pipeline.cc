@@ -20,6 +20,7 @@ enum Value : int {
     DiffuseLutTex,
     SpecularLutTex,
     FrameTex,
+    AmbientOcclusionTex,
     RootConstants,
 
     Count
@@ -70,6 +71,7 @@ void Raster_pipeline::release_gpu_resources() {
     m_pipelineState.Reset();
     m_alphaBlendingPipelineState.Reset();
     m_backgroundPipelineState.Reset();
+    m_GbufferPipelineState.Reset();
 
     m_perFrameConstants.Reset();
 
@@ -91,11 +93,14 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_rasterCB.invMaxNewRaysPerBounce = 1.0f / render_settings.maxNewRaysPerBounce;
     m_rasterCB.maxRayBounces = render_settings.maxRayBounces;
     m_rasterCB.envmapRotation = render_settings.envmapRotation;
+    m_rasterCB.albedoOnlyMode = (render_settings.programMode == RayProgramMode::RayCaster);
     m_rasterCB.SpecularLutMips = EnvCube_helper::SpecularMips;
+    m_rasterCB.GTAOStrength = render_settings.GTAOStrength;
     m_rasterCB.TexturesAOStrength = render_settings.TexturesAOStrength;
     m_rasterCB.specular_aa_enabled = render_settings.specular_aa_enabled;
     m_rasterCB.specular_aa_variance = render_settings.specular_aa_variance;
     m_rasterCB.specular_aa_threshold = render_settings.specular_aa_threshold;
+    m_GTAO_helper.thinObjectFactor = render_settings.AOThinObjectFactor;
     RaytracingMode = render_settings.programMode;
 }
 
@@ -109,8 +114,9 @@ void Raster_pipeline::CreateRootSignatures() {
     ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 1);  // 3 DFG texture.
     ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 1);  // 4 DiffuseLut texture.
     ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 1);  // 5 SpecularLut texture.
-    ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3, 1);  // 6 SpecularLut texture.
-    ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);     // 7 per draw constants buffer.
+    ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3, 1);  // 6 Frame texture.
+    ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4, 1);  // 7 Ambient Occlusion texture.
+    ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);     // 8 per draw constants buffer.
 
     D3D12_STATIC_SAMPLER_DESC default_sampler = {};  // Default static sampler.
     default_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -146,6 +152,7 @@ void Raster_pipeline::CreateRootSignatures() {
     rootParameters[GlobalRootSignatureParams::DiffuseLutTex].InitAsDescriptorTable(1, &ranges[3]);
     rootParameters[GlobalRootSignatureParams::SpecularLutTex].InitAsDescriptorTable(1, &ranges[4]);
     rootParameters[GlobalRootSignatureParams::FrameTex].InitAsDescriptorTable(1, &ranges[5]);
+    rootParameters[GlobalRootSignatureParams::AmbientOcclusionTex].InitAsDescriptorTable(1, &ranges[6]);
     rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(RasterPerDrawData) / 4, 1);
 
     auto flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT 
@@ -160,6 +167,8 @@ void Raster_pipeline::CreatePipelineStateObjects() {
     auto [ps_shaderBlob, ps_bytecode] = LoadShader(c_ps_file_name);
     auto [vs_background_shaderBlob, vs_background_bytecode] = LoadShader(c_vs_background_file_name);
     auto [ps_background_shaderBlob, ps_background_bytecode] = LoadShader(c_ps_background_file_name);
+    //auto [vs_gbuff_shaderBlob, vs_gbuff_bytecode] = LoadShader(c_vs_gbuff_file_name);
+    auto [ps_gbuff_shaderBlob, ps_gbuff_bytecode] = LoadShader(c_ps_gbuff_file_name);
 
     D3DContext& d3d_ctx = D3DContext::Get();
     auto device = d3d_ctx.m_d3dDevice;
@@ -172,6 +181,7 @@ void Raster_pipeline::CreatePipelineStateObjects() {
 
     // Describe and create the graphics pipeline state object (PSO).
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+    D3D12_RENDER_TARGET_BLEND_DESC& rtBlend = psoDesc.BlendState.RenderTarget[0];
     psoDesc.InputLayout = {inputElementDescs, _countof(inputElementDescs)};
     psoDesc.pRootSignature = m_rootSignature.Get();
     psoDesc.VS = vs_bytecode;
@@ -179,7 +189,7 @@ void Raster_pipeline::CreatePipelineStateObjects() {
     psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
     psoDesc.RasterizerState.FrontCounterClockwise = TRUE;
     psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-    psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL ^ D3D12_COLOR_WRITE_ENABLE_ALPHA;
+    rtBlend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL ^ D3D12_COLOR_WRITE_ENABLE_ALPHA;
     psoDesc.DepthStencilState.DepthEnable = TRUE;
     psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
     psoDesc.DepthStencilState.StencilEnable = FALSE;
@@ -192,9 +202,18 @@ void Raster_pipeline::CreatePipelineStateObjects() {
     psoDesc.SampleDesc.Count = 1;
     ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState)));
 
+    // PSO for G-buffer rendering
+    psoDesc.VS = vs_bytecode;
+    psoDesc.PS = ps_gbuff_bytecode;
+    rtBlend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+    psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+    ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_GbufferPipelineState)));
+
     // PSO for alpha blending
-    D3D12_RENDER_TARGET_BLEND_DESC& rtBlend = psoDesc.BlendState.RenderTarget[0];
+    psoDesc.VS = vs_bytecode;
+    psoDesc.PS = ps_bytecode;
     psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+    rtBlend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL ^ D3D12_COLOR_WRITE_ENABLE_ALPHA;
     rtBlend.BlendEnable = TRUE;
     rtBlend.SrcBlend = D3D12_BLEND_SRC_ALPHA;
     rtBlend.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
@@ -209,7 +228,7 @@ void Raster_pipeline::CreatePipelineStateObjects() {
     psoDesc.VS = vs_background_bytecode;
     psoDesc.PS = ps_background_bytecode;
     psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-    psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL ^ D3D12_COLOR_WRITE_ENABLE_ALPHA;
+    rtBlend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL ^ D3D12_COLOR_WRITE_ENABLE_ALPHA;
     ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_backgroundPipelineState)));
 }
 
@@ -249,7 +268,6 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     m_scissorRect = CD3DX12_RECT{0, 0, static_cast<LONG>(width), static_cast<LONG>(height)},
 
     commandList->SetGraphicsRootSignature(m_rootSignature.Get());
-    commandList->SetPipelineState(m_pipelineState.Get());
     commandList->RSSetViewports(1, &m_viewport);
     commandList->RSSetScissorRects(1, &m_scissorRect);
 
@@ -280,10 +298,13 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
 
     auto rtvHandle = m_renderTarget.GetRTVHandle();
     auto depthHandle = m_depthTexture.GetDSVHandle();
+    auto gbufferRTVHandle = m_gbuffer.GetRTVHandle();
 
     const float clearColor[] = {0.0f, 0.0f, 0.0f, 1.0f};
-    commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &depthHandle);
-    commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+    const float blackClearColor[] = {0.0f, 0.0f, 0.0f, 0.0f};
+    commandList->OMSetRenderTargets(1, &gbufferRTVHandle, FALSE, &depthHandle);
+    commandList->ClearRenderTargetView(gbufferRTVHandle, blackClearColor, 0, nullptr);
+
     commandList->ClearDepthStencilView(depthHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
     commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     commandList->IASetVertexBuffers(0, 1, &vertexBufferView);
@@ -303,19 +324,53 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     std::span<const DrawableSortingInfo> blend_objects{m_sortedDrawables.begin() + offset, m_sortedDrawables.end()};
 
     // draw mesh lambda
-    auto draw_object = [&](const DrawableSortingInfo element) {
+    auto draw_object = [&](const DrawableSortingInfo element, bool UseAOTexture = false) {
         const auto& obj = *element.object;
         index_count = gpu_model.indicesSizes[obj.meshIndex];
         UINT baseIndexLocation = gpu_model.indicesOffsets[obj.meshIndex];
-        RasterPerDrawData draw_data{obj.ModelMatrix, obj.NormalMatrix, obj.meshIndex, element.modelScale};
+        RasterPerDrawData draw_data{obj.ModelMatrix, obj.NormalMatrix, obj.meshIndex, element.modelScale, UseAOTexture};
         constexpr int drawDataSizeInInt = sizeof(RasterPerDrawData) / 4;
         commandList->SetGraphicsRoot32BitConstants(GlobalRootSignatureParams::RootConstants, drawDataSizeInInt, &draw_data, 0);
         commandList->DrawIndexedInstanced(index_count, 1, baseIndexLocation, 0, 0);
      };
 
+    bool UseGTAO = (m_rasterCB.GTAOStrength != 0.0f) && (RaytracingMode != RayProgramMode::RayCaster);
+    bool DrawAOMode = (RaytracingMode == RayProgramMode::AmbientOcclusion);
+
+    if (UseGTAO || DrawAOMode) {
+        // Draw opaque objects into Gbuffer
+        commandList->SetPipelineState(m_GbufferPipelineState.Get());
+        for (const auto& element : opaque_objects) {
+            draw_object(element);
+        }
+        if (DrawAOMode) {  // draw all other object as well to match DXR AO mode
+            for (const auto& element : transmissive_objects) {
+                draw_object(element);
+            }
+            for (const auto& element : blend_objects) {
+                draw_object(element);
+            }
+        }
+
+        m_GTAO_helper.CreateAO(
+            m_AOTexture, m_gbuffer, m_depthTexture, m_rasterCB.projectionToWorld, m_rasterCB.viewProjection, m_rasterCB.cameraPosition);
+    }
+
+    if (DrawAOMode) {
+        GPU_texture::copy_texture(m_renderTarget, m_AOTexture, D3D12_RESOURCE_STATE_RENDER_TARGET,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS, commandList);
+        copy_render_target_to_framebuffer(framebuffer);
+        return;
+    }
+
+    commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::AmbientOcclusionTex, m_AOTexture.GetSRVHandle());
+
     // Draw opaque objects
+    commandList->SetPipelineState(m_pipelineState.Get());
+    commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &depthHandle);
+    commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
     for (const auto& element : opaque_objects) {
-        draw_object(element);
+        draw_object(element, true);
     }
     // Draw background
     commandList->SetPipelineState(m_backgroundPipelineState.Get());
@@ -367,7 +422,7 @@ void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
     currentWidth = std::max(new_width, 0);
     currentHeight = std::max(new_height, 0);
     m_depthTexture.release_gpu_resource();
-    TEXTURE_TRAITS flags = TEXTURE_TRAITS::Depth;
+    TEXTURE_TRAITS flags = TEXTURE_TRAITS::DepthWithSRV;
     m_depthTexture = GPU_texture{currentWidth, currentHeight, flags};
 
     m_renderTarget.release_gpu_resource();
@@ -377,6 +432,12 @@ void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;
     m_frameCopy = GPU_texture{currentWidth, currentHeight, flags};
     frameCopy_uav_state = true;
+    m_gbuffer.release_gpu_resource();
+    flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::RenderTarget;
+    m_gbuffer = GPU_texture{currentWidth, currentHeight, flags};
+    m_AOTexture.release_gpu_resource();
+    flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
+    m_AOTexture = GPU_texture{currentWidth, currentHeight, flags};
 }
 
 void Raster_pipeline::sort_objects_for_rendering(

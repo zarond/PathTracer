@@ -82,16 +82,17 @@ struct GPU_Material {  // enforce packing rules on CPU Material data
     GPU_Material(const Material& mat, const std::vector<int>& texture_id_conversion_table, int default_texture);
 };
 
-enum class TEXTURE_TRAITS : uint8_t {
+enum class TEXTURE_TRAITS : uint16_t {
     None            = 0,
     HDR             = 1 << 0,
     sRGB            = 1 << 1,
     Cubemap         = 1 << 2,
     RenderTarget    = 1 << 3,
     Depth           = 1 << 4,
-    UAV             = 1 << 5,
-    AllocateMips    = 1 << 6,
-    NormalMap       = 1 << 7,
+    DepthWithSRV    = 1 << 5,
+    UAV             = 1 << 6,
+    AllocateMips    = 1 << 7,
+    NormalMap       = 1 << 8,
 };
 DEFINE_ENUM_FLAG_OPERATORS(TEXTURE_TRAITS)
 

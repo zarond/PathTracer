@@ -38,7 +38,9 @@ struct RasterConstantBuffer {
     float invMaxNewRaysPerBounce;
     int maxRayBounces;
     float envmapRotation;
+    int albedoOnlyMode;
     int SpecularLutMips;
+    float GTAOStrength;
     float TexturesAOStrength;
     int RenderFrameMips;
     int2 FrameSize;
@@ -52,7 +54,8 @@ struct RasterPerDrawData {
     float4x4 normalMatrix;
     int meshID;
     float modelScale;
-    float padding[2];
+    int UseAOTexture;
+    float padding;
 };
 
 struct Material {

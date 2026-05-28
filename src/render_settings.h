@@ -11,10 +11,13 @@ struct RenderSettings {
     unsigned int maxTrianglesPerBVHLeaf = 8;
     float envmapRotation = 0;  // in radians
 
-    float TexturesAOStrength = 1.0f;        // only for raster pipeline
+    // only for raster pipeline
+    float GTAOStrength = 1.0f;
+    float AOThinObjectFactor = 0.05f;
+    float TexturesAOStrength = 1.0f;
     bool specular_aa_enabled = true;
-    float specular_aa_variance = 0.15f;     // only for raster pipeline
-    float specular_aa_threshold = 0.2f;     // only for raster pipeline
+    float specular_aa_variance = 0.15f;
+    float specular_aa_threshold = 0.2f;
 
     RenderSettings() = default;
     explicit RenderSettings(const ConsoleArgs& args);

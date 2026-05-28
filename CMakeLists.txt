@@ -27,12 +27,14 @@ set(SHADER_SOURCES
     PS_Main             RasterizationShaders.hlsl   ps_6_6
     VS_Background       RasterizationShaders.hlsl   vs_6_6
     PS_Background       RasterizationShaders.hlsl   ps_6_6
+    PS_Gbuffer          RasterizationShaders.hlsl   ps_6_6
     CS_DFG_Lut          DFGLut.hlsl                 cs_6_6
     CS_Diffuse_Lut      CubemapsLut.hlsl            cs_6_6
     CS_Specular_Lut     CubemapsLut.hlsl            cs_6_6
     CS_SinglePassMips   MipMapsShaders.hlsl         cs_6_6
     CS_KawaseBlurDownsample_13  KawaseBlur.hlsl     cs_6_6
     CS_KawaseBlurUpsample       KawaseBlur.hlsl     cs_6_6
+    CS_GTAO             GTAO.hlsl                   cs_6_6
 )
 
 set(APP_SOURCES
@@ -61,6 +63,7 @@ if(ON_WINDOWS)
         src/GPU/Cubemaps_helper.cc
         src/GPU/Mipmaps_helper.cc
         src/GPU/Kawase_blur_helper.cc
+        src/GPU/GTAO_helper.cc
     )
 endif()
 

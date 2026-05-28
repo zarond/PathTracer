@@ -14,6 +14,7 @@
 #include "GPU_model.h"
 #include "DXR_pipeline.h"
 #include "Kawase_blur_helper.h"
+#include "GTAO_helper.h"
 
 namespace app {
 
@@ -38,7 +39,9 @@ struct RasterConstantBuffer {
     float invMaxNewRaysPerBounce;
     int maxRayBounces;
     float envmapRotation;
+    int albedoOnlyMode;
     int SpecularLutMips;
+    float GTAOStrength;
     float TexturesAOStrength;
     int RenderFrameMips;
     glm::ivec2 FrameSize;
@@ -52,7 +55,8 @@ struct RasterPerDrawData {
     fmat4x4 normalMatrix;
     int meshID;
     float modelScale;
-    float padding[2];
+    int UseAOTexture;
+    float padding;
 };
 
 struct DrawableSortingInfo {
@@ -94,6 +98,8 @@ class Raster_pipeline : public IRender_pipeline {
     const wchar_t* c_ps_file_name = L"PS_Main.dxil";
     const wchar_t* c_vs_background_file_name = L"VS_Background.dxil";
     const wchar_t* c_ps_background_file_name = L"PS_Background.dxil";
+    //const wchar_t* c_vs_gbuff_file_name = L"VS_Gbuffer.dxil"; // VS_Main is used
+    const wchar_t* c_ps_gbuff_file_name = L"PS_Gbuffer.dxil";
 
     union AlignedSceneConstantBuffer {
         RasterConstantBuffer constants;
@@ -112,11 +118,15 @@ class Raster_pipeline : public IRender_pipeline {
     ComPtr<ID3D12PipelineState> m_pipelineState;
     ComPtr<ID3D12PipelineState> m_alphaBlendingPipelineState;
     ComPtr<ID3D12PipelineState> m_backgroundPipelineState;
+    ComPtr<ID3D12PipelineState> m_GbufferPipelineState;
     
     Kawase_blur_helper m_blur_helper{};
+    GTAO_helper m_GTAO_helper{};
 
     // additional render targets
     GPU_texture m_renderTarget;
+    GPU_texture m_gbuffer;
+    GPU_texture m_AOTexture;
     GPU_texture m_depthTexture;
     GPU_texture m_frameCopy;
     bool frameCopy_uav_state = true;

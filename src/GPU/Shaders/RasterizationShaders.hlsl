@@ -19,6 +19,9 @@ TextureCube<float4> SpecularLut : register(t2, space1);
 // Frame
 Texture2D<float4> Frame : register(t3, space1);
 
+// Ambient Occlusion
+Texture2D<float4> AmbientOcclusionTexture : register(t4, space1);
+
 // Default sampler
 SamplerState Sampler : register(s0, space1);
 
@@ -127,7 +130,9 @@ float4 PS_Main(PSInput input) : SV_TARGET {
     if (alpha < mat.alpha_cutoff)
         discard;  // alpha-test in the same shader for simplicity, but it disables early-z optimisation
 
-    //return albedo_color;
+    if (g_rasterCB.albedoOnlyMode) {
+        return albedo_color;
+    }
 
     const float y_envmap_rotation = g_rasterCB.envmapRotation;  // todo: move to global variable matrix
     const float rot_cos = cos(y_envmap_rotation);
@@ -142,7 +147,13 @@ float4 PS_Main(PSInput input) : SV_TARGET {
         AO = sample_occlusion_filtered(mat, uv, ASampler);
     }
     AO = lerp(1.0, AO, mat.AOStrength);
-    AO = lerp(1.0, AO, g_rasterCB.TexturesAOStrength); 
+    AO = lerp(1.0, AO, g_rasterCB.TexturesAOStrength);
+    if (DrawData.UseAOTexture && g_rasterCB.GTAOStrength != 0.0f) {
+        float2 uv_screen = input.ndc_position.xy / g_rasterCB.FrameSize;
+        float GTAO = AmbientOcclusionTexture.SampleLevel(DFGSampler, uv_screen, 0.0f); // todo: replace with Load
+        GTAO = lerp(1.0, GTAO, g_rasterCB.GTAOStrength);
+        AO *= GTAO;
+    }
     const float metallic = ORM.z;
     float3 diffuse_color = (1.0f - metallic) * albedo_color.rgb;
 
@@ -242,4 +253,27 @@ float4 PS_Background(BG_VS_OUTPUT input) : SV_TARGET {
 
     float3 SpecularIBL = SpecularLut.SampleLevel(Sampler, dir, 0);
     return float4(SpecularIBL, 1.0);
+}
+
+[shader("pixel")] 
+float4 PS_Gbuffer(PSInput input)
+    : SV_TARGET {
+    Material mat = Materials[DrawData.meshID];
+    float2 uv = input.uv.xy;
+    float alpha = sample_albedo_filtered(mat, uv, ASampler).w;
+    if (alpha < mat.alpha_cutoff) discard;  // alpha-test in the same shader for simplicity, but it disables early-z optimisation
+
+    float3 N = input.normal.xyz;
+    float3 T = input.tangent.xyz;
+    float tangent_sign = input.tangent.w;
+    float3 B = cross(N, T) * tangent_sign;
+
+    bool has_normal_map;
+    float3 normal_map_color = sample_normals_filtered(mat, uv, ASampler, has_normal_map);
+
+    float3x3 TBN = construct_TBN(T, B, N);
+    N = has_normal_map ? normalize(normal_map_sample_to_world(normal_map_color, TBN))
+                       : TBN[2];  // new normal after normal mapping
+
+    return float4(N, 1.0f);
 }

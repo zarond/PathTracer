@@ -39,7 +39,8 @@ bool isHDR(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::HDR) != TEXTURE_TRAIT
 bool isSRGB(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::sRGB) != TEXTURE_TRAITS::None; }
 bool isCubemap(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::Cubemap) != TEXTURE_TRAITS::None; }
 bool isRenderTarget(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::RenderTarget) != TEXTURE_TRAITS::None; }
-bool isDepth(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::Depth) != TEXTURE_TRAITS::None; }
+bool isDepth(TEXTURE_TRAITS a) { return (a & (TEXTURE_TRAITS::Depth | TEXTURE_TRAITS::DepthWithSRV)) != TEXTURE_TRAITS::None; }
+bool isDepthWithSRV(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::DepthWithSRV) != TEXTURE_TRAITS::None; }
 bool isUAV(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::UAV) != TEXTURE_TRAITS::None; }
 bool AllocateMips(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::AllocateMips) != TEXTURE_TRAITS::None; }
 
@@ -841,6 +842,7 @@ void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT
     bool mips = AllocateMips(texture_options);
     bool isCubemap = ::isCubemap(texture_options);
     bool isDepth = ::isDepth(texture_options);
+    bool isDepthWithSRV = ::isDepthWithSRV(texture_options);
     bool isUAV = ::isUAV(texture_options);
     bool isSRGB = ::isSRGB(texture_options);
     mipLevels = mips ? CalculateMipCount(width, height) : 1;
@@ -856,7 +858,7 @@ void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT
             .Height = height,
             .DepthOrArraySize = isCubemap? 6u : 1u,
             .MipLevels = mipLevels,
-            .Format = format,
+            .Format = isDepthWithSRV ? DXGI_FORMAT_R32_TYPELESS : format,
             .SampleDesc = {1, 0},
             .Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN,
             .Flags = flags
@@ -869,7 +871,7 @@ void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT
 
         D3D12_RESOURCE_STATES initial_state = D3D12_RESOURCE_STATE_COMMON;
 
-        if (!isDepth) {
+        if (!isDepth || isDepthWithSRV) {
             d3d_ctx.m_SrvDescHeapAlloc.Alloc(&srv_handle);
         }
         if (isRenderTarget) {
@@ -893,9 +895,9 @@ void GPU_texture::create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT
         d3d_ctx.m_d3dDevice->CreateCommittedResource(
             &def_props, D3D12_HEAP_FLAG_NONE, &tex_desc, initial_state, clear_value_ptr, IID_PPV_ARGS(&pTexture));
 
-        if (!isDepth) {
+        if (!isDepth || isDepthWithSRV) {
             D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{
-                .Format = format,
+                .Format = isDepthWithSRV ? DXGI_FORMAT_R32_FLOAT : format,
                 .ViewDimension = isCubemap ? D3D12_SRV_DIMENSION_TEXTURECUBE : D3D12_SRV_DIMENSION_TEXTURE2D,
                 .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
                 .Texture2D =
