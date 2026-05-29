@@ -27,6 +27,7 @@ set(SHADER_SOURCES
     PS_Main             RasterizationShaders.hlsl   ps_6_6
     VS_Background       RasterizationShaders.hlsl   vs_6_6
     PS_Background       RasterizationShaders.hlsl   ps_6_6
+    VS_Gbuffer          RasterizationShaders.hlsl   vs_6_6
     PS_Gbuffer          RasterizationShaders.hlsl   ps_6_6
     CS_DFG_Lut          DFGLut.hlsl                 cs_6_6
     CS_Diffuse_Lut      CubemapsLut.hlsl            cs_6_6

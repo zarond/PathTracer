@@ -83,6 +83,9 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_rasterCB.cameraPosition = xyz1(origin);
     m_rasterCB.projectionToWorld = NDC2WorldMatrix;
     m_rasterCB.viewProjection = ProjectionMatrix * ViewMatrix;
+    m_rasterCB.viewMatrix = ViewMatrix;
+    m_rasterCB.Projection = ProjectionMatrix;
+    m_rasterCB.invProjection = inverse(ProjectionMatrix);
     m_rasterCB.subpixelOffset = subpixelOffset;
     m_rasterCB.frameID = frameID;
     m_rasterCB.iteration = iterationCount;
@@ -101,6 +104,7 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_rasterCB.specular_aa_variance = render_settings.specular_aa_variance;
     m_rasterCB.specular_aa_threshold = render_settings.specular_aa_threshold;
     m_GTAO_helper.thinObjectFactor = render_settings.AOThinObjectFactor;
+    m_GTAO_helper.AODistance = render_settings.AODistance;
     RaytracingMode = render_settings.programMode;
 }
 
@@ -167,7 +171,7 @@ void Raster_pipeline::CreatePipelineStateObjects() {
     auto [ps_shaderBlob, ps_bytecode] = LoadShader(c_ps_file_name);
     auto [vs_background_shaderBlob, vs_background_bytecode] = LoadShader(c_vs_background_file_name);
     auto [ps_background_shaderBlob, ps_background_bytecode] = LoadShader(c_ps_background_file_name);
-    //auto [vs_gbuff_shaderBlob, vs_gbuff_bytecode] = LoadShader(c_vs_gbuff_file_name);
+    auto [vs_gbuff_shaderBlob, vs_gbuff_bytecode] = LoadShader(c_vs_gbuff_file_name);
     auto [ps_gbuff_shaderBlob, ps_gbuff_bytecode] = LoadShader(c_ps_gbuff_file_name);
 
     D3DContext& d3d_ctx = D3DContext::Get();
@@ -203,7 +207,7 @@ void Raster_pipeline::CreatePipelineStateObjects() {
     ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState)));
 
     // PSO for G-buffer rendering
-    psoDesc.VS = vs_bytecode;
+    psoDesc.VS = vs_gbuff_bytecode;
     psoDesc.PS = ps_gbuff_bytecode;
     rtBlend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
     psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
@@ -351,8 +355,8 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
             }
         }
 
-        m_GTAO_helper.CreateAO(
-            m_AOTexture, m_gbuffer, m_depthTexture, m_rasterCB.projectionToWorld, m_rasterCB.viewProjection, m_rasterCB.cameraPosition);
+        m_GTAO_helper.CreateAO(m_AOTexture, m_gbuffer, m_depthTexture, m_rasterCB.Projection, m_rasterCB.invProjection,
+            m_rasterCB.cameraPosition);
     }
 
     if (DrawAOMode) {

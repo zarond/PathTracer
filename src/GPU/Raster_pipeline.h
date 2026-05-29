@@ -28,6 +28,9 @@ using Microsoft::WRL::ComPtr;
 struct RasterConstantBuffer {
     fmat4x4 projectionToWorld;
     fmat4x4 viewProjection;
+    fmat4x4 viewMatrix;
+    fmat4x4 Projection;
+    fmat4x4 invProjection;
     fvec4 cameraPosition;
     fvec2 subpixelOffset;
     unsigned int frameID;
@@ -98,7 +101,7 @@ class Raster_pipeline : public IRender_pipeline {
     const wchar_t* c_ps_file_name = L"PS_Main.dxil";
     const wchar_t* c_vs_background_file_name = L"VS_Background.dxil";
     const wchar_t* c_ps_background_file_name = L"PS_Background.dxil";
-    //const wchar_t* c_vs_gbuff_file_name = L"VS_Gbuffer.dxil"; // VS_Main is used
+    const wchar_t* c_vs_gbuff_file_name = L"VS_Gbuffer.dxil";
     const wchar_t* c_ps_gbuff_file_name = L"PS_Gbuffer.dxil";
 
     union AlignedSceneConstantBuffer {

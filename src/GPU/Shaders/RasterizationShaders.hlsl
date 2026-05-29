@@ -255,9 +255,36 @@ float4 PS_Background(BG_VS_OUTPUT input) : SV_TARGET {
     return float4(SpecularIBL, 1.0);
 }
 
+struct GBInput {
+    float4 ndc_position : SV_POSITION;
+    //float4 view_position : POSITION;
+    float4 normal : NORMAL;
+    float4 tangent : TANGENT;
+    float4 uv : TEXCOORD;
+};
+
+[shader("vertex")] 
+GBInput VS_Gbuffer(float4 position : POSITION, float4 normal : NORMAL, float4 tangent : TANGENT, float4 uv : TEXCOORD) {
+    GBInput result;
+
+    position.w = 1.0f;
+    normal.w = 0.0f;
+    position = mul(DrawData.modelMatrix, position);
+    float tangent_sign = tangent.w;
+    //result.view_position = mul(g_rasterCB.viewMatrix, position);
+    result.ndc_position = mul(g_rasterCB.viewProjection, position);
+    result.normal = mul(DrawData.normalMatrix, normal);
+    result.tangent = mul(DrawData.modelMatrix, tangent);
+    result.normal = mul(g_rasterCB.viewMatrix, result.normal);
+    result.tangent = mul(g_rasterCB.viewMatrix, result.tangent);
+    result.tangent.w = tangent_sign;
+    result.uv = uv;
+
+    return result;
+}
+
 [shader("pixel")] 
-float4 PS_Gbuffer(PSInput input)
-    : SV_TARGET {
+float4 PS_Gbuffer(GBInput input) : SV_TARGET {
     Material mat = Materials[DrawData.meshID];
     float2 uv = input.uv.xy;
     float alpha = sample_albedo_filtered(mat, uv, ASampler).w;

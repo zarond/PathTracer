@@ -1,12 +1,12 @@
 #include "BRDF.hlsl"
 
 struct GTAOCSInput {
-    float4x4 projectionToWorld;  // without translation component
-    float4x4 viewProjection;
-    float4 cameraPosition;
-    int2 FrameSize;
+    float4x4 Projection;
+    float4x4 invProjection;
+    uint2 FrameSize;
     float2 texel_size;
     float thin_object_factor;
+    float AO_distance;
 };
 
 // Gbuff
@@ -29,9 +29,14 @@ float3 ReconstructViewPosition(float2 uv, float depth) {
     // Build clip-space position and multiply by inverse projection to get view-space position
     float2 ndcXY = uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
     float4 clip = float4(ndcXY, depth, 1.0f);
-    float4 viewH = mul(g_CB.projectionToWorld, clip);
-
+    float4 viewH = mul(g_CB.invProjection, clip);
     return viewH.xyz / viewH.w;
+}
+
+float3 ViewPositionToUV(float3 pos) {
+    float4 clip = mul(g_CB.Projection, float4(pos, 1.0f));
+    clip.xyz /= clip.w;
+    return float3(clip.xy * float2(0.5f, -0.5f) + 0.5f, clip.z);
 }
 
 float cosineWeightingIntegral(float min_angle, float max_angle, float normal_angle) {
@@ -43,13 +48,10 @@ float cosineWeightingIntegral(float min_angle, float max_angle, float normal_ang
 void CS_GTAO(
     uint3 DTid : SV_DispatchThreadID, uint3 Gid : SV_GroupID, uint3 Tid : SV_GroupThreadID, uint Gidx : SV_GroupIndex) 
 {
-uint2 imageSize;
-    Output.GetDimensions(imageSize.x, imageSize.y);
+    if (DTid.x >= g_CB.FrameSize.x || DTid.y >= g_CB.FrameSize.y) return;
 
-    if (DTid.x >= imageSize.x || DTid.y >= imageSize.y) return;
-
-    const float AO_distance = 4.0f;
-    const int NUM_DIRECTIONS = 32;
+    const float AO_distance = g_CB.AO_distance;
+    const int NUM_DIRECTIONS = 16;
     const int STEPS_PER_DIR = 32;
     const float THIN_OBJ_HEURISTIC = g_CB.thin_object_factor;
 
@@ -57,7 +59,7 @@ uint2 imageSize;
     float2 uv = (DTid.xy + 0.5f) * texel;
 
     float centerDepth = Depth.Load(DTid);
-    if (centerDepth >= 1.0f || centerDepth <= 0.0f) { // Guard both depth extremes
+    if (centerDepth >= 1.0f || centerDepth <= 0.0f) {
         Output[DTid.xy] = float4(1.0f, 1.0f, 1.0f, 1.0f);
         return;
     }
@@ -66,44 +68,69 @@ uint2 imageSize;
     float3 viewPos = ReconstructViewPosition(uv, centerDepth);
     float3 viewDir = normalize(-viewPos);
 
+    float3 ls_X = ReconstructViewPosition(uv + float2(texel.x, 0), centerDepth) - viewPos; // replace with uniform right vector
+    ls_X = normalize(ls_X - viewDir * dot(viewDir, ls_X));  // orthogonalize
+    float3 ls_Y = cross(viewDir, ls_X);
+
     float occlusion = 0.0f;
     for (int i = 0; i < NUM_DIRECTIONS; ++i)
     {
         float rot = PI * float(i) / NUM_DIRECTIONS;
         float cos_r = cos(rot);
         float sin_r = sin(rot);
-        //const float2x2 rotation_matrix = float2x2(cos_r, -sin_r, sin_r, cos_r);
-        float2 sampleDir = float2(cos_r, sin_r);
-        float3 slice_point = ReconstructViewPosition(uv + sampleDir * texel, centerDepth);
-        float3 sliceDir = slice_point - viewPos;
-        sliceDir = normalize(sliceDir - viewDir * dot(viewDir, sliceDir)); // orthogonalize
+        float3 rayViewDir = cos_r * ls_X + sin_r * ls_Y;
         
-        float2 projected_normal = float2(dot(normal, sliceDir), dot(normal, viewDir));
+        float2 projected_normal = float2(dot(normal, rayViewDir), dot(normal, viewDir));
         float projected_normal_length = length(projected_normal);
         float2 projected_normal_normalized = clamp(projected_normal / projected_normal_length, -1.0f, 1.0f);
         float normal_angle = (-sign(projected_normal_normalized.x)) * acos(projected_normal_normalized.y);
+        
+        float2 rayUVDir = ViewPositionToUV(viewPos + rayViewDir * 0.01f) - uv;
+        float2 rayScreenDir = AO_distance * 100.0f * rayUVDir * g_CB.FrameSize;
+
+        float rayScreenDirLength = length(rayScreenDir);
+        float2 rayScreenDirNorm = rayScreenDir / rayScreenDirLength;
 
         float min_angle;
         float max_angle;
 
         for (int sign = -1; sign <= 1; sign += 2) {
+            float step_size = 0.5f;
             float acc_angle_cos = -1;
-            float angle_cos_prev = 0;
-            for (int t = 1; t <= STEPS_PER_DIR; ++t)
+            float t_offset = 0.0f;
+            float DepthLod = -1.0f;
+            //float Prev_Dist = 0.0f;
+            for (int t = 0; t < STEPS_PER_DIR; ++t)
             {
-                float2 sampleUV = uv + sampleDir * texel * sign * t * AO_distance;
-                if (any(sampleUV < 0.0f) || any(sampleUV > 1.0f)) break;
-                float sampleDepth = Depth.SampleLevel(Sampler, sampleUV, 0);
-                float3 samplePos = ReconstructViewPosition(sampleUV, sampleDepth);
-                float3 sampleDir = normalize(samplePos - viewPos);
-
-                float angle_cos = dot(sampleDir, viewDir);
-                if (angle_cos >= angle_cos_prev) {
-                    acc_angle_cos = max(acc_angle_cos, angle_cos);
-                } else {
-                    acc_angle_cos = lerp(acc_angle_cos, angle_cos, THIN_OBJ_HEURISTIC);
+                if (t % 4 == 0 && step_size < 32.0f) {
+                    step_size *= 2.0f;
+                    DepthLod += 1.0f;
                 }
-                angle_cos_prev = angle_cos;
+                t_offset += step_size;
+                if (t_offset > rayScreenDirLength) break;
+                float2 sampleUV = uv + sign * rayScreenDirNorm * t_offset * texel;
+                if (any(sampleUV < 0.0f) || any(sampleUV > 1.0f)) break;
+                //float DepthLod = log2(step_size);
+                float sampleDepth = Depth.SampleLevel(Sampler, sampleUV, DepthLod);
+                float3 samplePos = ReconstructViewPosition(sampleUV, sampleDepth);
+                float3 sampleDir = samplePos - viewPos;
+
+                float sampleDirLength = length(sampleDir);
+
+                float Dist = dot(sampleDir, viewDir);
+                float angle_cos = Dist / sampleDirLength;
+                bool sample_is_far = (sampleDirLength > AO_distance) && (angle_cos > 0.0f);
+                if (sample_is_far) {
+                    continue;
+                }
+                //if (Dist - Prev_Dist > THIN_OBJ_HEURISTIC) {
+                //    continue;
+                //}
+                if (angle_cos >= acc_angle_cos) {
+                    acc_angle_cos = angle_cos;
+                }// else {
+                 //   acc_angle_cos = lerp(acc_angle_cos, angle_cos, THIN_OBJ_HEURISTIC);
+                //}
             }
             float angle = acos(acc_angle_cos);
             if (sign < 0) {

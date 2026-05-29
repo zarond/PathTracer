@@ -16,9 +16,10 @@ class GTAO_helper {
     ~GTAO_helper();
 
     void CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_texture, GPU_texture& Depth_texture,
-        const fmat4x4& projectionToWorld, const fmat4x4& viewProjection, const fvec4& cameraPosition);
+        const fmat4x4& Projection, const fmat4x4& invProjection, const fvec4& cameraPosition);
 
     float thinObjectFactor = 0.0f;
+    float AODistance = 1.0f;
 
   private:
     void CreateRootSignature();

@@ -22,12 +22,12 @@ namespace app {
 using namespace glm;
 
 struct GTAOCSInput {
-    fmat4x4 projectionToWorld;  // without translation component
-    fmat4x4 viewProjection;
-    fvec4 cameraPosition;
-    ivec2 FrameSize;
+    fmat4x4 Projection;
+    fmat4x4 invProjection;
+    uvec2 FrameSize;
     fvec2 texel_size;
     float thin_object_factor;
+    float AO_distance;
 };
 
 GTAO_helper::GTAO_helper() {
@@ -38,7 +38,7 @@ GTAO_helper::GTAO_helper() {
 GTAO_helper::~GTAO_helper() { release_gpu_resources(); }
 
 void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_texture, GPU_texture& Depth_texture,
-    const fmat4x4& projectionToWorld, const fmat4x4& viewProjection, const fvec4& cameraPosition) {  // works on the input uav texture
+    const fmat4x4& Projection, const fmat4x4& invProjection, const fvec4& cameraPosition) {  // works on the input uav texture
     const auto& resource = AO_uav_texture.get_gpu_resource();
     const auto description = resource->GetDesc();
     const auto width = description.Width;
@@ -81,7 +81,7 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputUAV, AO_uav_texture.GetUAVHandle());
 
     fvec2 texel{1.0f / width, 1.0f / height};
-    GTAOCSInput input{projectionToWorld, viewProjection, cameraPosition, {width, height}, texel, thinObjectFactor};
+    GTAOCSInput input{Projection, invProjection, {width, height}, texel, thinObjectFactor, AODistance};
     constexpr int inputSizeInInt = sizeof(GTAOCSInput) / 4;
     commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
 
@@ -125,10 +125,11 @@ void GTAO_helper::CreateRootSignature() {
     rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(GTAOCSInput) / 4, 0);
 
     D3D12_STATIC_SAMPLER_DESC sampler = {};
-    sampler.Filter = D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT;
+    sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
     sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    sampler.MaxLOD = 5.0f;
     sampler.ShaderRegister = 0;
     sampler.RegisterSpace = 0;
     sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
