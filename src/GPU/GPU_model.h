@@ -99,7 +99,7 @@ DEFINE_ENUM_FLAG_OPERATORS(TEXTURE_TRAITS)
 class GPU_texture {
   public:
     GPU_texture() = default;
-    explicit GPU_texture(UINT64 width, UINT height, TEXTURE_TRAITS texture_options);
+    explicit GPU_texture(UINT64 width, UINT height, TEXTURE_TRAITS texture_options, DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN);
     explicit GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture, bool allocate_mips = false, bool is_normal_map = false);
     explicit GPU_texture(
         const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_ = false, bool allocate_mips = false, bool is_normal_map = false);
@@ -140,6 +140,8 @@ class GPU_texture {
     void upload_texture_to_gpu(int width_, int height_, const auto& data_, size_t sizeofpixel, DXGI_FORMAT format);
 
     DXGI_FORMAT choose_format() const;
+
+    DXGI_FORMAT format_;
 
     ComPtr<ID3D12Resource> pTexture;
     D3D_Handle_Pair srv_handle{};

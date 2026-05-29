@@ -803,9 +803,13 @@ D3D12_GPU_VIRTUAL_ADDRESS GPU_model::GetGPUVirtualAddress() const { return tlasB
 
 // GPU_texture
 
-GPU_texture::GPU_texture(UINT64 width, UINT height, TEXTURE_TRAITS texture_options) : texture_options(texture_options) {
+GPU_texture::GPU_texture(UINT64 width, UINT height, TEXTURE_TRAITS texture_options, DXGI_FORMAT format)
+    : texture_options(texture_options) {
     assert((texture_options & TEXTURE_TRAITS::Cubemap) == TEXTURE_TRAITS::None || width == height);
-    DXGI_FORMAT format = choose_format();
+    if (format == DXGI_FORMAT_UNKNOWN) {
+        format = choose_format();
+    }
+    format_ = format;
     create_texture_resource(width, height, format);
 }
 
@@ -813,6 +817,7 @@ GPU_texture::GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture, bool allocate
     texture_options = TEXTURE_TRAITS::HDR;
     if (allocate_mips) texture_options |= TEXTURE_TRAITS::AllocateMips;
     if (is_normal_map) texture_options |= TEXTURE_TRAITS::NormalMap;
+    format_ = DXGI_FORMAT_R32G32B32A32_FLOAT;
     create_texture_resource(cpu_texture.width(), cpu_texture.height(), DXGI_FORMAT_R32G32B32A32_FLOAT);
     upload_texture_to_gpu(
         cpu_texture.width(), cpu_texture.height(), cpu_texture.data(), sizeof(hdr_pixel), DXGI_FORMAT_R32G32B32A32_FLOAT);
@@ -822,9 +827,9 @@ GPU_texture::GPU_texture(const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_, b
     if (srgb_) texture_options |= TEXTURE_TRAITS::sRGB;
     if (allocate_mips) texture_options |= TEXTURE_TRAITS::AllocateMips;
     if (is_normal_map) texture_options |= TEXTURE_TRAITS::NormalMap;
-    DXGI_FORMAT format = srgb_ ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
-    create_texture_resource(cpu_texture.width(), cpu_texture.height(), format);
-    upload_texture_to_gpu(cpu_texture.width(), cpu_texture.height(), cpu_texture.data(), sizeof(sdr_pixel), format);
+    format_ = srgb_ ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
+    create_texture_resource(cpu_texture.width(), cpu_texture.height(), format_);
+    upload_texture_to_gpu(cpu_texture.width(), cpu_texture.height(), cpu_texture.data(), sizeof(sdr_pixel), format_);
 }
 
 DXGI_FORMAT GPU_texture::choose_format() const {
@@ -1063,12 +1068,11 @@ void GPU_texture::GetUAVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR
         return;
     }
     bool isSRGB = ::isSRGB(texture_options);
-    auto format = choose_format();
     D3DContext& d3d_ctx = D3DContext::Get();
     if (isUAV) {
         // Create a unordered access view for the texture
         D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{
-            .Format = isSRGB ? DXGI_FORMAT_R8G8B8A8_UNORM : format,
+            .Format = isSRGB ? DXGI_FORMAT_R8G8B8A8_UNORM : format_,
             .ViewDimension = isCubemap ? D3D12_UAV_DIMENSION_TEXTURE2DARRAY : D3D12_UAV_DIMENSION_TEXTURE2D,
             .Texture2D =
                 D3D12_TEX2D_UAV{
@@ -1091,11 +1095,10 @@ void GPU_texture::GetUAVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR
 void GPU_texture::GetSRVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle) const {
     bool isCubemap = ::isCubemap(texture_options);
     bool isSRGB = ::isSRGB(texture_options);
-    auto format = choose_format();
     D3DContext& d3d_ctx = D3DContext::Get();
 
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{
-        .Format = format,
+        .Format = format_,
         .ViewDimension = isCubemap ? D3D12_SRV_DIMENSION_TEXTURECUBE : D3D12_SRV_DIMENSION_TEXTURE2D,
         .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
         .Texture2D =

@@ -301,9 +301,8 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     auto gbufferRTVHandle = m_gbuffer.GetRTVHandle();
 
     const float clearColor[] = {0.0f, 0.0f, 0.0f, 1.0f};
-    const float blackClearColor[] = {0.0f, 0.0f, 0.0f, 0.0f};
     commandList->OMSetRenderTargets(1, &gbufferRTVHandle, FALSE, &depthHandle);
-    commandList->ClearRenderTargetView(gbufferRTVHandle, blackClearColor, 0, nullptr);
+    commandList->ClearRenderTargetView(gbufferRTVHandle, clearColor, 0, nullptr);
 
     commandList->ClearDepthStencilView(depthHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
     commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);

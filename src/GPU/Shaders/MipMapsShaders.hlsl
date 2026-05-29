@@ -5,6 +5,7 @@ struct MipCSInput {
     int numMips;
     int isSRGB;
     int isNormalMap;
+    int minFilter;
     int numGroups;
 };
 
@@ -28,6 +29,8 @@ float4 Combine(float4 c0, float4 c1, float4 c2, float4 c3) {
         float3 avg = (c0.xyz + c1.xyz + c2.xyz + c3.xyz) * 0.25f;
         avg = normalize(avg * 2.0f - 1.0f) * 0.5f + 0.5f;
         return float4(avg, 1.0f);
+    } else if (InputInfo.minFilter) {
+        return min(min(c0, c1), min(c2, c3));
     } else {
         return (c0 + c1 + c2 + c3) * 0.25f; 
     }

@@ -19,6 +19,7 @@ struct MipCSInput {
     int numMips;
     int isSRGB;
     int isNormalMap;
+    int minFilter;
     int numGroups;
 };
 
@@ -32,7 +33,7 @@ Mipmaps_helper::~Mipmaps_helper() {
     release_gpu_resources();
 }
 
-void Mipmaps_helper::CreateMips(GPU_texture& uav_texture) {  // works on the input uav texture
+void Mipmaps_helper::CreateMips(GPU_texture& uav_texture, bool only5Mips, bool minFilter) {  // works on the input uav texture
     const auto& resource = uav_texture.get_gpu_resource();
     const auto description = resource->GetDesc();
     const auto width = description.Width;
@@ -50,7 +51,7 @@ void Mipmaps_helper::CreateMips(GPU_texture& uav_texture) {  // works on the inp
     commandList->SetComputeRootSignature(m_rootSignature.Get());
 
     int NumMips = GPU_texture::CalculateMipCount(width, height);
-    NumMips = std::min(NumMips, MipsLimit);
+    NumMips = only5Mips ? 6 : std::min(NumMips, MipsLimit);
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(HeapStartCpu);
     CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(HeapStartGpu);
@@ -66,7 +67,7 @@ void Mipmaps_helper::CreateMips(GPU_texture& uav_texture) {  // works on the inp
 
     commandList->SetComputeRootUnorderedAccessView(GlobalRootSignatureParams::GroupCounters, GroupCounters->GetGPUVirtualAddress());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, gpuHandle);
-    MipCSInput input{NumMips, isSRGB, isNormalMap, numGroups};
+    MipCSInput input{NumMips, isSRGB, isNormalMap, minFilter, numGroups};
     constexpr int inputSizeInInt = sizeof(MipCSInput) / 4;
     commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
 

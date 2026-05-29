@@ -4,6 +4,7 @@
 
 #include "../d3d_context.h"
 #include "Common_helpers.h"
+#include "Mipmaps_helper.h"
 
 namespace GlobalRootSignatureParams {
 enum Value : int {
@@ -43,8 +44,13 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
     const auto width = description.Width;
     const auto height = description.Height;
 
+    ResizeInnerResource(width, height);
+
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
+
+    static Mipmaps_helper mip_helper{};
+    mip_helper.Init();
 
     auto barrier_g_buff = CD3DX12_RESOURCE_BARRIER::Transition(G_buff_texture.get_gpu_resource().Get(),
         D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -53,13 +59,25 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
     D3D12_RESOURCE_BARRIER bariers[] = {barrier_g_buff, barrier_depth};
     commandList->ResourceBarrier(2, bariers);
 
+    GPU_texture::copy_texture_mip0_only(m_DepthUAVTexture, Depth_texture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, d3d_ctx.m_DXRCommandList);
+
+    mip_helper.CreateMips(m_DepthUAVTexture, true, true);
+
+    ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};  // todo: don't replace heap during mip map pass?
+    commandList->SetDescriptorHeaps(1, desc_heap);
+
+    auto barrier_depth_uav = CD3DX12_RESOURCE_BARRIER::Transition(m_DepthUAVTexture.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    commandList->ResourceBarrier(1, &barrier_depth_uav);
+
     commandList->SetComputeRootSignature(m_rootSignature.Get());
     commandList->SetPipelineState(m_PipelineState.Get());
 
     int NumMips = GPU_texture::CalculateMipCount(width, height);
 
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::Gbuffer, G_buff_texture.GetSRVHandle());
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::Depth, Depth_texture.GetSRVHandle());
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::Depth, m_DepthUAVTexture.GetSRVHandle());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputUAV, AO_uav_texture.GetUAVHandle());
 
     fvec2 texel{1.0f / width, 1.0f / height};
@@ -76,8 +94,19 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
     barrier_depth = CD3DX12_RESOURCE_BARRIER::Transition(Depth_texture.get_gpu_resource().Get(), 
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-    D3D12_RESOURCE_BARRIER bariers_out[] = {barrier_g_buff, barrier_depth};
-    commandList->ResourceBarrier(2, bariers_out);
+    barrier_depth_uav = CD3DX12_RESOURCE_BARRIER::Transition(m_DepthUAVTexture.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    D3D12_RESOURCE_BARRIER bariers_out[] = {barrier_g_buff, barrier_depth, barrier_depth_uav};
+    commandList->ResourceBarrier(3, bariers_out);
+}
+
+void GTAO_helper::ResizeInnerResource(int new_width, int new_height) {
+    if (currentWidth == new_width && currentHeight == new_height) return;
+    currentWidth = std::max(new_width, 0);
+    currentHeight = std::max(new_height, 0);
+    m_DepthUAVTexture.release_gpu_resource();
+    auto flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;
+    m_DepthUAVTexture = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R32_FLOAT};
 }
 
 void GTAO_helper::CreateRootSignature() {

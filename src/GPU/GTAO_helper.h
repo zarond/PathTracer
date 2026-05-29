@@ -24,9 +24,14 @@ class GTAO_helper {
     void CreateRootSignature();
     void CreatePipelineStateObject();
     void CreateDescriptorHeap();
+    void ResizeInnerResource(int new_width, int new_height);
 
     ComPtr<ID3D12RootSignature> m_rootSignature;
     ComPtr<ID3D12PipelineState> m_PipelineState;
+
+    GPU_texture m_DepthUAVTexture;
+    UINT64 currentWidth = 0;
+    UINT currentHeight = 0;
 
     const wchar_t* c_cs_file_name = L"CS_GTAO.dxil";
 

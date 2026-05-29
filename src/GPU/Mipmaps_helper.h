@@ -17,7 +17,7 @@ class Mipmaps_helper {
 
     void Init(); // must call this once before use, contains GPU command list instructions
 
-    void CreateMips(GPU_texture& uav_texture);
+    void CreateMips(GPU_texture& uav_texture, bool only5Mips = false, bool minFilter = false);
 
     static GPU_texture GetBlankCompatibleUAVTex(GPU_texture& texture);
 
