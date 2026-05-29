@@ -99,7 +99,6 @@ void CS_GTAO(
             float acc_angle_cos = -1;
             float t_offset = 0.0f;
             float DepthLod = -1.0f;
-            //float Prev_Dist = 0.0f;
             for (int t = 0; t < STEPS_PER_DIR; ++t)
             {
                 if (t % 4 == 0 && step_size < 32.0f) {
@@ -110,27 +109,16 @@ void CS_GTAO(
                 if (t_offset > rayScreenDirLength) break;
                 float2 sampleUV = uv + sign * rayScreenDirNorm * t_offset * texel;
                 if (any(sampleUV < 0.0f) || any(sampleUV > 1.0f)) break;
-                //float DepthLod = log2(step_size);
                 float sampleDepth = Depth.SampleLevel(Sampler, sampleUV, DepthLod);
                 float3 samplePos = ReconstructViewPosition(sampleUV, sampleDepth);
                 float3 sampleDir = samplePos - viewPos;
 
                 float sampleDirLength = length(sampleDir);
 
-                float Dist = dot(sampleDir, viewDir);
-                float angle_cos = Dist / sampleDirLength;
-                bool sample_is_far = (sampleDirLength > AO_distance) && (angle_cos > 0.0f);
-                if (sample_is_far) {
-                    continue;
-                }
-                //if (Dist - Prev_Dist > THIN_OBJ_HEURISTIC) {
-                //    continue;
-                //}
-                if (angle_cos >= acc_angle_cos) {
-                    acc_angle_cos = angle_cos;
-                }// else {
-                 //   acc_angle_cos = lerp(acc_angle_cos, angle_cos, THIN_OBJ_HEURISTIC);
-                //}
+                float Dist_fac = sampleDirLength / AO_distance;
+                Dist_fac = pow2(saturate(Dist_fac));
+                float angle_cos = dot(sampleDir, viewDir) / sampleDirLength;
+                acc_angle_cos = lerp(max(angle_cos, acc_angle_cos), acc_angle_cos, Dist_fac);
             }
             float angle = acos(acc_angle_cos);
             if (sign < 0) {
