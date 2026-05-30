@@ -5,6 +5,7 @@
 #include "../d3d_context.h"
 #include "Common_helpers.h"
 #include "Mipmaps_helper.h"
+#include "Bilateral_filter.h"
 
 namespace GlobalRootSignatureParams {
 enum Value : int {
@@ -27,6 +28,7 @@ struct GTAOCSInput {
     uvec2 FrameSize;
     fvec2 texel_size;
     float AO_distance;
+    unsigned int frameID;
 };
 
 GTAO_helper::GTAO_helper() {
@@ -37,7 +39,7 @@ GTAO_helper::GTAO_helper() {
 GTAO_helper::~GTAO_helper() { release_gpu_resources(); }
 
 void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_texture, GPU_texture& Depth_texture,
-    const fmat4x4& Projection, const fmat4x4& invProjection, const fvec4& cameraPosition) {  // works on the input uav texture
+    const fmat4x4& Projection, const fmat4x4& invProjection, const fvec4& cameraPosition, unsigned int FrameID) {
     const auto& resource = AO_uav_texture.get_gpu_resource();
     const auto description = resource->GetDesc();
     const auto width = description.Width;
@@ -49,6 +51,7 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
     auto commandList = d3d_ctx.m_DXRCommandList;
 
     static Mipmaps_helper mip_helper{};
+    static Bilateral_filter bilateral_filter{};
     mip_helper.Init();
 
     auto barrier_g_buff = CD3DX12_RESOURCE_BARRIER::Transition(G_buff_texture.get_gpu_resource().Get(),
@@ -59,7 +62,7 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
     commandList->ResourceBarrier(2, bariers);
 
     GPU_texture::copy_texture_mip0_only(m_DepthUAVTexture, Depth_texture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, d3d_ctx.m_DXRCommandList);
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, commandList);
 
     mip_helper.CreateMips(m_DepthUAVTexture, true, true);
 
@@ -80,7 +83,7 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputUAV, AO_uav_texture.GetUAVHandle());
 
     fvec2 texel{1.0f / width, 1.0f / height};
-    GTAOCSInput input{Projection, invProjection, {width, height}, texel, AODistance};
+    GTAOCSInput input{Projection, invProjection, {width, height}, texel, AODistance, 0}; // todo: add FrameID and temporal denoiser
     constexpr int inputSizeInInt = sizeof(GTAOCSInput) / 4;
     commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
 
@@ -88,6 +91,20 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
     int GroupsY = (height + 15) / 16;
 
     commandList->Dispatch(GroupsX, GroupsY, 1);
+
+    if (DenoiseEnabled) {
+        auto barrier_AO_tex = CD3DX12_RESOURCE_BARRIER::Transition(AO_uav_texture.get_gpu_resource().Get(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        commandList->ResourceBarrier(1, &barrier_AO_tex);
+        // Spatial denoiser
+        bilateral_filter.ApplyBlur(
+            m_SpatialDenoised, AO_uav_texture, G_buff_texture, m_DepthUAVTexture, AOSpatialSigma, AODepthSigma, AONormalSigma);
+        GPU_texture::copy_texture_mip0_only(AO_uav_texture, m_SpatialDenoised, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, commandList);
+        barrier_AO_tex = CD3DX12_RESOURCE_BARRIER::Transition(AO_uav_texture.get_gpu_resource().Get(),
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        commandList->ResourceBarrier(1, &barrier_AO_tex);
+    }
 
     barrier_g_buff = CD3DX12_RESOURCE_BARRIER::Transition(G_buff_texture.get_gpu_resource().Get(),
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
@@ -106,6 +123,8 @@ void GTAO_helper::ResizeInnerResource(int new_width, int new_height) {
     m_DepthUAVTexture.release_gpu_resource();
     auto flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;
     m_DepthUAVTexture = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R32_FLOAT};
+    flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
+    m_SpatialDenoised = GPU_texture{currentWidth, currentHeight, flags};
 }
 
 void GTAO_helper::CreateRootSignature() {
@@ -146,7 +165,7 @@ void GTAO_helper::CreatePipelineStateObject() {
     auto device = d3d_ctx.m_d3dDevice;
 
     D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
-    computePsoDesc.pRootSignature = m_rootSignature.Get();  // Must match shader layout
+    computePsoDesc.pRootSignature = m_rootSignature.Get();
     computePsoDesc.CS = cs_bytecode;
     computePsoDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
     computePsoDesc.NodeMask = 1;

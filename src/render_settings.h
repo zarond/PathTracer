@@ -14,6 +14,10 @@ struct RenderSettings {
     // only for raster pipeline
     float GTAOStrength = 1.0f;
     float AODistance = 1.0f;
+    bool AODenoiseEnabled = true;
+    float AOSpatialSigma = 3.0f;
+    float AODepthSigma = 0.01;
+    float AONormalSigma = 0.01;
     float TexturesAOStrength = 1.0f;
     bool specular_aa_enabled = true;
     float specular_aa_variance = 0.15f;

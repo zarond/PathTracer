@@ -6,6 +6,7 @@ struct GTAOCSInput {
     uint2 FrameSize;
     float2 texel_size;
     float AO_distance;
+    unsigned int frameID;
 };
 
 // Gbuff
@@ -43,14 +44,33 @@ float cosineWeightingIntegral(float min_angle, float max_angle, float normal_ang
                     -cos(2 * min_angle - normal_angle) + cos(normal_angle) + 2 * min_angle * sin(normal_angle));
 }
 
+float SpatialDirectionsNoise(uint3 DTid) {
+    return (1.0 / 16.0) * (((( DTid.x + DTid.y) & 0x3) << 2) + (DTid.x & 0x3));
+}
+
+float SpatialOffsetsNoise(uint3 DTid) {
+    return (1.0 / 4.0) * ((DTid.y - DTid.x) & 0x3);
+}
+
+float TemporalDirections() { 
+    float rotations[] = {60, 300, 180, 240, 120, 0};
+    float rotation = rotations[g_CB.frameID % 6] / 360.0f;
+    return rotation;
+}
+
+float TemporalOffsets() { 
+    float offsets[] = {0, 0.5, 0.25, 0.75};
+    float offset = offsets[(g_CB.frameID / 6) % 4];
+    return offset;
+}
+
 [numthreads(16, 16, 1)] 
-void CS_GTAO(
-    uint3 DTid : SV_DispatchThreadID, uint3 Gid : SV_GroupID, uint3 Tid : SV_GroupThreadID, uint Gidx : SV_GroupIndex) 
+void CS_GTAO(uint3 DTid : SV_DispatchThreadID) 
 {
     if (DTid.x >= g_CB.FrameSize.x || DTid.y >= g_CB.FrameSize.y) return;
 
     const float AO_distance = g_CB.AO_distance;
-    const int NUM_DIRECTIONS = 16;
+    const int NUM_DIRECTIONS = 4;
     const int STEPS_PER_DIR = 32;
 
     float2 texel = g_CB.texel_size;
@@ -70,10 +90,13 @@ void CS_GTAO(
     ls_X = normalize(ls_X - viewDir * dot(viewDir, ls_X));  // orthogonalize
     float3 ls_Y = cross(viewDir, ls_X);
 
+    float spatial_directions_noise = frac(SpatialDirectionsNoise(DTid) + TemporalDirections());
+    float spatial_offsets_noise = frac(SpatialOffsetsNoise(DTid) + TemporalOffsets());
+
     float occlusion = 0.0f;
     for (int i = 0; i < NUM_DIRECTIONS; ++i)
     {
-        float rot = PI * float(i) / NUM_DIRECTIONS;
+        float rot = PI * (float(i) + spatial_directions_noise) / NUM_DIRECTIONS;
         float cos_r = cos(rot);
         float sin_r = sin(rot);
         float3 rayViewDir = cos_r * ls_X + sin_r * ls_Y;
@@ -94,9 +117,9 @@ void CS_GTAO(
 
         for (int sign = -1; sign <= 1; sign += 2) {
             float step_size = 0.5f;
+            float DepthLod = -1.0f;
             float acc_angle_cos = -1;
             float t_offset = 0.0f;
-            float DepthLod = -1.0f;
             for (int t = 0; t < STEPS_PER_DIR; ++t)
             {
                 if (t % 4 == 0 && step_size < 32.0f) {
@@ -104,8 +127,9 @@ void CS_GTAO(
                     DepthLod += 1.0f;
                 }
                 t_offset += step_size;
-                if (t_offset > rayScreenDirLength) break;
-                float2 sampleUV = uv + sign * rayScreenDirNorm * t_offset * texel;
+                float t_offset_with_noise = t_offset + spatial_offsets_noise * step_size;
+                if (t_offset_with_noise > rayScreenDirLength) break;
+                float2 sampleUV = uv + sign * rayScreenDirNorm * t_offset_with_noise * texel;
                 if (any(sampleUV < 0.0f) || any(sampleUV > 1.0f)) break;
                 float sampleDepth = Depth.SampleLevel(Sampler, sampleUV, DepthLod);
                 float3 samplePos = ReconstructViewPosition(sampleUV, sampleDepth);

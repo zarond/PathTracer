@@ -104,6 +104,10 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_rasterCB.specular_aa_variance = render_settings.specular_aa_variance;
     m_rasterCB.specular_aa_threshold = render_settings.specular_aa_threshold;
     m_GTAO_helper.AODistance = render_settings.AODistance;
+    m_GTAO_helper.DenoiseEnabled = render_settings.AODenoiseEnabled;
+    m_GTAO_helper.AOSpatialSigma = render_settings.AOSpatialSigma;
+    m_GTAO_helper.AODepthSigma = render_settings.AODepthSigma;
+    m_GTAO_helper.AONormalSigma = render_settings.AONormalSigma;
     RaytracingMode = render_settings.programMode;
 }
 
@@ -355,7 +359,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
         }
 
         m_GTAO_helper.CreateAO(m_AOTexture, m_gbuffer, m_depthTexture, m_rasterCB.Projection, m_rasterCB.invProjection,
-            m_rasterCB.cameraPosition);
+            m_rasterCB.cameraPosition, m_rasterCB.frameID);
     }
 
     if (DrawAOMode) {

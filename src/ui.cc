@@ -638,6 +638,12 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
         HelpTooltip("Ground Truth Ambient Occlusion");
         raster_settings_changed |=
             ImGui::SliderFloat("AO distance", &render_settings.AODistance, 0.0f, 5.0f, nullptr);
+        raster_settings_changed |= ImGui::Checkbox("AO denoise", &render_settings.AODenoiseEnabled);
+        raster_settings_changed |= ImGui::SliderFloat("Spatial Sigma", &render_settings.AOSpatialSigma, 0.0f, 3.0f);
+        raster_settings_changed |= ImGui::SliderFloat("Depth Sigma", &render_settings.AODepthSigma, 0.0f, 1.0f, nullptr,
+            ImGuiSliderFlags_Logarithmic);
+        raster_settings_changed |= ImGui::SliderFloat("Normals Sigma", &render_settings.AONormalSigma, 0.0f, 1.0f, nullptr,
+            ImGuiSliderFlags_Logarithmic);
         raster_settings_changed |= ImGui::SliderFloat(
             "AO from textures strength", &render_settings.TexturesAOStrength, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
         raster_settings_changed |= ImGui::Checkbox("Enable specular AA", &render_settings.specular_aa_enabled);
