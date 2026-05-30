@@ -5,7 +5,6 @@ struct GTAOCSInput {
     float4x4 invProjection;
     uint2 FrameSize;
     float2 texel_size;
-    float thin_object_factor;
     float AO_distance;
 };
 
@@ -53,7 +52,6 @@ void CS_GTAO(
     const float AO_distance = g_CB.AO_distance;
     const int NUM_DIRECTIONS = 16;
     const int STEPS_PER_DIR = 32;
-    const float THIN_OBJ_HEURISTIC = g_CB.thin_object_factor;
 
     float2 texel = g_CB.texel_size;
     float2 uv = (DTid.xy + 0.5f) * texel;
@@ -68,7 +66,7 @@ void CS_GTAO(
     float3 viewPos = ReconstructViewPosition(uv, centerDepth);
     float3 viewDir = normalize(-viewPos);
 
-    float3 ls_X = ReconstructViewPosition(uv + float2(texel.x, 0), centerDepth) - viewPos; // replace with uniform right vector
+    float3 ls_X = float3(1, 0, 0);
     ls_X = normalize(ls_X - viewDir * dot(viewDir, ls_X));  // orthogonalize
     float3 ls_Y = cross(viewDir, ls_X);
 

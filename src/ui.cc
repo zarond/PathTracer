@@ -638,8 +638,6 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
         HelpTooltip("Ground Truth Ambient Occlusion");
         raster_settings_changed |=
             ImGui::SliderFloat("AO distance", &render_settings.AODistance, 0.0f, 5.0f, nullptr);
-        raster_settings_changed |=
-            ImGui::SliderFloat("Thin objects heuristic F.", &render_settings.AOThinObjectFactor, 0.0f, 1.0f, nullptr);
         raster_settings_changed |= ImGui::SliderFloat(
             "AO from textures strength", &render_settings.TexturesAOStrength, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
         raster_settings_changed |= ImGui::Checkbox("Enable specular AA", &render_settings.specular_aa_enabled);

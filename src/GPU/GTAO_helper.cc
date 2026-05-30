@@ -26,7 +26,6 @@ struct GTAOCSInput {
     fmat4x4 invProjection;
     uvec2 FrameSize;
     fvec2 texel_size;
-    float thin_object_factor;
     float AO_distance;
 };
 
@@ -81,7 +80,7 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputUAV, AO_uav_texture.GetUAVHandle());
 
     fvec2 texel{1.0f / width, 1.0f / height};
-    GTAOCSInput input{Projection, invProjection, {width, height}, texel, thinObjectFactor, AODistance};
+    GTAOCSInput input{Projection, invProjection, {width, height}, texel, AODistance};
     constexpr int inputSizeInInt = sizeof(GTAOCSInput) / 4;
     commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
 

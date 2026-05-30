@@ -103,7 +103,6 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_rasterCB.specular_aa_enabled = render_settings.specular_aa_enabled;
     m_rasterCB.specular_aa_variance = render_settings.specular_aa_variance;
     m_rasterCB.specular_aa_threshold = render_settings.specular_aa_threshold;
-    m_GTAO_helper.thinObjectFactor = render_settings.AOThinObjectFactor;
     m_GTAO_helper.AODistance = render_settings.AODistance;
     RaytracingMode = render_settings.programMode;
 }
