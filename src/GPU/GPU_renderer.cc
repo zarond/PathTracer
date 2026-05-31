@@ -156,10 +156,6 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
 void GPURenderer::set_render_settings(const RenderSettings& settings) {
     const auto currentSettings = render_settings_;
     render_settings_ = settings;
-
-    if (currentSettings.programMode != settings.programMode) {
-        reload_ray_program();
-    }
 }
 RenderSettings GPURenderer::get_render_settings() const { return render_settings_; }
 
