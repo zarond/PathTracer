@@ -32,21 +32,16 @@ struct RasterConstantBuffer {
     float4x4 invProjection;
     float4 cameraPosition;
     float2 subpixel_offset;
+    int2 FrameSize;
+    float envmap_rotation_sin;
+    float envmap_rotation_cos;
+
     unsigned int frameID;
-    int iteration;
-    float invIterationCount;
-    int samplesPerPixel;
-    float invSamplesPerPixel;
-    int maxNewRaysPerBounce;
-    float invMaxNewRaysPerBounce;
-    int maxRayBounces;
-    float envmapRotation;
     int albedoOnlyMode;
     int SpecularLutMips;
+    int RenderFrameMips;
     float GTAOStrength;
     float TexturesAOStrength;
-    int RenderFrameMips;
-    int2 FrameSize;
     int specular_aa_enabled;
     float specular_aa_variance;
     float specular_aa_threshold;

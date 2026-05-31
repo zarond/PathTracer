@@ -86,16 +86,10 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_rasterCB.viewMatrix = ViewMatrix;
     m_rasterCB.Projection = ProjectionMatrix;
     m_rasterCB.invProjection = inverse(ProjectionMatrix);
+    m_rasterCB.envmap_rotation_cos = cos(render_settings.envmapRotation);
+    m_rasterCB.envmap_rotation_sin = sin(render_settings.envmapRotation);
     m_rasterCB.subpixelOffset = subpixelOffset;
     m_rasterCB.frameID = frameID;
-    m_rasterCB.iteration = iterationCount;
-    m_rasterCB.invIterationCount = invIterationCount;
-    m_rasterCB.samplesPerPixel = render_settings.samplesPerPixel;
-    m_rasterCB.invSamplesPerPixel = 1.0f / static_cast<float>(render_settings.samplesPerPixel);
-    m_rasterCB.maxNewRaysPerBounce = render_settings.maxNewRaysPerBounce;
-    m_rasterCB.invMaxNewRaysPerBounce = 1.0f / render_settings.maxNewRaysPerBounce;
-    m_rasterCB.maxRayBounces = render_settings.maxRayBounces;
-    m_rasterCB.envmapRotation = render_settings.envmapRotation;
     m_rasterCB.albedoOnlyMode = (render_settings.programMode == RayProgramMode::RayCaster);
     m_rasterCB.SpecularLutMips = EnvCube_helper::SpecularMips;
     m_rasterCB.GTAOStrength = render_settings.GTAOStrength;

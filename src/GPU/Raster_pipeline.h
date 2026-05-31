@@ -19,6 +19,7 @@
 namespace app {
 
 using glm::fmat4x4;
+using glm::fmat2x2;
 using glm::fvec2;
 using glm::fvec3;
 using glm::fvec4;
@@ -33,21 +34,16 @@ struct RasterConstantBuffer {
     fmat4x4 invProjection;
     fvec4 cameraPosition;
     fvec2 subpixelOffset;
+    glm::ivec2 FrameSize;
+    float envmap_rotation_sin;
+    float envmap_rotation_cos;
+    
     unsigned int frameID;
-    int iteration;
-    float invIterationCount;
-    int samplesPerPixel;
-    float invSamplesPerPixel;
-    int maxNewRaysPerBounce;
-    float invMaxNewRaysPerBounce;
-    int maxRayBounces;
-    float envmapRotation;
     int albedoOnlyMode;
     int SpecularLutMips;
+    int RenderFrameMips;
     float GTAOStrength;
     float TexturesAOStrength;
-    int RenderFrameMips;
-    glm::ivec2 FrameSize;
     int specular_aa_enabled;
     float specular_aa_variance;
     float specular_aa_threshold;

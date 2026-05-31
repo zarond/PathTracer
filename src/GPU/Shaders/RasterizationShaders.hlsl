@@ -134,9 +134,8 @@ float4 PS_Main(PSInput input) : SV_TARGET {
         return albedo_color;
     }
 
-    const float y_envmap_rotation = g_rasterCB.envmapRotation;  // todo: move to global variable matrix
-    const float rot_cos = cos(y_envmap_rotation);
-    const float rot_sin = sin(y_envmap_rotation);
+    const float rot_cos = g_rasterCB.envmap_rotation_cos;
+    const float rot_sin = g_rasterCB.envmap_rotation_sin;
     const float2x2 envmap_rotation_matrix = float2x2(rot_cos, -rot_sin, rot_sin, rot_cos);
 
     float3 emissive = sample_emissive_filtered(mat, uv, ASampler);
@@ -243,10 +242,9 @@ BG_VS_OUTPUT VS_Background(uint vID : SV_VERTEXID) {
 [shader("pixel")]
 float4 PS_Background(BG_VS_OUTPUT input) : SV_TARGET {
     float3 dir = input.viewDir;
-    
-    float y_envmap_rotation = g_rasterCB.envmapRotation;
-    float rot_cos = cos(y_envmap_rotation);
-    float rot_sin = sin(y_envmap_rotation);
+
+    const float rot_cos = g_rasterCB.envmap_rotation_cos;
+    const float rot_sin = g_rasterCB.envmap_rotation_sin;
     const float2x2 envmap_rotation_matrix = float2x2(rot_cos, -rot_sin, rot_sin, rot_cos);
 
     dir.xz = mul(envmap_rotation_matrix, dir.xz);  // Rotate around Y-axis

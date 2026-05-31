@@ -372,12 +372,10 @@ static void RenderingProgressUI(Viewer& viewer) {
         if (ImGui::Button("Render")) {
             viewer.async_start_render();
         }
-    } else if (rendering_state == RenderingState::Rendering) {
+    } else {
         if (ImGui::Button("Stop Rendering")) {
             viewer.cancel_rendering();
         }
-    } else {
-        ImGui::Button("Stop Rendering");  // disabled button to prevent UI jumping
     }
     {
         bool continuous_rendering = viewer.continuous_rendering.load();
@@ -611,7 +609,7 @@ static void GeneralRenderSettingsUI(Viewer& viewer, ConsoleArgs& console_argumen
 
 static void RaytracingRenderSettingsUI(Viewer& viewer, ConsoleArgs& console_arguments) {
     RenderPipelineMode pipeline_mode = viewer.get_active_gpu_pipeline_mode();
-    if (pipeline_mode == RenderPipelineMode::RasterPipeline) {
+    if (viewer.is_using_gpu_renderer() && pipeline_mode == RenderPipelineMode::RasterPipeline) {
         return;
     }
     ImGui::Separator();
@@ -660,7 +658,7 @@ static void CommonRenderSettingsUI(Viewer& viewer, ConsoleArgs& console_argument
 
 static void RasterRenderSettingsUI(Viewer& viewer) {
     RenderPipelineMode pipeline_mode = viewer.get_active_gpu_pipeline_mode();
-    if (pipeline_mode != RenderPipelineMode::RasterPipeline) {
+    if (!viewer.is_using_gpu_renderer() || pipeline_mode != RenderPipelineMode::RasterPipeline) {
         return;
     }
     ImGui::Separator();
