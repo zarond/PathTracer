@@ -11,6 +11,7 @@
 #include "DFG_Lut_helper.h"
 #include "Cubemaps_helper.h"
 #include "Mipmaps_helper.h"
+#include "Silhouette_helper.h"
 
 namespace GlobalRootSignatureParams {
 enum Value : int {
@@ -386,6 +387,10 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
                 D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             commandList->ResourceBarrier(1, &barrier);
         }
+        // set background alpha to zero (for refractions)
+        static Silhouette_helper silhouette_helper{};
+        silhouette_helper.Apply(m_frameCopy, m_depthTexture);
+        // Apply Kawase Blur
         m_blur_helper.CreateBlurMips(m_frameCopy);
         frameCopy_uav_state = false;
 

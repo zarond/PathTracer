@@ -91,17 +91,24 @@ float4 SampleFrameBicubic(float2 uv, float lod) {
     }
 }
 
-float3 sampleBackgroundAndIBL(float3 ws_pos, float3 refract_dir, float t_roughness) {
+float3 sampleBackgroundAndIBL(float3 ws_pos, float3 refract_dir, float t_roughness, float2x2 envmap_rotation_matrix) {
     float4 ndc = mul(g_rasterCB.viewProjection, float4(ws_pos, 1.0f));
     ndc /= ndc.w;
     ndc.y *= -1.0f;
     float2 uv = ndc.xy * 0.5f + 0.5f;
     float lod = t_roughness * (g_rasterCB.RenderFrameMips - 1);
-    return SampleFrameBicubic(uv, lod);
+    float4 frame_sample = SampleFrameBicubic(uv, lod);
+    float alpha = frame_sample.a;
+    alpha *= 1.0f / 0.9f; // remap a little
+    if (alpha >= 1.0f) return frame_sample.rgb;
+    // else we need IBL as well
+    refract_dir.xz = mul(envmap_rotation_matrix, refract_dir.xz);
+    float3 specularIBL = SpecularLut.SampleLevel(Sampler, refract_dir, lod);
+    return lerp(specularIBL, frame_sample.rgb, min(alpha, 1.0f));
 }
 
 float3 calculateTransmittedLight(float3 ws_pos, float4 ndc_position, float3 v, float3 N, const Material mat, float3 Fresnel, float linear_roughness,
-    float transmission, float thickness) 
+    float transmission, float thickness, float2x2 envmap_rotation_matrix) 
 {
     if (transmission == 0.0f) return 0.0f;
     float t_roughness = sqrt(transmission_roughness(linear_roughness, mat.ior));
@@ -113,8 +120,7 @@ float3 calculateTransmittedLight(float3 ws_pos, float4 ndc_position, float3 v, f
     float3 transmitted_light = 0.0f;
     RefractResult refraction = SimulateRefraction(ws_pos, v, N, mat.ior, thickness); 
     if (any(refraction.dir != 0.0f)) {
-        // refract_dir.xz = mul(envmap_rotation_matrix, refract_dir.xz);  // enmap rotation
-        float3 refractedIBL = sampleBackgroundAndIBL(refraction.pos, refraction.dir, t_roughness);
+        float3 refractedIBL = sampleBackgroundAndIBL(refraction.pos, refraction.dir, t_roughness, envmap_rotation_matrix);
         float3 attenuation = min(exp(-mat.attenuationFactor.rgb * refraction.dist), 1.0f);  // Volume absorption
         transmitted_light = (1.0f - Fresnel) * attenuation * refractedIBL;
     }
@@ -148,8 +154,7 @@ float4 PS_Main(PSInput input) : SV_TARGET {
     AO = lerp(1.0, AO, mat.AOStrength);
     AO = lerp(1.0, AO, g_rasterCB.TexturesAOStrength);
     if (DrawData.UseAOTexture && g_rasterCB.GTAOStrength != 0.0f) {
-        float2 uv_screen = input.ndc_position.xy / g_rasterCB.FrameSize;
-        float GTAO = AmbientOcclusionTexture.SampleLevel(DFGSampler, uv_screen, 0.0f); // todo: replace with Load
+        float GTAO = AmbientOcclusionTexture.Load(int3(input.ndc_position.xy, 0)).x;
         GTAO = lerp(1.0, GTAO, g_rasterCB.GTAOStrength);
         AO *= GTAO;
     }
@@ -196,8 +201,8 @@ float4 PS_Main(PSInput input) : SV_TARGET {
     }
     transmission_thickness.g *= DrawData.modelScale;
     float transmission = transmission_thickness.r;
-    float3 transmissionIBL = calculateTransmittedLight(
-        input.world_position, input.ndc_position, v, N, mat, Fresnel, linear_roughness, transmission, transmission_thickness.g);
+    float3 transmissionIBL = calculateTransmittedLight(input.world_position, input.ndc_position, v, N, mat, Fresnel,
+        linear_roughness, transmission, transmission_thickness.g, envmap_rotation_matrix);
 
     float3 DiffuseSampleDir = N;
     DiffuseSampleDir.xz = mul(envmap_rotation_matrix, DiffuseSampleDir.xz);  // enmap rotation

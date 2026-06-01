@@ -37,6 +37,7 @@ set(SHADER_SOURCES
     CS_KawaseBlurUpsample       KawaseBlur.hlsl     cs_6_6
     CS_GTAO             GTAO.hlsl                   cs_6_6
     CS_Bilateral_filter     BilateralFilter.hlsl    cs_6_6
+    CS_Silhouette       Silhouette.hlsl             cs_6_6
 )
 
 set(APP_SOURCES
@@ -67,6 +68,7 @@ if(ON_WINDOWS)
         src/GPU/Kawase_blur_helper.cc
         src/GPU/GTAO_helper.cc
         src/GPU/Bilateral_filter.cc
+        src/GPU/Silhouette_helper.cc
     )
 endif()
 
