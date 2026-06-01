@@ -91,11 +91,16 @@ void Viewer::render() {
         renderer_->reload_materials();
         need_materials_update_ = false;
     }
-    renderer_->render_frame(framebuffer_, continuous_rendering, iterative_rendering, iterations_counter_);
-    if (iterative_rendering) {
+    bool camera_moved = camera_updated_in_last_frame_.load();
+    bool use_iterative_rendering = !camera_moved && iterative_rendering;
+    renderer_->render_frame(framebuffer_, continuous_rendering, use_iterative_rendering, iterations_counter_);
+    if (use_iterative_rendering) {
         ++iterations_counter_;
     } else {
         reset_iteration_counter();
+    }
+    if (camera_moved) {
+        camera_updated_in_last_frame_.store(false);
     }
 }
 
@@ -132,6 +137,7 @@ void Viewer::take_snapshot(const std::filesystem::path& filePath) const {
 }
 
 bool Viewer::snap_to_camera(bool use_default) {
+    camera_updated_in_last_frame_.store(true);
     bool success = false;
 
     if (active_camera_index_.has_value()) {

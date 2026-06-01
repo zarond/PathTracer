@@ -383,7 +383,9 @@ static void RenderingProgressUI(Viewer& viewer) {
             viewer.continuous_rendering = continuous_rendering;
         }
     }
-    {
+    if (viewer.is_using_gpu_renderer() && viewer.get_active_gpu_pipeline_mode() == RenderPipelineMode::RasterPipeline) {
+        viewer.reset_iteration_counter();
+    } else {
         bool iterative_rendering = viewer.iterative_rendering.load();
         if (ImGui::Checkbox("Iterative Rendering", &iterative_rendering)) {
             viewer.iterative_rendering = iterative_rendering;

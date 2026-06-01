@@ -123,6 +123,8 @@ class Viewer {
 
     fastgltf::Camera::Perspective cam_params_;
 
+    std::atomic<bool> camera_updated_in_last_frame_ = true;
+
     void set_up_default_camera_transforms();
 };
 
