@@ -24,7 +24,8 @@ using namespace glm;
 
 struct GTAOCSInput {
     fmat4x4 Projection;
-    fmat4x4 invProjection;
+    float inv_proj_00;
+    float inv_proj_11;
     uvec2 FrameSize;
     fvec2 texel_size;
     float AO_distance;
@@ -83,7 +84,8 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputUAV, AO_uav_texture.GetUAVHandle());
 
     fvec2 texel{1.0f / width, 1.0f / height};
-    GTAOCSInput input{Projection, invProjection, {width, height}, texel, AODistance, 0}; // todo: add FrameID and temporal denoiser
+    GTAOCSInput input{Projection, invProjection[0][0], invProjection[1][1], {width, height}, texel, AODistance,
+        0};  // todo: add FrameID and temporal denoiser
     constexpr int inputSizeInInt = sizeof(GTAOCSInput) / 4;
     commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
 

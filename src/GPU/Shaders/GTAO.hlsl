@@ -2,7 +2,8 @@
 
 struct GTAOCSInput {
     float4x4 Projection;
-    float4x4 invProjection;
+    float inv_proj_00;
+    float inv_proj_11;
     uint2 FrameSize;
     float2 texel_size;
     float AO_distance;
@@ -28,15 +29,39 @@ float3 ReconstructViewPosition(float2 uv, float depth) {
     // depth assumed non-linear [0,1] as sampled from Depth texture
     // Build clip-space position and multiply by inverse projection to get view-space position
     float2 ndcXY = uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
-    float4 clip = float4(ndcXY, depth, 1.0f);
-    float4 viewH = mul(g_CB.invProjection, clip);
-    return viewH.xyz / viewH.w;
+    //float4 clip = float4(ndcXY, depth, 1.0f);
+    //float4 viewH = mul(g_CB.invProjection, clip);
+    //return viewH.xyz / viewH.w;
+
+    // Same as above, but optimized for standard perspective projection matrix
+    const float inv_proj_00 = g_CB.inv_proj_00;
+    const float inv_proj_11 = g_CB.inv_proj_11;
+    const float proj_22 = g_CB.Projection[2][2];
+    const float proj_23 = g_CB.Projection[2][3];
+
+    const float z_vs = -proj_23 / (proj_22 + depth);
+    const float x_vs = -z_vs * ndcXY.x * inv_proj_00;
+    const float y_vs = -z_vs * ndcXY.y * inv_proj_11;
+
+    return float3(x_vs, y_vs, z_vs);
 }
 
 float3 ViewPositionToUV(float3 pos) {
-    float4 clip = mul(g_CB.Projection, float4(pos, 1.0f));
-    clip.xyz /= clip.w;
-    return float3(clip.xy * float2(0.5f, -0.5f) + 0.5f, clip.z);
+    //float4 clip = mul(g_CB.Projection, float4(pos, 1.0f));
+    //clip.xyz /= clip.w;
+    //return float3(clip.xy * float2(0.5f, -0.5f) + 0.5f, clip.z);
+
+    // Same as above, but optimized for standard perspective projection matrix
+    const float proj_00 = g_CB.Projection[0][0];
+    const float proj_11 = g_CB.Projection[1][1];
+    const float proj_22 = g_CB.Projection[2][2];
+    const float proj_23 = g_CB.Projection[2][3];
+    float inv_z = 1.0f / pos.z;
+    float x_ndc = -pos.x * proj_00 * inv_z;
+    float y_ndc = -pos.y * proj_11 * inv_z;
+    float z_ndc = -proj_22 - proj_23 * inv_z;
+    float3 ndc = float3(x_ndc, y_ndc, z_ndc);
+    return float3(ndc.xy * float2(0.5f, -0.5f) + 0.5f, ndc.z);
 }
 
 float cosineWeightingIntegral(float min_angle, float max_angle, float normal_angle) {
@@ -73,44 +98,42 @@ void CS_GTAO(uint3 DTid : SV_DispatchThreadID)
     const int NUM_DIRECTIONS = 4;
     const int STEPS_PER_DIR = 32;
 
-    float2 texel = g_CB.texel_size;
-    float2 uv = (DTid.xy + 0.5f) * texel;
+    const float2 texel = g_CB.texel_size;
+    const float2 uv = (DTid.xy + 0.5f) * texel;
 
-    float centerDepth = Depth.Load(DTid);
+    const float centerDepth = Depth.Load(DTid);
     if (centerDepth >= 1.0f || centerDepth <= 0.0f) {
         Output[DTid.xy] = float4(1.0f, 1.0f, 1.0f, 1.0f);
         return;
     }
 
-    float3 normal = Gbuffer.Load(DTid).xyz;
-    float3 viewPos = ReconstructViewPosition(uv, centerDepth);
-    float3 viewDir = normalize(-viewPos);
+    const float3 normal = Gbuffer.Load(DTid).xyz;
+    const float3 viewPos = ReconstructViewPosition(uv, centerDepth);
+    const float3 viewDir = normalize(-viewPos);
 
     float3 ls_X = float3(1, 0, 0);
     ls_X = normalize(ls_X - viewDir * dot(viewDir, ls_X));  // orthogonalize
-    float3 ls_Y = cross(viewDir, ls_X);
+    const float3 ls_Y = cross(viewDir, ls_X);
 
-    float spatial_directions_noise = frac(SpatialDirectionsNoise(DTid) + TemporalDirections());
-    float spatial_offsets_noise = frac(SpatialOffsetsNoise(DTid) + TemporalOffsets());
+    const float spatial_directions_noise = frac(SpatialDirectionsNoise(DTid) + TemporalDirections());
+    const float spatial_offsets_noise = frac(SpatialOffsetsNoise(DTid) + TemporalOffsets());
 
     float occlusion = 0.0f;
     for (int i = 0; i < NUM_DIRECTIONS; ++i)
     {
-        float rot = PI * (float(i) + spatial_directions_noise) / NUM_DIRECTIONS;
-        float cos_r = cos(rot);
-        float sin_r = sin(rot);
-        float3 rayViewDir = cos_r * ls_X + sin_r * ls_Y;
+        const float rot = PI * (float(i) + spatial_directions_noise) / NUM_DIRECTIONS;
+        const float3 rayViewDir = cos(rot) * ls_X + sin(rot) * ls_Y;
         
-        float2 projected_normal = float2(dot(normal, rayViewDir), dot(normal, viewDir));
-        float projected_normal_length = length(projected_normal);
-        float2 projected_normal_normalized = clamp(projected_normal / projected_normal_length, -1.0f, 1.0f);
-        float normal_angle = (-sign(projected_normal_normalized.x)) * acos(projected_normal_normalized.y);
+        const float2 projected_normal = float2(dot(normal, rayViewDir), dot(normal, viewDir));
+        const float projected_normal_length = length(projected_normal);
+        const float2 projected_normal_normalized = clamp(projected_normal / projected_normal_length, -1.0f, 1.0f);
+        const float normal_angle = (-sign(projected_normal_normalized.x)) * acos(projected_normal_normalized.y);
         
-        float2 rayUVDir = ViewPositionToUV(viewPos + rayViewDir * 0.01f) - uv;
-        float2 rayScreenDir = AO_distance * 100.0f * rayUVDir * g_CB.FrameSize;
+        const float2 rayUVDir = ViewPositionToUV(viewPos + rayViewDir * 0.01f) - uv;
+        const float2 rayScreenDir = AO_distance * 100.0f * rayUVDir * g_CB.FrameSize;
 
-        float rayScreenDirLength = length(rayScreenDir);
-        float2 rayScreenDirNorm = rayScreenDir / rayScreenDirLength;
+        const float rayScreenDirLength = length(rayScreenDir);
+        const float2 rayScreenDirNorm = rayScreenDir / rayScreenDirLength;
 
         float min_angle;
         float max_angle;
@@ -127,22 +150,22 @@ void CS_GTAO(uint3 DTid : SV_DispatchThreadID)
                     DepthLod += 1.0f;
                 }
                 t_offset += step_size;
-                float t_offset_with_noise = t_offset + spatial_offsets_noise * step_size;
+                const float t_offset_with_noise = t_offset + spatial_offsets_noise * step_size;
                 if (t_offset_with_noise > rayScreenDirLength) break;
-                float2 sampleUV = uv + sign * rayScreenDirNorm * t_offset_with_noise * texel;
+                const float2 sampleUV = uv + sign * rayScreenDirNorm * t_offset_with_noise * texel;
                 if (any(sampleUV < 0.0f) || any(sampleUV > 1.0f)) break;
-                float sampleDepth = Depth.SampleLevel(Sampler, sampleUV, DepthLod);
-                float3 samplePos = ReconstructViewPosition(sampleUV, sampleDepth);
-                float3 sampleDir = samplePos - viewPos;
+                const float sampleDepth = Depth.SampleLevel(Sampler, sampleUV, DepthLod);
+                const float3 samplePos = ReconstructViewPosition(sampleUV, sampleDepth);
+                const float3 sampleDir = samplePos - viewPos;
 
-                float sampleDirLength = length(sampleDir);
+                const float sampleDirLength = length(sampleDir);
 
                 float Dist_fac = sampleDirLength / AO_distance;
                 Dist_fac = pow2(saturate(Dist_fac));
-                float angle_cos = dot(sampleDir, viewDir) / sampleDirLength;
+                const float angle_cos = dot(sampleDir, viewDir) / sampleDirLength;
                 acc_angle_cos = lerp(max(angle_cos, acc_angle_cos), acc_angle_cos, Dist_fac);
             }
-            float angle = acos(acc_angle_cos);
+            const float angle = acos(acc_angle_cos);
             if (sign < 0) {
                 max_angle = angle;
             } else {
@@ -155,6 +178,6 @@ void CS_GTAO(uint3 DTid : SV_DispatchThreadID)
         occlusion += projected_normal_length * cosineWeightingIntegral(min_angle, max_angle, normal_angle);
     }
 
-    float ao = saturate(occlusion / (float)NUM_DIRECTIONS);
+    const float ao = saturate(occlusion / (float)NUM_DIRECTIONS);
     Output[DTid.xy] = float4(ao, ao, ao, 1.0f);
 }
