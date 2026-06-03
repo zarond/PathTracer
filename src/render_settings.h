@@ -15,7 +15,7 @@ struct RenderSettings {
     float GTAOStrength = 1.0f;
     float AODistance = 1.0f;
     bool AODenoiseEnabled = true;
-    float AOSpatialSigma = 3.0f;
+    float AOSpatialSigma = 10.0f;   // default is nearly uniform weights
     float AODepthSigma = 0.01;
     float AONormalSigma = 0.01;
     float TexturesAOStrength = 1.0f;

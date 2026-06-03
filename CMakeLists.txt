@@ -38,6 +38,7 @@ set(SHADER_SOURCES
     CS_GTAO             GTAO.hlsl                   cs_6_6
     CS_Bilateral_filter     BilateralFilter.hlsl    cs_6_6
     CS_Silhouette       Silhouette.hlsl             cs_6_6
+    CS_Reprojection     Reprojection.hlsl           cs_6_6
 )
 
 set(APP_SOURCES
@@ -69,6 +70,7 @@ if(ON_WINDOWS)
         src/GPU/GTAO_helper.cc
         src/GPU/Bilateral_filter.cc
         src/GPU/Silhouette_helper.cc
+        src/GPU/Reprojection_helper.cc
     )
 endif()
 

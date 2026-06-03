@@ -16,7 +16,11 @@ class GTAO_helper {
     ~GTAO_helper();
 
     void CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_texture, GPU_texture& Depth_texture,
-        const fmat4x4& Projection, const fmat4x4& invProjection, const fvec4& cameraPosition, unsigned int FrameID);
+        const fmat4x4& Projection, const fmat4x4& invProjection, 
+        const fmat4x4& ViewProjection,
+        unsigned int FrameID);
+
+    void ResetFrameCounter();
 
     float AODistance = 1.0f;
     bool DenoiseEnabled = true;
@@ -34,9 +38,14 @@ class GTAO_helper {
     ComPtr<ID3D12PipelineState> m_PipelineState;
 
     GPU_texture m_DepthUAVTexture;
+    GPU_texture m_DepthUAVTexture_previous;
     GPU_texture m_SpatialDenoised;
+    GPU_texture m_SpatialDenoised_previous;
     UINT64 currentWidth = 0;
     UINT currentHeight = 0;
+    int consecutive_frame_count = 0;
+
+    fmat4x4 ViewProjection_previous{};
 
     const wchar_t* c_cs_file_name = L"CS_GTAO.dxil";
 

@@ -673,7 +673,9 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
     raster_settings_changed |=
         ImGui::SliderFloat("AO distance", &render_settings.AODistance, 0.0f, 5.0f, nullptr);
     raster_settings_changed |= ImGui::Checkbox("AO denoise", &render_settings.AODenoiseEnabled);
-    raster_settings_changed |= ImGui::SliderFloat("Spatial Sigma", &render_settings.AOSpatialSigma, 0.0f, 3.0f);
+    HelpTooltip("Spatial and temporal denoising");
+    raster_settings_changed |=
+        ImGui::SliderFloat("Spatial Sigma", &render_settings.AOSpatialSigma, 0.0f, 10.0f, nullptr, ImGuiSliderFlags_Logarithmic);
     raster_settings_changed |= ImGui::SliderFloat("Depth Sigma", &render_settings.AODepthSigma, 0.0f, 1.0f, nullptr,
         ImGuiSliderFlags_Logarithmic);
     raster_settings_changed |= ImGui::SliderFloat("Normals Sigma", &render_settings.AONormalSigma, 0.0f, 1.0f, nullptr,

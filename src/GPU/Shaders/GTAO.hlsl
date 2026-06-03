@@ -126,7 +126,8 @@ void CS_GTAO(uint3 DTid : SV_DispatchThreadID)
         
         const float2 projected_normal = float2(dot(normal, rayViewDir), dot(normal, viewDir));
         const float projected_normal_length = length(projected_normal);
-        const float2 projected_normal_normalized = clamp(projected_normal / projected_normal_length, -1.0f, 1.0f);
+        const float projected_normal_inv_length = (projected_normal_length < kEpsilon) ? 1.0f : 1.0f / projected_normal_length;
+        const float2 projected_normal_normalized = clamp(projected_normal * projected_normal_inv_length, -1.0f, 1.0f);
         const float normal_angle = (-sign(projected_normal_normalized.x)) * acos(projected_normal_normalized.y);
         
         const float2 rayUVDir = ViewPositionToUV(viewPos + rayViewDir * 0.01f) - uv;

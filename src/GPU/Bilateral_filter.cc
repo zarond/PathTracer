@@ -4,7 +4,6 @@
 
 #include "../d3d_context.h"
 #include "Common_helpers.h"
-#include "Mipmaps_helper.h"
 
 namespace GlobalRootSignatureParams {
 enum Value : int {
