@@ -1,9 +1,12 @@
 struct ReprojectionCSInput {
     float4x4 Reprojection;
+    float4x4 Projection_prev;
     uint2 FrameSize;
     float2 texel_size;
     float depth_threshold; // default: 0.001f
     float new_mix_factor;
+    int weak_depth_condition;
+    int DebugMode;  // 0 - normal, 1 - show reprojection failure in red
 };
 
 // Old Texture
@@ -27,6 +30,19 @@ SamplerState PointSampler : register(s0, space0);
 // Default Linear sampler
 SamplerState LinearSampler : register(s1, space0);
 
+float linear_depth(float non_linear_depth) {
+    // Assuming standard perspective projection matrix, reconstruct linear depth from non-linear depth
+    const float proj_22 = g_CB.Projection_prev[2][2];
+    const float proj_23 = g_CB.Projection_prev[2][3];
+    return -proj_23 / (proj_22 + non_linear_depth);
+}
+
+float linear_depth(float4 non_linear_depth) {
+    const float proj_22 = g_CB.Projection_prev[2][2];
+    const float proj_23 = g_CB.Projection_prev[2][3];
+    return -proj_23 / (proj_22 + non_linear_depth);
+}
+
 [numthreads(16, 16, 1)] 
 void CS_Reprojection(uint3 DTid : SV_DispatchThreadID) {
     if (DTid.x >= g_CB.FrameSize.x || DTid.y >= g_CB.FrameSize.y) return;
@@ -44,6 +60,7 @@ void CS_Reprojection(uint3 DTid : SV_DispatchThreadID) {
     const float4 prevClip = mul(g_CB.Reprojection, ndc);
 
     const float3 prevNDC = prevClip.xyz / prevClip.w;
+    const float prevDepth = linear_depth(prevNDC.z);
 
     const float2 prevUV = prevNDC.xy * float2(0.5f, -0.5f) + float2(0.5f, 0.5f);
 
@@ -51,13 +68,20 @@ void CS_Reprojection(uint3 DTid : SV_DispatchThreadID) {
 
     if (any(prevUV < 0.0f) || any(prevUV > 1.0f)) UsePrevSample = false;  // UV out of bounds
 
+    bool strong_condition = (g_CB.weak_depth_condition == 0);
     const float4 gatheredDepth = OldDepth.Gather(PointSampler, prevUV);
+    const float pointDepth = OldDepth.SampleLevel(PointSampler, prevUV, 0);
 
-    const float4 depthDelta = abs(gatheredDepth - prevNDC.z);
-    const float4 depthValid = step(depthDelta, DepthThreshold);
-
-    bool allValid = all(depthValid > 0.0f);     // consider reprojection valid only if all 4 gathered depth samples are within threshold
-                                                // it helps with ghosting from bilinear sampling of color
+    bool allValid;
+    if (strong_condition) {
+        const float4 depthDelta = abs(linear_depth(gatheredDepth) - prevDepth);
+        const float4 depthValid = step(depthDelta, DepthThreshold);
+        allValid = all(depthValid > 0.0f);  // consider reprojection valid only if all 4 gathered depth samples are within threshold
+                                            // it helps with ghosting from bilinear sampling of color
+    } else {
+        allValid = (abs(linear_depth(pointDepth) - prevDepth) < DepthThreshold);   // consider reprojection valid if 
+                                                                                   // bilinear-interpolated depth is within threshold
+    }
 
     float4 prevColor = 0.0f;
     if (allValid) {
@@ -70,5 +94,5 @@ void CS_Reprojection(uint3 DTid : SV_DispatchThreadID) {
 
     NewTexture[DTid.xy] = lerp(prevColor, NewColor, final_weight);
 
-    //if (UsePrevSample == false) NewTexture[DTid.xy] = float4(1.0, 0.0, 0.0, 1.0);  // Debug: red for reprojection failure
+    if (g_CB.DebugMode && UsePrevSample == false) NewTexture[DTid.xy] = float4(1.0, 0.0, 0.0, 1.0);  // Debug: red for reprojection failure
 }

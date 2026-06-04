@@ -22,6 +22,9 @@ Texture2D<float4> Frame : register(t3, space1);
 // Ambient Occlusion
 Texture2D<float4> AmbientOcclusionTexture : register(t4, space1);
 
+// Screen-space Reflections
+Texture2D<float4> SSRTexture : register(t5, space1);
+
 // Default sampler
 SamplerState Sampler : register(s0, space1);
 
@@ -213,6 +216,11 @@ float4 PS_Main(PSInput input) : SV_TARGET {
     SpecularSampleDir.xz = mul(envmap_rotation_matrix, SpecularSampleDir.xz);  // enmap rotation
     float3 specularIBL = SpecularLut.SampleLevel(Sampler, SpecularSampleDir, roughness * (g_rasterCB.SpecularLutMips - 1));
 
+    if (g_rasterCB.SSREnabled && !mat.hasVolume && mat.transmisionFactor == 0.0f) {
+        float4 SSR_sample = SSRTexture.Load(int3(input.ndc_position.xy, 0));
+        specularIBL = lerp(specularIBL, SSR_sample.rgb, SSR_sample.a);
+    }
+
     float3 diffuse_light = diffuse_color * lerp(AO * diffuseIBL, transmissionIBL, transmission);
     float3 final_light = lerp(diffuse_light, specularIBL, Fresnel) + emissive;
 
@@ -309,5 +317,10 @@ float4 PS_Gbuffer(GBInput input) : SV_TARGET {
     N = has_normal_map ? normalize(normal_map_sample_to_world(normal_map_color, TBN))
                        : TBN[2];  // new normal after normal mapping
 
-    return float4(N, 1.0f);
+    float roughness = sample_occlusion_roughness_metallic_filtered(mat, uv, ASampler).g;
+    if (g_rasterCB.specular_aa_enabled) {
+        roughness = SpecularAntialiasing(roughness, N, g_rasterCB.specular_aa_variance, g_rasterCB.specular_aa_threshold);
+    }
+
+    return float4(N, roughness);
 }

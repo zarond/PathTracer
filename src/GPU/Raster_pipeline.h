@@ -15,6 +15,7 @@
 #include "DXR_pipeline.h"
 #include "Kawase_blur_helper.h"
 #include "GTAO_helper.h"
+#include "SSR_helper.h"
 
 namespace app {
 
@@ -44,6 +45,7 @@ struct RasterConstantBuffer {
     int RenderFrameMips;
     float GTAOStrength;
     float TexturesAOStrength;
+    int SSREnabled;
     int specular_aa_enabled;
     float specular_aa_variance;
     float specular_aa_threshold;
@@ -121,14 +123,20 @@ class Raster_pipeline : public IRender_pipeline {
     
     Kawase_blur_helper m_blur_helper{};
     GTAO_helper m_GTAO_helper{};
+    SSR_helper m_SSR_helper{};
 
     // additional render targets
     GPU_texture m_renderTarget;
+    GPU_texture m_depthTexture;
+    GPU_texture m_DepthUAVTexture;  // Hierarchical depth buffer for use as UAV in compute shaders (e.g. for GTAO and SSR)
+    GPU_texture m_DepthUAVTexture_previous;  // Previous depth for GTAO and SSR temporal reprojection
     GPU_texture m_gbuffer;
     GPU_texture m_AOTexture;
-    GPU_texture m_depthTexture;
+    GPU_texture m_SSR;
     GPU_texture m_frameCopy;
     bool frameCopy_uav_state = true;
+
+    bool DrawSSROnly = false;
 
     // additional texture resources
     GPU_texture DFG_lut;  // precomputed DFG LUT for split-sum approximation of specular IBL

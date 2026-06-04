@@ -673,6 +673,8 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
     raster_settings_changed |=
         ImGui::SliderFloat("AO distance", &render_settings.AODistance, 0.0f, 5.0f, nullptr);
     raster_settings_changed |= ImGui::Checkbox("AO denoise", &render_settings.AODenoiseEnabled);
+    raster_settings_changed |= ImGui::SliderFloat(
+        "AO Reprojection Thickness Threshold", &render_settings.AOReprojectionDepthThreshold, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_Logarithmic);
     HelpTooltip("Spatial and temporal denoising");
     raster_settings_changed |=
         ImGui::SliderFloat("Spatial Sigma", &render_settings.AOSpatialSigma, 0.0f, 10.0f, nullptr, ImGuiSliderFlags_Logarithmic);
@@ -682,6 +684,17 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
         ImGuiSliderFlags_Logarithmic);
     raster_settings_changed |= ImGui::SliderFloat(
         "AO from textures strength", &render_settings.TexturesAOStrength, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
+    raster_settings_changed |= ImGui::Checkbox("Enable SSR", &render_settings.SSREnabled);
+    raster_settings_changed |= ImGui::Checkbox("SSR denoise", &render_settings.SSRDenoiseEnabled);
+    raster_settings_changed |= ImGui::Checkbox("SSR Debug", &render_settings.DrawSSROnly);
+    raster_settings_changed |= ImGui::SliderFloat(
+        "SSR Thickness", &render_settings.SSRDepthThreshold, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_Logarithmic);
+    raster_settings_changed |= ImGui::SliderFloat(
+        "SSR Max Roughness", &render_settings.SSRMaxRoughness, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
+    raster_settings_changed |= ImGui::SliderFloat(
+        "SSR GGX Distribution Bias", &render_settings.SSR_GGXClamp, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
+    HelpTooltip("Clamp ray's max angle of GGX distribution. Value of 0.0 is no bias. Higher values - less noise, but less accurate");
+    raster_settings_changed |= ImGui::Checkbox("Reprojection Debug", &render_settings.ReprojectionDebugMode);
     raster_settings_changed |= ImGui::Checkbox("Enable specular AA", &render_settings.specular_aa_enabled);
     raster_settings_changed |= ImGui::SliderFloat(
         "Specular AA Variance", &render_settings.specular_aa_variance, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);

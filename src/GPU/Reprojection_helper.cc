@@ -23,10 +23,13 @@ using namespace glm;
 
 struct ReprojectionCSInput {
     fmat4x4 Reprojection;
+    fmat4x4 Projection_prev;
     uvec2 FrameSize;
     fvec2 texel_size;
     float depth_threshold;  // default: 0.001f
     float new_mix_factor;
+    int weak_depth_condition;
+    int DebugMode;
 };
 
 Reprojection_helper::Reprojection_helper() {
@@ -34,10 +37,13 @@ Reprojection_helper::Reprojection_helper() {
     CreatePipelineStateObject();
 }
 
+bool Reprojection_helper::DebugMode = false;
+
 Reprojection_helper::~Reprojection_helper() { release_gpu_resources(); }
 
 void Reprojection_helper::Reproject(GPU_texture& old_texture, GPU_texture& old_depth_texture, GPU_texture& new_texture,
-    GPU_texture& new_depth_texture, const fmat4x4& invViewProjection, const fmat4x4& ViewProjection_previous, float new_value_mix_factor) {
+    GPU_texture& new_depth_texture, const fmat4x4& invViewProjection, const fmat4x4& ViewProjection_previous,
+    const fmat4x4& Projection_previous, float new_value_mix_factor, float depth_threshold, bool weak_depth_condition) {
     const auto& resource = new_texture.get_gpu_resource();
     const auto description = resource->GetDesc();
     const auto width = description.Width;
@@ -56,7 +62,16 @@ void Reprojection_helper::Reproject(GPU_texture& old_texture, GPU_texture& old_d
 
     fvec2 texel{1.0f / width, 1.0f / height};
     fmat4x4 Reprojection = ViewProjection_previous * invViewProjection;
-    ReprojectionCSInput input{Reprojection, {width, height}, texel, 0.001f, new_value_mix_factor};
+    ReprojectionCSInput input{
+        Reprojection, 
+        Projection_previous, 
+        {width, height}, 
+        texel,
+        depth_threshold,
+        new_value_mix_factor,
+        weak_depth_condition, 
+        DebugMode
+    };
     constexpr int inputSizeInInt = sizeof(ReprojectionCSInput) / 4;
     commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
 

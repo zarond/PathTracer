@@ -12,6 +12,7 @@
 #include "Cubemaps_helper.h"
 #include "Mipmaps_helper.h"
 #include "Silhouette_helper.h"
+#include "Reprojection_helper.h"
 
 namespace GlobalRootSignatureParams {
 enum Value : int {
@@ -22,6 +23,7 @@ enum Value : int {
     SpecularLutTex,
     FrameTex,
     AmbientOcclusionTex,
+    SSRTex,
     RootConstants,
 
     Count
@@ -103,9 +105,17 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     if (!m_GTAO_helper.DenoiseEnabled) {
         m_GTAO_helper.ResetFrameCounter();
     }
+    m_GTAO_helper.DepthThreshold = render_settings.AOReprojectionDepthThreshold;
     m_GTAO_helper.AOSpatialSigma = render_settings.AOSpatialSigma;
     m_GTAO_helper.AODepthSigma = render_settings.AODepthSigma;
     m_GTAO_helper.AONormalSigma = render_settings.AONormalSigma;
+    m_rasterCB.SSREnabled = render_settings.SSREnabled;
+    DrawSSROnly = render_settings.DrawSSROnly;
+    m_SSR_helper.DenoiseEnabled = render_settings.SSRDenoiseEnabled;
+    m_SSR_helper.DepthThreshold = render_settings.SSRDepthThreshold;
+    m_SSR_helper.MaxRoughness = render_settings.SSRMaxRoughness;
+    m_SSR_helper.SSR_GGXClamp = render_settings.SSR_GGXClamp;
+    Reprojection_helper::DebugMode = render_settings.ReprojectionDebugMode;
     RaytracingMode = render_settings.programMode;
 }
 
@@ -121,7 +131,8 @@ void Raster_pipeline::CreateRootSignatures() {
     ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 1);  // 5 SpecularLut texture.
     ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3, 1);  // 6 Frame texture.
     ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4, 1);  // 7 Ambient Occlusion texture.
-    ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);     // 8 per draw constants buffer.
+    ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5, 1);  // 8 SSR texture.
+    ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);     // 9 per draw constants buffer.
 
     D3D12_STATIC_SAMPLER_DESC default_sampler = {};  // Default static sampler.
     default_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -158,6 +169,7 @@ void Raster_pipeline::CreateRootSignatures() {
     rootParameters[GlobalRootSignatureParams::SpecularLutTex].InitAsDescriptorTable(1, &ranges[4]);
     rootParameters[GlobalRootSignatureParams::FrameTex].InitAsDescriptorTable(1, &ranges[5]);
     rootParameters[GlobalRootSignatureParams::AmbientOcclusionTex].InitAsDescriptorTable(1, &ranges[6]);
+    rootParameters[GlobalRootSignatureParams::SSRTex].InitAsDescriptorTable(1, &ranges[7]);
     rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(RasterPerDrawData) / 4, 1);
 
     auto flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT 
@@ -338,10 +350,12 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
         commandList->DrawIndexedInstanced(index_count, 1, baseIndexLocation, 0, 0);
      };
 
-    bool UseGTAO = (m_rasterCB.GTAOStrength != 0.0f) && (RaytracingMode != RayProgramMode::RayCaster);
     bool DrawAOMode = (RaytracingMode == RayProgramMode::AmbientOcclusion);
+    bool UseGTAO = (m_rasterCB.GTAOStrength != 0.0f) && (RaytracingMode != RayProgramMode::RayCaster) || DrawAOMode;
 
-    if (UseGTAO || DrawAOMode) {
+    bool UseSSR = m_rasterCB.SSREnabled;
+
+    if (UseGTAO || UseSSR) {
         // Draw opaque objects into Gbuffer
         commandList->SetPipelineState(m_GbufferPipelineState.Get());
         for (const auto& element : opaque_objects) {
@@ -355,9 +369,31 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
                 draw_object(element);
             }
         }
+        // Copy depth buffer to a UAV texture and generate mips for hierarchical depth
+        GPU_texture::copy_texture_mip0_only(m_DepthUAVTexture, m_depthTexture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_DEPTH_WRITE, commandList);
 
-        m_GTAO_helper.CreateAO(m_AOTexture, m_gbuffer, m_depthTexture, m_rasterCB.Projection, m_rasterCB.invProjection,
-            m_rasterCB.viewProjection, m_rasterCB.frameID);
+        static Mipmaps_helper mip_helper{};
+        mip_helper.Init();
+        mip_helper.CreateMips(m_DepthUAVTexture, true, true);
+
+        ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};  // todo: don't replace heap during mip map pass?
+        commandList->SetDescriptorHeaps(1, desc_heap);
+    }
+
+    if (UseGTAO) {
+        m_GTAO_helper.CreateAO(m_AOTexture, m_gbuffer, m_DepthUAVTexture, m_DepthUAVTexture_previous, 
+            m_rasterCB.Projection, m_rasterCB.invProjection, m_rasterCB.viewProjection, m_rasterCB.frameID);
+    }
+
+    if (UseSSR) {
+        m_SSR_helper.CalculateSSR(m_SSR, m_gbuffer, m_DepthUAVTexture, m_DepthUAVTexture_previous, m_frameCopy,
+            m_rasterCB.Projection, m_rasterCB.invProjection, m_rasterCB.viewProjection, m_rasterCB.frameID);
+    }
+
+    if (UseGTAO || UseSSR) {
+        // Swap depth UAV textures for next frame
+        std::swap(m_DepthUAVTexture, m_DepthUAVTexture_previous);
     }
 
     if (DrawAOMode) {
@@ -368,6 +404,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     }
 
     commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::AmbientOcclusionTex, m_AOTexture.GetSRVHandle());
+    commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SSRTex, m_SSR.GetSRVHandle());
 
     // Draw opaque objects
     commandList->SetPipelineState(m_pipelineState.Get());
@@ -380,8 +417,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     commandList->SetPipelineState(m_backgroundPipelineState.Get());
     commandList->DrawInstanced(3, 1, 0, 0);
 
-    // Draw transmissive objects with rendered image so far as background
-    if (!transmissive_objects.empty()) {
+    if (UseSSR || !transmissive_objects.empty()) {
         GPU_texture::copy_texture_mip0_only(m_frameCopy, m_renderTarget,
             frameCopy_uav_state ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS : D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
             D3D12_RESOURCE_STATE_RENDER_TARGET, commandList);
@@ -390,6 +426,10 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
                 D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             commandList->ResourceBarrier(1, &barrier);
         }
+    }
+
+    // Draw transmissive objects with rendered image so far as background
+    if (!transmissive_objects.empty()) {
         // set background alpha to zero (for refractions)
         static Silhouette_helper silhouette_helper{};
         silhouette_helper.Apply(m_frameCopy, m_depthTexture);
@@ -413,6 +453,13 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
         draw_object(element);
     }
 
+    if (DrawSSROnly) {
+        GPU_texture::copy_texture(
+            m_renderTarget, m_SSR, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, commandList);
+        copy_render_target_to_framebuffer(framebuffer);
+        return;
+    }
+
     copy_render_target_to_framebuffer(framebuffer);
 }
 
@@ -429,23 +476,37 @@ void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
     if (currentWidth == new_width && currentHeight == new_height) return;
     currentWidth = std::max(new_width, 0);
     currentHeight = std::max(new_height, 0);
+
     m_depthTexture.release_gpu_resource();
     TEXTURE_TRAITS flags = TEXTURE_TRAITS::DepthWithSRV;
     m_depthTexture = GPU_texture{currentWidth, currentHeight, flags};
 
+    m_DepthUAVTexture.release_gpu_resource();
+    m_DepthUAVTexture_previous.release_gpu_resource();
+    flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;
+    m_DepthUAVTexture = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R32_FLOAT};
+    m_DepthUAVTexture_previous = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R32_FLOAT};
+
     m_renderTarget.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::RenderTarget;
     m_renderTarget = GPU_texture{currentWidth, currentHeight, flags};
+
     m_frameCopy.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;
     m_frameCopy = GPU_texture{currentWidth, currentHeight, flags};
     frameCopy_uav_state = true;
+
     m_gbuffer.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::RenderTarget;
     m_gbuffer = GPU_texture{currentWidth, currentHeight, flags};
+
     m_AOTexture.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
     m_AOTexture = GPU_texture{currentWidth, currentHeight, flags};
+
+    m_SSR.release_gpu_resource();
+    flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
+    m_SSR = GPU_texture{currentWidth, currentHeight, flags};
 }
 
 void Raster_pipeline::sort_objects_for_rendering(

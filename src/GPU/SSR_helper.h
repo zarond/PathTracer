@@ -10,23 +10,22 @@
 namespace app {
 using Microsoft::WRL::ComPtr;
 
-class GTAO_helper {
+class SSR_helper {
   public:
-    GTAO_helper();
-    ~GTAO_helper();
+    SSR_helper();
+    ~SSR_helper();
 
-    void CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_texture, GPU_texture& DepthUAVTexture,
-        GPU_texture& DepthUAVTexture_previous, const fmat4x4& Projection, const fmat4x4& invProjection,
-        const fmat4x4& ViewProjection, unsigned int FrameID);
+    void CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_texture, GPU_texture& DepthUAVTexture,
+        GPU_texture& DepthUAVTexture_previous,
+        GPU_texture& Frame_texture, const fmat4x4& Projection, const fmat4x4& invProjection, const fmat4x4& ViewProjection,
+        unsigned int FrameID);
 
     void ResetFrameCounter();
 
-    float AODistance = 1.0f;
     bool DenoiseEnabled = true;
     float DepthThreshold = 0.01f;
-    float AOSpatialSigma = 1.0f;
-    float AODepthSigma = 0.01;
-    float AONormalSigma = 0.01;
+    float MaxRoughness = 0.8f;
+    float SSR_GGXClamp = 0.0f;
 
   private:
     void CreateRootSignature();
@@ -37,16 +36,16 @@ class GTAO_helper {
     ComPtr<ID3D12RootSignature> m_rootSignature;
     ComPtr<ID3D12PipelineState> m_PipelineState;
 
-    GPU_texture m_SpatialDenoised;
-    GPU_texture m_SpatialDenoised_previous;
+    GPU_texture m_SSR_texture_previous;
+    GPU_texture m_Frame_reprojected;
     UINT64 currentWidth = 0;
     UINT currentHeight = 0;
-    int consecutive_frame_count = 0;
 
+    int consecutive_frame_count = 0;
     fmat4x4 ViewProjection_previous{};
     fmat4x4 Projection_previous{};
 
-    const wchar_t* c_cs_file_name = L"CS_GTAO.dxil";
+    const wchar_t* c_cs_file_name = L"CS_SSR.dxil";
 
     void release_gpu_resources();
 };

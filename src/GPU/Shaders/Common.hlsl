@@ -42,6 +42,7 @@ struct RasterConstantBuffer {
     int RenderFrameMips;
     float GTAOStrength;
     float TexturesAOStrength;
+    int SSREnabled;
     int specular_aa_enabled;
     float specular_aa_variance;
     float specular_aa_threshold;
