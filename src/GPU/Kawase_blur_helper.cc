@@ -98,7 +98,7 @@ void Kawase_blur_helper::CreateBlurMips(GPU_texture& uav_texture) {  // works on
 
     const auto barrier =
         CD3DX12_RESOURCE_BARRIER::Transition(uav_texture.get_gpu_resource().Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
 
     commandList->ResourceBarrier(1, &barrier);
 }

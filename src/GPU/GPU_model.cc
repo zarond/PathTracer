@@ -1137,31 +1137,9 @@ void GPU_texture::release_gpu_resource() {
     }
 }
 
-void GPU_texture::copy_texture_from_rtv(
-    ComPtr<ID3D12Resource> gpuDst, ComPtr<ID3D12Resource> gpuSrc, ComPtr<ID3D12GraphicsCommandList4> commandList) {
-
-    D3D12_RESOURCE_BARRIER to_barriers[2] = {
-        CD3DX12_RESOURCE_BARRIER::Transition(gpuSrc.Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE),
-        CD3DX12_RESOURCE_BARRIER::Transition(gpuDst.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON),
-    };
-    commandList->ResourceBarrier(2, to_barriers);
-
-    commandList->CopyResource(gpuDst.Get(), gpuSrc.Get());
-
-    D3D12_RESOURCE_BARRIER from_barriers[2] = {
-        CD3DX12_RESOURCE_BARRIER::Transition(gpuSrc.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET),
-        CD3DX12_RESOURCE_BARRIER::Transition(gpuDst.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE),
-    };
-    commandList->ResourceBarrier(2, from_barriers);
-}
-
-void GPU_texture::copy_texture(GPU_texture& dst, GPU_texture& src, 
-    D3D12_RESOURCE_STATES dst_state, D3D12_RESOURCE_STATES src_state, 
-    ComPtr<ID3D12GraphicsCommandList4>& commandList) 
+void GPU_texture::copy_texture(ComPtr<ID3D12Resource> gpuDst, ComPtr<ID3D12Resource> gpuSrc, 
+    D3D12_RESOURCE_STATES dst_state, D3D12_RESOURCE_STATES src_state, ComPtr<ID3D12GraphicsCommandList4> commandList) 
 {
-    const auto& gpuDst = dst.get_gpu_resource();
-    const auto& gpuSrc = src.get_gpu_resource();
-
     D3D12_RESOURCE_BARRIER to_barriers[2] = {
         CD3DX12_RESOURCE_BARRIER::Transition(gpuDst.Get(), dst_state, D3D12_RESOURCE_STATE_COMMON),
         CD3DX12_RESOURCE_BARRIER::Transition(gpuSrc.Get(), src_state, D3D12_RESOURCE_STATE_COPY_SOURCE),
@@ -1175,6 +1153,15 @@ void GPU_texture::copy_texture(GPU_texture& dst, GPU_texture& src,
         CD3DX12_RESOURCE_BARRIER::Transition(gpuSrc.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, src_state),
     };
     commandList->ResourceBarrier(2, from_barriers);
+}
+
+void GPU_texture::copy_texture(GPU_texture& dst, GPU_texture& src, 
+    D3D12_RESOURCE_STATES dst_state, D3D12_RESOURCE_STATES src_state, 
+    ComPtr<ID3D12GraphicsCommandList4>& commandList) 
+{
+    const auto& gpuDst = dst.get_gpu_resource();
+    const auto& gpuSrc = src.get_gpu_resource();
+    copy_texture(gpuDst, gpuSrc, dst_state, src_state, commandList);
 }
 void GPU_texture::copy_texture_mip0_only(GPU_texture& dst, GPU_texture& src, 
     D3D12_RESOURCE_STATES dst_state, D3D12_RESOURCE_STATES src_state, 

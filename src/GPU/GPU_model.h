@@ -129,7 +129,8 @@ class GPU_texture {
 
     void release_gpu_resource();
 
-    static void copy_texture_from_rtv(ComPtr<ID3D12Resource> dst, ComPtr<ID3D12Resource> src, ComPtr<ID3D12GraphicsCommandList4> commandList);
+    static void copy_texture(ComPtr<ID3D12Resource> gpuDst, ComPtr<ID3D12Resource> gpuSrc, D3D12_RESOURCE_STATES dst_state,
+        D3D12_RESOURCE_STATES src_state, ComPtr<ID3D12GraphicsCommandList4> commandList);
     static void copy_texture(GPU_texture& dst, GPU_texture& src, D3D12_RESOURCE_STATES dst_state, D3D12_RESOURCE_STATES src_state,
         ComPtr<ID3D12GraphicsCommandList4>& commandList);
     static void copy_texture_mip0_only(GPU_texture& dst, GPU_texture& src, D3D12_RESOURCE_STATES dst_state, D3D12_RESOURCE_STATES src_state,

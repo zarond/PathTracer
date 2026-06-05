@@ -372,8 +372,10 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
             draw_object(element);
         }
 
-        GPU_texture::copy_texture(m_depthTexture_opaque_only, m_depthTexture, D3D12_RESOURCE_STATE_DEPTH_WRITE,
-            D3D12_RESOURCE_STATE_DEPTH_WRITE, commandList);
+        if (!transmissive_objects.empty()) {
+            GPU_texture::copy_texture(m_depthTexture_opaque_only, m_depthTexture, D3D12_RESOURCE_STATE_DEPTH_WRITE,
+                D3D12_RESOURCE_STATE_DEPTH_WRITE, commandList);
+        }
 
         for (const auto& element : transmissive_objects) {
             draw_object(element);
@@ -421,7 +423,9 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SSRTex, m_SSR.GetSRVHandle());
     commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::MaterialIDTex, m_IDTexture.GetSRVHandle());
 
-    depthHandle = m_depthTexture_opaque_only.GetDSVHandle();
+    if ((UseGTAO || UseSSR) && !transmissive_objects.empty()) {
+        depthHandle = m_depthTexture_opaque_only.GetDSVHandle();
+    }
 
     // Draw opaque objects
     commandList->SetPipelineState(m_pipelineState.Get());
@@ -436,17 +440,13 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
 
     if (!transmissive_objects.empty()) {
         GPU_texture::copy_texture_mip0_only(m_frame_opaque_only, m_renderTarget,
-            frameCopy_uav_state ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS : D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-            D3D12_RESOURCE_STATE_RENDER_TARGET, commandList);
-        if (!frameCopy_uav_state) {
-            const auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_frame_opaque_only.get_gpu_resource().Get(),
-                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-            commandList->ResourceBarrier(1, &barrier);
-        }
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RENDER_TARGET, commandList);
     }
 
-    depthHandle = m_depthTexture.GetDSVHandle();
-    commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &depthHandle);
+    if ((UseGTAO || UseSSR) && !transmissive_objects.empty()) {
+        depthHandle = m_depthTexture.GetDSVHandle();
+        commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &depthHandle);
+    }
 
     // Draw transmissive objects with rendered image so far as background
     if (!transmissive_objects.empty()) {
@@ -455,16 +455,23 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
         silhouette_helper.Apply(m_frame_opaque_only, m_depthTexture_opaque_only);
         // Apply Kawase Blur
         m_blur_helper.CreateBlurMips(m_frame_opaque_only);
-        frameCopy_uav_state = false;
 
         ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()}; // todo: don't replace heap during blur pass?
         commandList->SetDescriptorHeaps(1, desc_heap);
+
+        const auto barrier_uav_to_srv = CD3DX12_RESOURCE_BARRIER::Transition(m_frame_opaque_only.get_gpu_resource().Get(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        commandList->ResourceBarrier(1, &barrier_uav_to_srv);
 
         commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::FrameTex, m_frame_opaque_only.GetSRVHandle());
         commandList->SetPipelineState(m_pipelineState.Get());
         for (const auto& element : transmissive_objects) {
             draw_object(element, true);
         }
+
+        const auto barrier_srv_to_uav = CD3DX12_RESOURCE_BARRIER::Transition(m_frame_opaque_only.get_gpu_resource().Get(),
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        commandList->ResourceBarrier(1, &barrier_srv_to_uav);
     }
 
     // Draw objects with alpha blending
@@ -474,13 +481,10 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     }
 
     if (DrawSSROnly) {
-        GPU_texture::copy_texture(
-            m_renderTarget, m_SSR, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, commandList);
+        copy_ssr_to_framebuffer(framebuffer);
+    } else {
         copy_render_target_to_framebuffer(framebuffer);
-        return;
     }
-
-    copy_render_target_to_framebuffer(framebuffer);
 
     std::swap(m_renderTarget, m_renderTarget_previous);
 }
@@ -491,7 +495,18 @@ void Raster_pipeline::copy_render_target_to_framebuffer(const CPUFrameBuffer& fr
     const auto& gpuDestTarget = framebuffer.get_gpu_resource();
     const auto& gpuRenderTarget = m_renderTarget.get_gpu_resource();
 
-    GPU_texture::copy_texture_from_rtv(gpuDestTarget, gpuRenderTarget, commandList);
+    GPU_texture::copy_texture(gpuDestTarget, gpuRenderTarget, 
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET, commandList);
+}
+
+void Raster_pipeline::copy_ssr_to_framebuffer(const CPUFrameBuffer& framebuffer) {
+    D3DContext& d3d_ctx = D3DContext::Get();
+    const auto& commandList = d3d_ctx.m_DXRCommandList;
+    const auto& gpuDestTarget = framebuffer.get_gpu_resource();
+    const auto& gpuSrcTarget = m_SSR.get_gpu_resource();
+
+    GPU_texture::copy_texture(gpuDestTarget, gpuSrcTarget, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS, commandList);
 }
 
 void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
@@ -524,7 +539,6 @@ void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
     m_frame_opaque_only.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;
     m_frame_opaque_only = GPU_texture{currentWidth, currentHeight, flags};
-    frameCopy_uav_state = true;
 
     m_gbuffer.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::RenderTarget;

@@ -94,6 +94,7 @@ class Raster_pipeline : public IRender_pipeline {
 
     void resize_render_targets(int new_width, int new_height);
     void copy_render_target_to_framebuffer(const CPUFrameBuffer& framebuffer);
+    void copy_ssr_to_framebuffer(const CPUFrameBuffer& framebuffer);
 
     const wchar_t* c_vs_file_name = L"VS_Main.dxil";
     const wchar_t* c_ps_file_name = L"PS_Main.dxil";
@@ -137,7 +138,6 @@ class Raster_pipeline : public IRender_pipeline {
     GPU_texture m_AOTexture;
     GPU_texture m_SSR;
     GPU_texture m_frame_opaque_only;
-    bool frameCopy_uav_state = true;
 
     bool DrawSSROnly = false;
 
