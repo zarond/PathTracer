@@ -37,6 +37,7 @@ class DescriptorHeapAllocator {
     D3D12_GPU_DESCRIPTOR_HANDLE HeapStartGpu = {};
     UINT HeapHandleIncrement = 0;
     std::vector<int> FreeIndices;
+    bool isHeapShaderVisible = false;
 
   public:
     void Create(ID3D12Device* device, ID3D12DescriptorHeap* heap);

@@ -127,13 +127,16 @@ class Raster_pipeline : public IRender_pipeline {
 
     // additional render targets
     GPU_texture m_renderTarget;
+    GPU_texture m_renderTarget_previous;
     GPU_texture m_depthTexture;
+    GPU_texture m_depthTexture_opaque_only;
     GPU_texture m_DepthUAVTexture;  // Hierarchical depth buffer for use as UAV in compute shaders (e.g. for GTAO and SSR)
     GPU_texture m_DepthUAVTexture_previous;  // Previous depth for GTAO and SSR temporal reprojection
     GPU_texture m_gbuffer;
+    GPU_texture m_IDTexture;
     GPU_texture m_AOTexture;
     GPU_texture m_SSR;
-    GPU_texture m_frameCopy;
+    GPU_texture m_frame_opaque_only;
     bool frameCopy_uav_state = true;
 
     bool DrawSSROnly = false;

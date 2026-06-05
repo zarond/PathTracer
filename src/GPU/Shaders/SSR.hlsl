@@ -146,7 +146,7 @@ void CS_SSR(uint3 DTid : SV_DispatchThreadID) {
         //return;
     }
 
-    const float2 rayUVDir = ViewPositionToUV(pos + l * 0.01f) - uv;
+    const float2 rayUVDir = ViewPositionToUV(pos + l * 0.01f).xy - uv;
     const float2 rayScreenDir = 100.0f * rayUVDir * g_CB.FrameSize;
 
     const float rayScreenDirLength = length(rayScreenDir);
@@ -179,7 +179,7 @@ void CS_SSR(uint3 DTid : SV_DispatchThreadID) {
                 continue;
             }
             float d1 = -precise_ray_depth(pos, prev_samplePos, l);
-            float2 sampleUV = lerp(prev_sampleUV, sampleUV, d1 / (d1 + d2));
+            sampleUV = lerp(prev_sampleUV, sampleUV, d1 / (d1 + d2));
             
             found_hit = true;
             break;

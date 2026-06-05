@@ -10,6 +10,7 @@ void DescriptorHeapAllocator::Create(ID3D12Device* device, ID3D12DescriptorHeap*
     Heap = heap;
     D3D12_DESCRIPTOR_HEAP_DESC desc = heap->GetDesc();
     HeapType = desc.Type;
+    isHeapShaderVisible = (desc.Flags & D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
     HeapStartCpu = Heap->GetCPUDescriptorHandleForHeapStart();
     HeapStartGpu = Heap->GetGPUDescriptorHandleForHeapStart();
     HeapHandleIncrement = device->GetDescriptorHandleIncrementSize(HeapType);
@@ -34,10 +35,10 @@ void DescriptorHeapAllocator::Alloc(D3D_Handle_Pair* out_desc_handle) {
 }
 void DescriptorHeapAllocator::Free(
     D3D12_CPU_DESCRIPTOR_HANDLE cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE gpu_desc_handle) {
-    if (cpu_desc_handle.ptr == 0 || gpu_desc_handle.ptr == 0) return;
+    if (cpu_desc_handle.ptr == 0 && gpu_desc_handle.ptr == 0) return;
     int cpu_idx = (int)((cpu_desc_handle.ptr - HeapStartCpu.ptr) / HeapHandleIncrement);
     int gpu_idx = (int)((gpu_desc_handle.ptr - HeapStartGpu.ptr) / HeapHandleIncrement);
-    assert(cpu_idx == gpu_idx);
+    assert(cpu_idx == gpu_idx || !isHeapShaderVisible);
     FreeIndices.push_back(cpu_idx);
 }
 void DescriptorHeapAllocator::Free(D3D_Handle_Pair desc_handle) {
@@ -202,7 +203,7 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
     {
         D3D12_DESCRIPTOR_HEAP_DESC desc = {};
         desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-        desc.NumDescriptors = 4;
+        desc.NumDescriptors = 8;
         desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
         desc.NodeMask = 0;
         if (FAILED(m_d3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_additional_RtvDescHeap)))) return false;
@@ -212,7 +213,7 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
     {
         D3D12_DESCRIPTOR_HEAP_DESC desc = {};
         desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-        desc.NumDescriptors = 4;
+        desc.NumDescriptors = 8;
         desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
         desc.NodeMask = 0;
         if (FAILED(m_d3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_additional_DsvDescHeap)))) return false;

@@ -1120,7 +1120,7 @@ void GPU_texture::GetSRVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR
 void GPU_texture::release_gpu_resource() {
     if (pTexture) {
         D3DContext& d3d_ctx = D3DContext::Get();
-        if (!isDepth(texture_options)) {
+        if (!isDepth(texture_options) || isDepthWithSRV(texture_options)) {
             d3d_ctx.m_SrvDescHeapAlloc.Free(srv_handle);
         }
         if (isRenderTarget(texture_options)) {

@@ -1,5 +1,6 @@
 #include "BRDF.hlsl"
 #include "Common.hlsl"
+#include "Material_IDS.hlsl"
 
 // Constant Buffer
 ConstantBuffer<RasterConstantBuffer> g_rasterCB : register(b0);
@@ -24,6 +25,9 @@ Texture2D<float4> AmbientOcclusionTexture : register(t4, space1);
 
 // Screen-space Reflections
 Texture2D<float4> SSRTexture : register(t5, space1);
+
+// Material IDs
+Texture2D<unsigned int> MaterialID : register(t6, space1);
 
 // Default sampler
 SamplerState Sampler : register(s0, space1);
@@ -107,7 +111,7 @@ float3 sampleBackgroundAndIBL(float3 ws_pos, float3 refract_dir, float t_roughne
     if (alpha >= 1.0f) return frame_sample.rgb;
     // else we need IBL as well
     refract_dir.xz = mul(envmap_rotation_matrix, refract_dir.xz);
-    float3 specularIBL = SpecularLut.SampleLevel(Sampler, refract_dir, lod);
+    float3 specularIBL = SpecularLut.SampleLevel(Sampler, refract_dir, lod).rgb;
     return lerp(specularIBL, frame_sample.rgb, min(alpha, 1.0f));
 }
 
@@ -119,7 +123,7 @@ float3 calculateTransmittedLight(float3 ws_pos, float4 ndc_position, float3 v, f
     if (!mat.hasVolume) {
         float2 uv = ndc_position.xy / g_rasterCB.FrameSize;
         float lod = t_roughness * (g_rasterCB.RenderFrameMips - 1);
-        return (1.0f - Fresnel) * SampleFrameBicubic(uv, lod);
+        return (1.0f - Fresnel) * SampleFrameBicubic(uv, lod).rgb;
     }
     float3 transmitted_light = 0.0f;
     RefractResult refraction = SimulateRefraction(ws_pos, v, N, mat.ior, thickness); 
@@ -150,6 +154,10 @@ float4 PS_Main(PSInput input) : SV_TARGET {
 
     float3 emissive = sample_emissive_filtered(mat, uv, ASampler);
 
+    bool is_transmissive_material = (mat.transmisionFactor != 0.0f || mat.hasVolume);
+    bool AO_SSR_Holdout_mask =
+        (MaterialID.Load(int3(input.ndc_position.xy, 0)) == MaterialID::Transmissive) && !is_transmissive_material;
+
     float3 ORM = sample_occlusion_roughness_metallic_filtered(mat, uv, ASampler);
     float AO = ORM.x;
     if (mat.aoTextureIndex != mat.metallicRoughnessTextureIndex) {
@@ -157,7 +165,7 @@ float4 PS_Main(PSInput input) : SV_TARGET {
     }
     AO = lerp(1.0, AO, mat.AOStrength);
     AO = lerp(1.0, AO, g_rasterCB.TexturesAOStrength);
-    if (DrawData.UseAOTexture && g_rasterCB.GTAOStrength != 0.0f) {
+    if (DrawData.UseAOTexture && g_rasterCB.GTAOStrength != 0.0f && !AO_SSR_Holdout_mask) {
         float GTAO = AmbientOcclusionTexture.Load(int3(input.ndc_position.xy, 0)).x;
         GTAO = lerp(1.0, GTAO, g_rasterCB.GTAOStrength);
         AO *= GTAO;
@@ -206,17 +214,17 @@ float4 PS_Main(PSInput input) : SV_TARGET {
     transmission_thickness.g *= DrawData.modelScale;
     float transmission = transmission_thickness.r;
     float3 transmissionIBL = calculateTransmittedLight(input.world_position, input.ndc_position, v, N, mat, Fresnel,
-        linear_roughness, transmission, transmission_thickness.g, envmap_rotation_matrix);
+        linear_roughness, transmission, transmission_thickness.g, envmap_rotation_matrix).rgb;
 
     float3 DiffuseSampleDir = N;
     DiffuseSampleDir.xz = mul(envmap_rotation_matrix, DiffuseSampleDir.xz);  // enmap rotation
-    float3 diffuseIBL = DiffuseLut.SampleLevel(Sampler, DiffuseSampleDir, 0);
+    float3 diffuseIBL = DiffuseLut.SampleLevel(Sampler, DiffuseSampleDir, 0).rgb;
     
     float3 SpecularSampleDir = DominantReflectionVector(l, N, linear_roughness);
     SpecularSampleDir.xz = mul(envmap_rotation_matrix, SpecularSampleDir.xz);  // enmap rotation
-    float3 specularIBL = SpecularLut.SampleLevel(Sampler, SpecularSampleDir, roughness * (g_rasterCB.SpecularLutMips - 1));
+    float3 specularIBL = SpecularLut.SampleLevel(Sampler, SpecularSampleDir, roughness * (g_rasterCB.SpecularLutMips - 1)).rgb;
 
-    if (g_rasterCB.SSREnabled && !mat.hasVolume && mat.transmisionFactor == 0.0f) {
+    if (g_rasterCB.SSREnabled && !AO_SSR_Holdout_mask) {
         float4 SSR_sample = SSRTexture.Load(int3(input.ndc_position.xy, 0));
         specularIBL = lerp(specularIBL, SSR_sample.rgb, SSR_sample.a);
     }
@@ -263,7 +271,7 @@ float4 PS_Background(BG_VS_OUTPUT input) : SV_TARGET {
 
     dir.xz = mul(envmap_rotation_matrix, dir.xz);  // Rotate around Y-axis
 
-    float3 SpecularIBL = SpecularLut.SampleLevel(Sampler, dir, 0);
+    float3 SpecularIBL = SpecularLut.SampleLevel(Sampler, dir, 0).rgb;
     return float4(SpecularIBL, 1.0);
 }
 
@@ -273,6 +281,11 @@ struct GBInput {
     float4 normal : NORMAL;
     float4 tangent : TANGENT;
     float4 uv : TEXCOORD;
+};
+
+struct GBOutput {
+    float4 normal_roughness : SV_TARGET0;       // normal.xyz, roughness in alpha
+    uint id : SV_TARGET1;                       // material ID in R8_UINT format
 };
 
 [shader("vertex")] 
@@ -299,7 +312,7 @@ GBInput VS_Gbuffer(float4 position : POSITION, float4 normal : NORMAL, float4 ta
 }
 
 [shader("pixel")] 
-float4 PS_Gbuffer(GBInput input) : SV_TARGET {
+GBOutput PS_Gbuffer(GBInput input) : SV_TARGET {
     Material mat = Materials[DrawData.meshID];
     float2 uv = input.uv.xy;
     float alpha = sample_albedo_filtered(mat, uv, ASampler).w;
@@ -322,5 +335,11 @@ float4 PS_Gbuffer(GBInput input) : SV_TARGET {
         roughness = SpecularAntialiasing(roughness, N, g_rasterCB.specular_aa_variance, g_rasterCB.specular_aa_threshold);
     }
 
-    return float4(N, roughness);
+    bool is_transmissive_material = (mat.transmisionFactor != 0.0f || mat.hasVolume);
+
+    GBOutput result;
+    result.normal_roughness = float4(N, roughness);
+    result.id = is_transmissive_material ? MaterialID::Transmissive : MaterialID::Opaque;
+
+    return result;
 }
