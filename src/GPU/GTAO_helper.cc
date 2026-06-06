@@ -96,6 +96,8 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
             m_SpatialDenoised, AO_uav_texture, G_buff_texture, DepthUAVTexture, AOSpatialSigma, AODepthSigma, AONormalSigma);
         // Temporal reprojection + denoiser
         if (consecutive_frame_count > 1) {
+            auto barrier_uav = CD3DX12_RESOURCE_BARRIER::UAV(m_SpatialDenoised.get_gpu_resource().Get());
+            commandList->ResourceBarrier(1, &barrier_uav);
             reprojection_helper.Reproject(m_SpatialDenoised_previous, DepthUAVTexture_previous, m_SpatialDenoised,
                 DepthUAVTexture, glm::inverse(ViewProjection), ViewProjection_previous, Projection_previous, 1.0f / 6.0f,
                 DepthThreshold, false);

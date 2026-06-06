@@ -10,7 +10,8 @@ struct SSRCSInput {
     float DepthThreshold;
     float MaxRoughness;
     float GGXBias;  // 1.0 is no bias, < 1.0 reduces tail of distribution
-    unsigned int frameID;
+    int frameID;
+    int MaxDepthMipLevel;
 };
 
 // Gbuff
@@ -73,16 +74,15 @@ float3 ViewPositionToUV(float3 pos) {
     return float3(ndc.xy * float2(0.5f, -0.5f) + 0.5f, ndc.z);
 }
 
-float precise_ray_depth(float3 pos, float3 samplePos, float3 l) {
-    float3 v = normalize(-samplePos);
-    float3 sampleDirU = samplePos - pos;
-    float delta_Y = dot(v, sampleDirU);
-    float3 ls_X = normalize(sampleDirU - v * delta_Y);
-    float delta_X = dot(sampleDirU, ls_X);
-    float2 ls_L = float2(dot(l, ls_X), dot(l, v)); // l vector in local space of hit point
-    float tan_L = ls_L.y / ls_L.x;
-    float precise_depth = delta_Y - tan_L * delta_X;
-    return precise_depth;
+float linear_depth(float non_linear_depth) {
+    // Assuming standard perspective projection matrix, reconstruct linear depth from non-linear depth
+    const float proj_22 = g_CB.Projection[2][2];
+    const float proj_23 = g_CB.Projection[2][3];
+    return -proj_23 / (proj_22 + non_linear_depth);
+}
+
+float precise_ray_depth(float3 sampleUV, float sampleDepth) { 
+    return (linear_depth(sampleDepth) - linear_depth(sampleUV.z));
 }
 
 float UVEdgeFade(float2 uv) {
@@ -93,6 +93,28 @@ float UVEdgeFade(float2 uv) {
 
 float ThresholdFade(float value, float threshold, float mult_range, float lin_range) {
     return smoothstep(threshold, threshold * mult_range - lin_range, value);
+}
+
+bool IsPotentialHit(float3 sampleUV, float sampleDepth) { return sampleUV.z > sampleDepth; }
+
+bool CheckPotentialHit(float3 sampleDepth, float3 prev_sampleDepth,
+    inout float3 sampleUV, float3 prev_sampleUV, float3 l, inout float hit_confidence ) 
+{
+    const float3 hit_normals = Gbuffer.SampleLevel(PointSampler, sampleUV, 0).xyz;
+    const float LoN = dot(l, hit_normals);
+    hit_confidence = min(hit_confidence, ThresholdFade(LoN, 0.005f, 0, 0.005f));
+    if (hit_confidence == 0.0f) {
+        return false;
+    }
+    float d2 = precise_ray_depth(sampleUV, sampleDepth);
+    hit_confidence = min(hit_confidence, ThresholdFade(d2, g_CB.DepthThreshold, 0.9f, 0));
+    if (hit_confidence == 0.0f) {
+        return false;
+    }
+    float d1 = -precise_ray_depth(prev_sampleUV, prev_sampleDepth);
+    sampleUV = lerp(prev_sampleUV, sampleUV, d1 / (d1 + d2));
+
+    return true;
 }
 
 [numthreads(16, 16, 1)] 
@@ -106,7 +128,7 @@ void CS_SSR(uint3 DTid : SV_DispatchThreadID) {
 
     const float centerDepth = Depth.Load(DTid);
     if (centerDepth >= 1.0f || centerDepth <= 0.0f) {
-        Output[DTid.xy] = float4(1.0f, 1.0f, 1.0f, 1.0f); // 0.0f ???
+        Output[DTid.xy] = float4(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
 
@@ -137,7 +159,6 @@ void CS_SSR(uint3 DTid : SV_DispatchThreadID) {
     float3 h = importanceSampleGGX(rand, linear_roughness);
     h = Tangent2World(h, TBN);
 
-    //const float3 l = reflect(-v, normal);
     const float3 l = reflect(-v, h);
 
     const float LoN = saturate(dot(l, normal));
@@ -146,47 +167,32 @@ void CS_SSR(uint3 DTid : SV_DispatchThreadID) {
         //return;
     }
 
-    const float2 rayUVDir = ViewPositionToUV(pos + l * 0.01f).xy - uv;
-    const float2 rayScreenDir = 100.0f * rayUVDir * g_CB.FrameSize;
+    const float3 rayUVDir = ViewPositionToUV(pos + l * 0.01f) - float3(uv, centerDepth);
+    const float3 rayScreenDir = rayUVDir * float3(g_CB.FrameSize, 1.0f);
 
-    const float rayScreenDirLength = length(rayScreenDir);
-    const float2 rayScreenDirNorm = rayScreenDir / rayScreenDirLength;
+    const float rayScreenDirLength = length(rayScreenDir.xy);
+    const float3 rayScreenDirNorm = rayScreenDir / rayScreenDirLength;
 
     const float LoV = dot(l, v);
 
-    float2 sampleUV = uv;
-    float3 samplePos = pos;
-    float2 prev_sampleUV = uv;
-    float3 prev_samplePos = pos;
-    for (int i = 1; i <= STEPS; ++i, prev_sampleUV = sampleUV, prev_samplePos = samplePos) {
-        float t = i + jitter.z;
-        sampleUV = uv + rayScreenDirNorm * t * texel;
-        hit_confidence = UVEdgeFade(sampleUV);
+    float3 prev_sampleUV = float3(uv, centerDepth);
+    float3 sampleUV = prev_sampleUV + rayScreenDirNorm * float3(texel, 1.0f) * jitter.z;
+    float sampleDepth = centerDepth;
+    float prev_sampleDepth = centerDepth;
+    for (int i = 0; i < STEPS; ++i, prev_sampleUV = sampleUV, prev_sampleDepth = sampleDepth) {
+        sampleUV += rayScreenDirNorm * float3(texel, 1.0f);
+        hit_confidence = UVEdgeFade(sampleUV.xy);
         if (hit_confidence == 0.0f) break;
-        const float sampleDepth = Depth.SampleLevel(PointSampler, sampleUV, 0);
-        samplePos = ReconstructViewPosition(sampleUV, sampleDepth);
-        const float3 sampleDir = normalize(samplePos - pos);
-        if (dot(sampleDir, v) > LoV) {
-            const float3 hit_normals = Gbuffer.SampleLevel(PointSampler, sampleUV, 0).xyz;
-            const float LoN = dot(l, hit_normals);
-            hit_confidence = min(hit_confidence, ThresholdFade(LoN, 0.005f, 0, 0.005f));
-            if (hit_confidence == 0.0f) {
-                continue;
+        sampleDepth = Depth.SampleLevel(PointSampler, sampleUV.xy, 0);
+        if (IsPotentialHit(sampleUV, sampleDepth)) {
+            found_hit = CheckPotentialHit(sampleDepth, prev_sampleDepth, sampleUV, prev_sampleUV, l, hit_confidence);
+            if (found_hit) {
+                break;
             }
-            float d2 = precise_ray_depth(pos, samplePos, l);
-            hit_confidence = min(hit_confidence, ThresholdFade(d2, g_CB.DepthThreshold, 0.9f, 0));
-            if (hit_confidence == 0.0f) {
-                continue;
-            }
-            float d1 = -precise_ray_depth(pos, prev_samplePos, l);
-            sampleUV = lerp(prev_sampleUV, sampleUV, d1 / (d1 + d2));
-            
-            found_hit = true;
-            break;
         }
     }
     if (found_hit) {
-        Output[DTid.xy] = float4(Frame.SampleLevel(LinearSampler, sampleUV, 0).rgb, hit_confidence);
+        Output[DTid.xy] = float4(Frame.SampleLevel(LinearSampler, sampleUV.xy, 0).rgb, hit_confidence);
     } else {
         Output[DTid.xy] = 0.0f;
     }

@@ -391,7 +391,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
 
         static Mipmaps_helper mip_helper{};
         mip_helper.Init();
-        mip_helper.CreateMips(m_DepthUAVTexture, true, true);
+        mip_helper.CreateMips(m_DepthUAVTexture, false, true);
 
         ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};  // todo: don't replace heap during mip map pass?
         commandList->SetDescriptorHeaps(1, desc_heap);

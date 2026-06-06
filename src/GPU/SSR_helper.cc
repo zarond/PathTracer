@@ -31,7 +31,8 @@ struct SSRCSInput {
     float DepthThreshold;
     float MaxRoughness;
     float GGXBias;  // 1.0 is no bias, < 1.0 reduces tail of distribution
-    unsigned int frameID;
+    int frameID;
+    int MaxDepthMipLevel;
 };
 
 SSR_helper::SSR_helper() {
@@ -80,9 +81,11 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::Frame, m_Frame_reprojected.GetSRVHandle());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputUAV, SSR_uav_texture.GetUAVHandle());
 
+    int MaxDepthMipLevel = GPU_texture::CalculateMipCount(width, height) - 1;
+
     fvec2 texel{1.0f / width, 1.0f / height};
     SSRCSInput input{Projection, invProjection[0][0], invProjection[1][1], {width, height}, texel, 
-        DepthThreshold, MaxRoughness, 1.0f - SSR_GGXClamp, FrameID};
+        DepthThreshold, MaxRoughness, 1.0f - SSR_GGXClamp, FrameID, MaxDepthMipLevel};
     constexpr int inputSizeInInt = sizeof(SSRCSInput) / 4;
     commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
 
@@ -93,6 +96,8 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
 
     // Temporal reprojection denoiser
     if (DenoiseEnabled && consecutive_frame_count > 1) {
+        auto barrier_ssr_uav = CD3DX12_RESOURCE_BARRIER::UAV(SSR_uav_texture.get_gpu_resource().Get());
+        commandList->ResourceBarrier(1, &barrier_ssr_uav);
         reprojection_helper.Reproject(m_SSR_texture_previous, DepthUAVTexture_previous, SSR_uav_texture, DepthUAVTexture,
             glm::inverse(ViewProjection), ViewProjection_previous, Projection_previous, 1.0f / 16.0f, DepthThreshold, true);
     }
@@ -146,7 +151,7 @@ void SSR_helper::CreateRootSignature() {
     point_sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     point_sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     point_sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-    point_sampler.MaxLOD = 5.0f;
+    point_sampler.MaxLOD = D3D12_FLOAT32_MAX;
     point_sampler.ShaderRegister = 0;
     point_sampler.RegisterSpace = 0;
     point_sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
