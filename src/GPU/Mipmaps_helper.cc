@@ -72,6 +72,9 @@ void Mipmaps_helper::CreateMips(GPU_texture& uav_texture, bool only5Mips, bool m
     commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
 
     commandList->Dispatch(GroupsX, GroupsY, 1);
+
+    const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(GroupCounters.Get());
+    commandList->ResourceBarrier(1, &barrier);
 }
 
 GPU_texture Mipmaps_helper::GetBlankCompatibleUAVTex(GPU_texture& texture) {

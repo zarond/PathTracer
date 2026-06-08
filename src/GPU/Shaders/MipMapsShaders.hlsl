@@ -13,13 +13,14 @@ struct MipCSInput {
 RWTexture2D<float4> OutputMips[] : register(u0, space0);
 
 // A global buffer holding atomic counters to coordinate thread groups
-RWByteAddressBuffer GroupCounters : register(u0, space1); // unused for now
+RWByteAddressBuffer GroupCounters : register(u0, space1);
 
 // Input parameters
 ConstantBuffer<MipCSInput> InputInfo : register(b0);
 
 // Shared memory used to pass data between threads inside this group
 groupshared float4 LDS_Color[16][16];
+groupshared uint SurvivorFlag;
 
 float4 Combine(float4 c0, float4 c1, float4 c2, float4 c3) {
     if (InputInfo.isSRGB) {
@@ -96,7 +97,8 @@ void Compute5Mips(int base_mip, uint3 DTid, uint3 Gid, uint3 Tid, uint Gidx, uin
     if (Gidx < 16) {
         uint2 newTid = uint2(Gidx % 4, Gidx / 4);
         uint2 ldsSrc = newTid * 4;
-        uint2 Delta = uint2(newTid.y % 2, (newTid.y + 1) % 2);  // stair-stepping offset on X to minimize memory bank conflicts
+        //uint2 Delta = uint2((newTid.y * 2) % 2, ((newTid.y * 2) + 1) % 2);
+        uint2 Delta = uint2(0, 1);  // stair-stepping offset on X to minimize memory bank conflicts
 
         float4 m0 = LDS_Color[ldsSrc.x + Delta.x + 0][ldsSrc.y + 0];
         float4 m1 = LDS_Color[ldsSrc.x + Delta.x + 2][ldsSrc.y + 0];
@@ -122,7 +124,7 @@ void Compute5Mips(int base_mip, uint3 DTid, uint3 Gid, uint3 Tid, uint Gidx, uin
     if (Gidx < 4) {
         uint2 newTid = uint2(Gidx % 2, Gidx / 2);
         uint2 ldsSrc = newTid * 8;
-        uint2 Delta = uint2(newTid.y % 4, (newTid.y + 1) % 4);  // stair-stepping offset on X to minimize memory bank conflicts
+        uint2 Delta = uint2((newTid.y * 2) % 4, ((newTid.y * 2) + 1) % 4);  // stair-stepping offset on X to minimize memory bank conflicts
 
         float4 m0 = LDS_Color[ldsSrc.x + Delta.x + 0][ldsSrc.y + 0];
         float4 m1 = LDS_Color[ldsSrc.x + Delta.x + 4][ldsSrc.y + 0];
@@ -168,12 +170,11 @@ void CS_SinglePassMips(
     Compute5Mips(0, DTid, Gid, Tid, Gidx, imageSize);
 
     if (InputInfo.numMips < 7) return;
+    SurvivorFlag = 0;
 
-    GroupMemoryBarrierWithGroupSync();
+    AllMemoryBarrierWithGroupSync();
 
     if (Gidx == 0) {
-        LDS_Color[0][0] = 0.0f;
-
         uint currentGroupFinishedCount;
         GroupCounters.InterlockedAdd(0, 1, currentGroupFinishedCount);
 
@@ -182,21 +183,19 @@ void CS_SinglePassMips(
             // Reset counter for next frame
             GroupCounters.Store(0, 0);
             // Set value in shared memory indicating that this is a surviving group;
-            LDS_Color[0][0] = 1.0f;
+            SurvivorFlag = 1;
         }
     }
 
     GroupMemoryBarrierWithGroupSync();
 
-    if (LDS_Color[0][0].x == 0.0f) return; // finish all groups except surviving group
-
-    GroupMemoryBarrierWithGroupSync();
+    if (SurvivorFlag == 0) return;  // finish all groups except surviving group
 
     for (int base_mip = 5; base_mip < InputInfo.numMips - 1; base_mip += 5) {
         imageSize = max(1, imageSize >> 5);
 
-        int max_i = (int)imageSize.y;
-        int max_j = (int)imageSize.x;
+        int max_i = (int)max(1, imageSize.y >> 1);
+        int max_j = (int)max(1, imageSize.x >> 1);
 
         for (int i = 0; i < max_i; i += 16) {
             for (int j = 0; j < max_j; j += 16) {
