@@ -33,6 +33,7 @@ set(SHADER_SOURCES
     CS_Diffuse_Lut      CubemapsLut.hlsl            cs_6_6
     CS_Specular_Lut     CubemapsLut.hlsl            cs_6_6
     CS_SinglePassMips   MipMapsShaders.hlsl         cs_6_6
+    CS_MinFilter        MipMapsShaders.hlsl         cs_6_6
     CS_KawaseBlurDownsample_13  KawaseBlur.hlsl     cs_6_6
     CS_KawaseBlurUpsample       KawaseBlur.hlsl     cs_6_6
     CS_GTAO             GTAO.hlsl                   cs_6_6

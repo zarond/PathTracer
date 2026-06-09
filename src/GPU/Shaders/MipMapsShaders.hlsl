@@ -7,6 +7,7 @@ struct MipCSInput {
     int isNormalMap;
     int minFilter;
     int numGroups;
+    int baseMip;
 };
 
 // Bind an array containing a UAV for each mip level
@@ -206,6 +207,137 @@ void CS_SinglePassMips(
 
                 GroupMemoryBarrierWithGroupSync();
             }
+        }
+    }
+}
+
+
+//--------------------------------------------------------------------------
+// Separate version for Hi-Z buffer construction with NPOT sizes handling
+// Unfortunately, it is not a single pass solution :-(
+// Computes 2 mip map levels
+//--------------------------------------------------------------------------
+
+groupshared float LDS_Zbuf[17][17];
+
+float CombineMin(float c0, float c1, float c2, float c3) {
+    return min(min(c0, c1), min(c2, c3));
+}
+float CombineMin(float c0, float c1, float c2) {
+    return min(min(c0, c1), c2);
+}
+float CombineMin(float c0, float c1) {
+    return min(c0, c1);
+}
+
+float getFirstMip(int base_mip, uint2 srcCoord, uint2 imageSize, int2 NeedExtraSample) {
+    float p0 = OutputMips[base_mip][min(srcCoord + uint2(0, 0), imageSize - 1)].r;
+    float p1 = OutputMips[base_mip][min(srcCoord + uint2(1, 0), imageSize - 1)].r;
+    float p2 = OutputMips[base_mip][min(srcCoord + uint2(0, 1), imageSize - 1)].r;
+    float p3 = OutputMips[base_mip][min(srcCoord + uint2(1, 1), imageSize - 1)].r;
+
+    float mip1Color = CombineMin(p0, p1, p2, p3);
+
+    if (NeedExtraSample.x) {
+        p0 = OutputMips[base_mip][min(srcCoord + uint2(2, 0), imageSize - 1)].r;
+        p1 = OutputMips[base_mip][min(srcCoord + uint2(2, 1), imageSize - 1)].r;
+        mip1Color = CombineMin(mip1Color, p0, p1);
+    }
+    if (NeedExtraSample.y) {
+        p0 = OutputMips[base_mip][min(srcCoord + uint2(0, 2), imageSize - 1)].r;
+        p1 = OutputMips[base_mip][min(srcCoord + uint2(1, 2), imageSize - 1)].r;
+        mip1Color = CombineMin(mip1Color, p0, p1);
+    }
+    if (NeedExtraSample.x && NeedExtraSample.y) {
+        p0 = OutputMips[base_mip][min(srcCoord + uint2(2, 2), imageSize - 1)].r;
+        mip1Color = CombineMin(mip1Color, p0);
+    }
+    return mip1Color;
+}
+
+// Assuming 256 threads per group (16x16)
+[numthreads(16, 16, 1)] 
+void CS_MinFilter(uint3 DTid : SV_DispatchThreadID, uint3 Gid : SV_GroupID, uint3 Tid : SV_GroupThreadID, uint Gidx : SV_GroupIndex) 
+{
+    int base_mip = InputInfo.baseMip;
+
+    uint2 imageSize;
+    OutputMips[base_mip].GetDimensions(imageSize.x, imageSize.y);
+
+    if (base_mip + 1 >= InputInfo.numMips) return;
+
+    uint2 original_imageSize = imageSize;
+
+    int2 NeedExtraSample = imageSize % 2;
+    imageSize = max(1, imageSize / 2);
+
+
+    // --- MIP 0 to MIP 1 ---
+    // Load a 2x2 quad from the Source Texture (Mip 0)
+    uint2 srcCoord = DTid.xy * 2;
+    float mip1Color = getFirstMip(base_mip, srcCoord, original_imageSize, NeedExtraSample);
+
+    if (all(DTid.xy < imageSize)) {
+        // Write Mip 1 out to global memory
+        OutputMips[base_mip + 1][DTid.xy] = mip1Color;
+    }
+
+    if (base_mip + 2 >= InputInfo.numMips) return;
+
+    // Store in Local Data Store (LDS) for the next step
+    LDS_Zbuf[Tid.x][Tid.y] = mip1Color;
+
+    if (Tid.x == 15) {
+        srcCoord = DTid.xy * 2 + uint2(2, 0);
+        mip1Color = getFirstMip(base_mip, srcCoord, original_imageSize, NeedExtraSample);
+        LDS_Zbuf[16][Tid.y] = mip1Color;
+    }
+    if (Tid.y == 15) {
+        srcCoord = DTid.xy * 2 + uint2(0, 2);
+        mip1Color = getFirstMip(base_mip, srcCoord, original_imageSize, NeedExtraSample);
+        LDS_Zbuf[Tid.x][16] = mip1Color;
+    }
+    if (Tid.x == 15 && Tid.y == 15) {
+        srcCoord = DTid.xy * 2 + uint2(2, 2);
+        mip1Color = getFirstMip(base_mip, srcCoord, original_imageSize, NeedExtraSample);
+        LDS_Zbuf[16][16] = mip1Color;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    NeedExtraSample = imageSize % 2;
+    imageSize = max(1, imageSize / 2);
+    // --- MIP 1 to MIP 2 ---
+    // Only 1/4 of the threads (an 8x8 grid) continue to compute Mip 2
+    if (Gidx < 64) {
+        uint2 newTid = uint2(Gidx % 8, Gidx / 8);
+        uint2 ldsSrc = newTid * 2;
+
+        float m0 = LDS_Zbuf[ldsSrc.x + 0][ldsSrc.y + 0];
+        float m1 = LDS_Zbuf[ldsSrc.x + 1][ldsSrc.y + 0];
+        float m2 = LDS_Zbuf[ldsSrc.x + 0][ldsSrc.y + 1];
+        float m3 = LDS_Zbuf[ldsSrc.x + 1][ldsSrc.y + 1];
+
+        float mip2Color = CombineMin(m0, m1, m2, m3);
+
+        if (NeedExtraSample.x) {
+            m0 = LDS_Zbuf[ldsSrc.x + 2][ldsSrc.y + 0];
+            m1 = LDS_Zbuf[ldsSrc.x + 2][ldsSrc.y + 1];
+            mip2Color = CombineMin(mip2Color, m0, m1);
+        }
+        if (NeedExtraSample.y) {
+            m0 = LDS_Zbuf[ldsSrc.x + 0][ldsSrc.y + 2];
+            m1 = LDS_Zbuf[ldsSrc.x + 1][ldsSrc.y + 2];
+            mip2Color = CombineMin(mip2Color, m0, m1);
+        }
+        if (NeedExtraSample.x && NeedExtraSample.y) {
+            m0 = LDS_Zbuf[ldsSrc.x + 2][ldsSrc.y + 2];
+            mip2Color = CombineMin(mip2Color, m0);
+        }
+
+        uint2 outCoord = Gid.xy * 8 + newTid;
+
+        if (all(outCoord < imageSize)) {
+            OutputMips[base_mip + 2][outCoord] = mip2Color;
         }
     }
 }

@@ -3,6 +3,8 @@
 #include "../d3d_context.h"
 #include "Common_helpers.h"
 
+#include <bit>
+
 namespace GlobalRootSignatureParams {
 enum Value : int {
     OutputViewSlot = 0,
@@ -21,6 +23,7 @@ struct MipCSInput {
     int isNormalMap;
     int minFilter;
     int numGroups;
+    int baseMip;
 };
 
 Mipmaps_helper::Mipmaps_helper() {
@@ -33,7 +36,7 @@ Mipmaps_helper::~Mipmaps_helper() {
     release_gpu_resources();
 }
 
-void Mipmaps_helper::CreateMips(GPU_texture& uav_texture, bool only5Mips, bool minFilter) {  // works on the input uav texture
+void Mipmaps_helper::CreateMips(GPU_texture& uav_texture, bool only5Mips, bool HiZ) {  // works on the input uav texture
     const auto& resource = uav_texture.get_gpu_resource();
     const auto description = resource->GetDesc();
     const auto width = description.Width;
@@ -47,7 +50,11 @@ void Mipmaps_helper::CreateMips(GPU_texture& uav_texture, bool only5Mips, bool m
     ID3D12DescriptorHeap* desc_heap[] = {m_SrvDescHeap.Get()};
     commandList->SetDescriptorHeaps(1, desc_heap);
 
-    commandList->SetPipelineState(m_PipelineState.Get());
+    if (HiZ && (std::popcount(width) > 1 || std::popcount(height) > 1)) {   // non-power-of-two Hi-Z requires special version
+        commandList->SetPipelineState(m_HiZ_PipelineState.Get());
+    } else {    // single pass mode for power-of-two Hi-Z and all regulary textures
+        commandList->SetPipelineState(m_PipelineState.Get());
+    }
     commandList->SetComputeRootSignature(m_rootSignature.Get());
 
     int NumMips = GPU_texture::CalculateMipCount(width, height);
@@ -67,14 +74,32 @@ void Mipmaps_helper::CreateMips(GPU_texture& uav_texture, bool only5Mips, bool m
 
     commandList->SetComputeRootUnorderedAccessView(GlobalRootSignatureParams::GroupCounters, GroupCounters->GetGPUVirtualAddress());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, gpuHandle);
-    MipCSInput input{NumMips, isSRGB, isNormalMap, minFilter, numGroups};
-    constexpr int inputSizeInInt = sizeof(MipCSInput) / 4;
-    commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
 
-    commandList->Dispatch(GroupsX, GroupsY, 1);
+    if (HiZ && (std::popcount(width) > 1 || std::popcount(height) > 1)) { // non-power-of-two Hi-Z requires special version
+        for (int mipLevel = 0; mipLevel < NumMips - 1; mipLevel += 2) {
+            GroupsX = (GPU_texture::GetMipDimension(width, mipLevel + 1) + 15) / 16;
+            GroupsY = (GPU_texture::GetMipDimension(height, mipLevel + 1) + 15) / 16;
 
-    const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(GroupCounters.Get());
-    commandList->ResourceBarrier(1, &barrier);
+            MipCSInput input{NumMips, isSRGB, isNormalMap, HiZ, numGroups, mipLevel};
+            constexpr int inputSizeInInt = sizeof(MipCSInput) / 4;
+            commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
+
+            commandList->Dispatch(GroupsX, GroupsY, 1);
+
+            const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(uav_texture.get_gpu_resource().Get());
+            commandList->ResourceBarrier(1, &barrier);
+        }
+    } else { // single pass mode for power-of-two Hi-Z and all regulary textures
+        MipCSInput input{NumMips, isSRGB, isNormalMap, HiZ, numGroups, 0};
+        constexpr int inputSizeInInt = sizeof(MipCSInput) / 4;
+        commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
+
+        commandList->Dispatch(GroupsX, GroupsY, 1);
+
+        const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(GroupCounters.Get());
+        commandList->ResourceBarrier(1, &barrier);
+    }
+
 }
 
 GPU_texture Mipmaps_helper::GetBlankCompatibleUAVTex(GPU_texture& texture) {
@@ -107,6 +132,7 @@ void Mipmaps_helper::CreateRootSignature() {
 
 void Mipmaps_helper::CreatePipelineStateObject() {
     auto [cs_shaderBlob, cs_bytecode] = LoadShader(c_cs_file_name);
+    auto [cs_hi_z_shaderBlob, cs_hi_z_bytecode] = LoadShader(c_cs_hi_z_file_name);
 
     D3DContext& d3d_ctx = D3DContext::Get();
     auto device = d3d_ctx.m_d3dDevice;
@@ -118,6 +144,10 @@ void Mipmaps_helper::CreatePipelineStateObject() {
     computePsoDesc.NodeMask = 1;
 
     ThrowIfFailed(device->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&m_PipelineState)));
+
+    computePsoDesc.CS = cs_hi_z_bytecode;
+
+    ThrowIfFailed(device->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&m_HiZ_PipelineState)));
 }
 
 void Mipmaps_helper::CreateDescriptorHeap() {

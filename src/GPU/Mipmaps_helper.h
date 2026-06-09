@@ -17,7 +17,7 @@ class Mipmaps_helper {
 
     void Init(); // must call this once before use, contains GPU command list instructions
 
-    void CreateMips(GPU_texture& uav_texture, bool only5Mips = false, bool minFilter = false);
+    void CreateMips(GPU_texture& uav_texture, bool only5Mips = false, bool HiZ = false);
 
     static GPU_texture GetBlankCompatibleUAVTex(GPU_texture& texture);
 
@@ -29,8 +29,10 @@ class Mipmaps_helper {
 
     ComPtr<ID3D12RootSignature> m_rootSignature;
     ComPtr<ID3D12PipelineState> m_PipelineState;
+    ComPtr<ID3D12PipelineState> m_HiZ_PipelineState;
 
     const wchar_t* c_cs_file_name = L"CS_SinglePassMips.dxil";
+    const wchar_t* c_cs_hi_z_file_name = L"CS_MinFilter.dxil";
 
     ComPtr<ID3D12DescriptorHeap> m_SrvDescHeap;
     D3D12_CPU_DESCRIPTOR_HANDLE HeapStartCpu = {};
