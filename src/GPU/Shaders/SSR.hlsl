@@ -95,33 +95,72 @@ float ThresholdFade(float value, float threshold, float mult_range, float lin_ra
     return smoothstep(threshold, threshold * mult_range - lin_range, value);
 }
 
-bool IsPotentialHit(float3 sampleUV, float sampleDepth) { return sampleUV.z > sampleDepth; }
+bool IsPotentialHit(float3 sampleUV, float sampleDepth) { return sampleUV.z >= sampleDepth; }
 
-bool CheckPotentialHit(float3 sampleDepth, float3 prev_sampleDepth,
-    inout float3 sampleUV, float3 prev_sampleUV, float3 l, inout float hit_confidence ) 
+bool CheckPotentialHit(inout float3 sampleUV, float3 sampleDepth, float3 rayUVDirNorm, float3 l, inout float hit_confidence)
 {
-    const float3 hit_normals = Gbuffer.SampleLevel(PointSampler, sampleUV, 0).xyz;
+    const float3 hit_normals = Gbuffer.SampleLevel(PointSampler, sampleUV.xy, 0).xyz;
     const float LoN = dot(l, hit_normals);
-    hit_confidence = min(hit_confidence, ThresholdFade(LoN, 0.005f, 0, 0.005f));
+    hit_confidence = min(hit_confidence, ThresholdFade(LoN, 0.0f, 0, 0.005f));
     if (hit_confidence == 0.0f) {
         return false;
     }
-    float d2 = precise_ray_depth(sampleUV, sampleDepth);
-    hit_confidence = min(hit_confidence, ThresholdFade(d2, g_CB.DepthThreshold, 0.9f, 0));
+    float d2 = precise_ray_depth(sampleUV, sampleDepth); // x > 0 means under surface for linear depth
+    hit_confidence = min(hit_confidence, ThresholdFade(d2, g_CB.DepthThreshold, 0.5f, 0));
     if (hit_confidence == 0.0f) {
         return false;
     }
-    float d1 = -precise_ray_depth(prev_sampleUV, prev_sampleDepth);
-    sampleUV = lerp(prev_sampleUV, sampleUV, d1 / (d1 + d2));
+
+    float3 prev_UV = sampleUV - rayUVDirNorm;
+    float prev_sampleDepth = Depth.SampleLevel(PointSampler, prev_UV, 0);
+    float d1 = prev_sampleDepth - prev_UV.z;  // previous step should be > 0 means over surface
+    d2 = sampleDepth - sampleUV.z;             //  x < 0 means under surface
+
+    sampleUV = lerp(prev_UV, sampleUV, saturate(abs(d1) / (abs(d1) + abs(d2))));
 
     return true;
+}
+
+uint2 GetMipDimension(uint mipLevel) { return max(1, g_CB.FrameSize >> mipLevel); }
+
+void AdvanceToNextCell(
+    inout float3 sampleUV, float3 rayUVDirNorm, float3 inv_rayUVDirNorm, float sampleDepth, float2 texel, inout int mip) {
+    uint2 mip_size = GetMipDimension(mip);
+    float2 cell_size = 1.0f / mip_size;
+    float2 cell_index = floor(sampleUV.xy * mip_size);
+
+    // Calculate distances to the next X/Y cell walls
+    float2 cell_boundary = cell_index * cell_size + select(rayUVDirNorm.xy > 0.0f, cell_size, 0.0f);
+    float2 t_xy = (cell_boundary - sampleUV.xy) * inv_rayUVDirNorm.xy;
+
+    // Prevent division-by-zero if the ray is perfectly parallel to an axis
+    if (rayUVDirNorm.x == 0.0f) t_xy.x = 1e32f;
+    if (rayUVDirNorm.y == 0.0f) t_xy.y = 1e32f;
+
+    float t_exit_XY = min(t_xy.x, t_xy.y);
+
+    // Calculate distance to the Z depth plane
+    float t_exit_Z = (sampleDepth - sampleUV.z) * inv_rayUVDirNorm.z;
+    if (rayUVDirNorm.z <= 0.0f) t_exit_Z = 1e32f;
+
+    // Check if the ray will cross the Z plane BEFORE it leaves the current X/Y cell
+    if (t_exit_Z > 0.0f && t_exit_Z < t_exit_XY) {
+        // We hit the depth plane INSIDE the current cell..
+        mip = max(mip - 1, 0);
+        sampleUV += t_exit_Z * rayUVDirNorm;
+        sampleUV.z = sampleDepth;
+    } else {
+        // We safely hit the X/Y cell wall. Push 0.1 pixels past it to enter the next cell.
+        mip = min(mip + 1, g_CB.MaxDepthMipLevel);
+        sampleUV += (max(t_exit_XY, 0) + 0.1) * rayUVDirNorm;
+    }
 }
 
 [numthreads(16, 16, 1)] 
 void CS_SSR(uint3 DTid : SV_DispatchThreadID) {
     if (DTid.x >= g_CB.FrameSize.x || DTid.y >= g_CB.FrameSize.y) return;
 
-    const int STEPS = 512;
+    const int STEPS = 128;
 
     const float2 texel = g_CB.texel_size;
     const float2 uv = (DTid.xy + 0.5f) * texel;
@@ -173,23 +212,42 @@ void CS_SSR(uint3 DTid : SV_DispatchThreadID) {
     const float rayScreenDirLength = length(rayScreenDir.xy);
     const float3 rayScreenDirNorm = rayScreenDir / rayScreenDirLength;
 
-    const float LoV = dot(l, v);
+    const float3 rayUVDirNorm = rayScreenDirNorm * float3(texel, 1.0f);
+    const float3 inv_rayUVDirNorm = 1.0f / rayUVDirNorm;
 
-    float3 prev_sampleUV = float3(uv, centerDepth);
-    float3 sampleUV = prev_sampleUV + rayScreenDirNorm * float3(texel, 1.0f) * jitter.z;
+    float3 sampleUV = float3(uv, centerDepth) + rayUVDirNorm * (1.0f + jitter.z);
     float sampleDepth = centerDepth;
-    float prev_sampleDepth = centerDepth;
-    for (int i = 0; i < STEPS; ++i, prev_sampleUV = sampleUV, prev_sampleDepth = sampleDepth) {
-        sampleUV += rayScreenDirNorm * float3(texel, 1.0f);
+    int mip = 0;
+    for (int i = 0; i < STEPS; ++i) {
         hit_confidence = UVEdgeFade(sampleUV.xy);
         if (hit_confidence == 0.0f) break;
-        sampleDepth = Depth.SampleLevel(PointSampler, sampleUV.xy, 0);
+        sampleDepth = Depth.SampleLevel(PointSampler, sampleUV.xy, mip);
         if (IsPotentialHit(sampleUV, sampleDepth)) {
-            found_hit = CheckPotentialHit(sampleDepth, prev_sampleDepth, sampleUV, prev_sampleUV, l, hit_confidence);
-            if (found_hit) {
-                break;
+            if (mip == 0) {
+                found_hit = CheckPotentialHit(sampleUV, sampleDepth, rayUVDirNorm, l, hit_confidence);
+                if (found_hit) {
+                    break;
+                }
+
+                // False positive thickness rejection: safely skip past this pixel's boundary
+                float2 cell_boundary = floor(sampleUV.xy * g_CB.FrameSize) * texel + select(rayUVDirNorm.xy > 0.0f, texel, 0.0f);
+                float2 t_xy = (cell_boundary - sampleUV.xy) * inv_rayUVDirNorm.xy;
+                if (rayUVDirNorm.x == 0.0f) t_xy.x = 1e32f;
+                if (rayUVDirNorm.y == 0.0f) t_xy.y = 1e32f;
+
+                sampleUV += (min(t_xy.x, t_xy.y) + 0.1) * rayUVDirNorm;
+
+                mip = min(mip + 1, g_CB.MaxDepthMipLevel);
+            } else {
+                mip -= 1;
             }
+        } else {
+            AdvanceToNextCell(sampleUV, rayUVDirNorm, inv_rayUVDirNorm, sampleDepth, texel, mip);
         }
+        //if (i == STEPS - 1) { // Debug
+        //    Output[DTid.xy] = float4(1.0f, 0.0f, 0.0f, 1.0f); // This means infinite loop somewhere
+        //    return;
+        //}
     }
     if (found_hit) {
         Output[DTid.xy] = float4(Frame.SampleLevel(LinearSampler, sampleUV.xy, 0).rgb, hit_confidence);

@@ -261,23 +261,25 @@ void CS_MinFilter(uint3 DTid : SV_DispatchThreadID, uint3 Gid : SV_GroupID, uint
 {
     int base_mip = InputInfo.baseMip;
 
-    uint2 imageSize;
-    OutputMips[base_mip].GetDimensions(imageSize.x, imageSize.y);
+    uint2 imageSize0;
+    OutputMips[base_mip].GetDimensions(imageSize0.x, imageSize0.y);
 
     if (base_mip + 1 >= InputInfo.numMips) return;
 
-    uint2 original_imageSize = imageSize;
+    bool2 NeedExtraSample1 = imageSize0 % 2;
+    uint2 imageSize1 = max(1, imageSize0 / 2);
+    bool2 NeedExtraSample2 = imageSize1 % 2;
+    uint2 imageSize2 = max(1, imageSize1 / 2);
 
-    int2 NeedExtraSample = imageSize % 2;
-    imageSize = max(1, imageSize / 2);
-
+    bool2 NeedExtraSampleAny = or(NeedExtraSample1, NeedExtraSample2);
 
     // --- MIP 0 to MIP 1 ---
     // Load a 2x2 quad from the Source Texture (Mip 0)
-    uint2 srcCoord = DTid.xy * 2;
-    float mip1Color = getFirstMip(base_mip, srcCoord, original_imageSize, NeedExtraSample);
+    float mip1Color = 1.0f;
 
-    if (all(DTid.xy < imageSize)) {
+    if (all(DTid.xy < imageSize1)) {
+        uint2 srcCoord = DTid.xy * 2;
+        mip1Color = getFirstMip(base_mip, srcCoord, imageSize0, NeedExtraSample1);
         // Write Mip 1 out to global memory
         OutputMips[base_mip + 1][DTid.xy] = mip1Color;
     }
@@ -287,25 +289,23 @@ void CS_MinFilter(uint3 DTid : SV_DispatchThreadID, uint3 Gid : SV_GroupID, uint
     // Store in Local Data Store (LDS) for the next step
     LDS_Zbuf[Tid.x][Tid.y] = mip1Color;
 
-    if (Tid.x == 15) {
-        srcCoord = DTid.xy * 2 + uint2(2, 0);
-        mip1Color = getFirstMip(base_mip, srcCoord, original_imageSize, NeedExtraSample);
+    if (Tid.x == 15 && NeedExtraSampleAny.x) {
+        uint2 srcCoord = DTid.xy * 2 + uint2(2, 0);
+        mip1Color = getFirstMip(base_mip, srcCoord, imageSize0, NeedExtraSample1);
         LDS_Zbuf[16][Tid.y] = mip1Color;
     }
-    if (Tid.y == 15) {
-        srcCoord = DTid.xy * 2 + uint2(0, 2);
-        mip1Color = getFirstMip(base_mip, srcCoord, original_imageSize, NeedExtraSample);
+    if (Tid.y == 15 && NeedExtraSampleAny.y) {
+        uint2 srcCoord = DTid.xy * 2 + uint2(0, 2);
+        mip1Color = getFirstMip(base_mip, srcCoord, imageSize0, NeedExtraSample1);
         LDS_Zbuf[Tid.x][16] = mip1Color;
     }
-    if (Tid.x == 15 && Tid.y == 15) {
-        srcCoord = DTid.xy * 2 + uint2(2, 2);
-        mip1Color = getFirstMip(base_mip, srcCoord, original_imageSize, NeedExtraSample);
+    if (Tid.x == 15 && Tid.y == 15 && NeedExtraSampleAny.x && NeedExtraSampleAny.y) {
+        uint2 srcCoord = DTid.xy * 2 + uint2(2, 2);
+        mip1Color = getFirstMip(base_mip, srcCoord, imageSize0, NeedExtraSample1);
         LDS_Zbuf[16][16] = mip1Color;
     }
     GroupMemoryBarrierWithGroupSync();
 
-    NeedExtraSample = imageSize % 2;
-    imageSize = max(1, imageSize / 2);
     // --- MIP 1 to MIP 2 ---
     // Only 1/4 of the threads (an 8x8 grid) continue to compute Mip 2
     if (Gidx < 64) {
@@ -319,24 +319,24 @@ void CS_MinFilter(uint3 DTid : SV_DispatchThreadID, uint3 Gid : SV_GroupID, uint
 
         float mip2Color = CombineMin(m0, m1, m2, m3);
 
-        if (NeedExtraSample.x) {
+        if (NeedExtraSample2.x) {
             m0 = LDS_Zbuf[ldsSrc.x + 2][ldsSrc.y + 0];
             m1 = LDS_Zbuf[ldsSrc.x + 2][ldsSrc.y + 1];
             mip2Color = CombineMin(mip2Color, m0, m1);
         }
-        if (NeedExtraSample.y) {
+        if (NeedExtraSample2.y) {
             m0 = LDS_Zbuf[ldsSrc.x + 0][ldsSrc.y + 2];
             m1 = LDS_Zbuf[ldsSrc.x + 1][ldsSrc.y + 2];
             mip2Color = CombineMin(mip2Color, m0, m1);
         }
-        if (NeedExtraSample.x && NeedExtraSample.y) {
+        if (NeedExtraSample2.x && NeedExtraSample2.y) {
             m0 = LDS_Zbuf[ldsSrc.x + 2][ldsSrc.y + 2];
             mip2Color = CombineMin(mip2Color, m0);
         }
 
         uint2 outCoord = Gid.xy * 8 + newTid;
 
-        if (all(outCoord < imageSize)) {
+        if (all(outCoord < imageSize2)) {
             OutputMips[base_mip + 2][outCoord] = mip2Color;
         }
     }
