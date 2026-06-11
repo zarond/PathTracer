@@ -12,6 +12,8 @@ struct SSRCSInput {
     float GGXBias;  // 1.0 is no bias, < 1.0 reduces tail of distribution
     int frameID;
     int MaxDepthMipLevel;
+    float MaxFrameMipLevel;
+    float PrefilterDistanceMult;
 };
 
 // Gbuff
@@ -25,6 +27,9 @@ Texture2D<float4> Frame : register(t2, space0);
 
 // Output
 RWTexture2D<float4> Output : register(u0, space0);
+
+// Output reflection depth
+RWTexture2D<float> OutputDepth : register(u1, space0);
 
 // Constant Buffer
 ConstantBuffer<SSRCSInput> g_CB : register(b0);
@@ -74,6 +79,14 @@ float3 ViewPositionToUV(float3 pos) {
     return float3(ndc.xy * float2(0.5f, -0.5f) + 0.5f, ndc.z);
 }
 
+float ndc_depth(float linear_depth) {
+    const float proj_22 = g_CB.Projection[2][2];
+    const float proj_23 = g_CB.Projection[2][3];
+    float inv_z = 1.0f / linear_depth;
+    float z_ndc = -proj_22 - proj_23 * inv_z;
+    return z_ndc;
+}
+
 float linear_depth(float non_linear_depth) {
     // Assuming standard perspective projection matrix, reconstruct linear depth from non-linear depth
     const float proj_22 = g_CB.Projection[2][2];
@@ -110,13 +123,6 @@ bool CheckPotentialHit(inout float3 sampleUV, float3 sampleDepth, float3 rayUVDi
     if (hit_confidence == 0.0f) {
         return false;
     }
-
-    float3 prev_UV = sampleUV - rayUVDirNorm;
-    float prev_sampleDepth = Depth.SampleLevel(PointSampler, prev_UV, 0);
-    float d1 = prev_sampleDepth - prev_UV.z;  // previous step should be > 0 means over surface
-    d2 = sampleDepth - sampleUV.z;             //  x < 0 means under surface
-
-    sampleUV = lerp(prev_UV, sampleUV, saturate(abs(d1) / (abs(d1) + abs(d2))));
 
     return true;
 }
@@ -157,7 +163,7 @@ void AdvanceToNextCell(
 }
 
 [numthreads(16, 16, 1)] 
-void CS_SSR(uint3 DTid : SV_DispatchThreadID) {
+void CS_SSR(uint3 DTid : SV_DispatchThreadID, uint Gidx : SV_GroupIndex) {
     if (DTid.x >= g_CB.FrameSize.x || DTid.y >= g_CB.FrameSize.y) return;
 
     const int STEPS = 128;
@@ -168,6 +174,7 @@ void CS_SSR(uint3 DTid : SV_DispatchThreadID) {
     const float centerDepth = Depth.Load(DTid);
     if (centerDepth >= 1.0f || centerDepth <= 0.0f) {
         Output[DTid.xy] = float4(0.0f, 0.0f, 0.0f, 0.0f);
+        OutputDepth[DTid.xy] = -1.0f;
         return;
     }
 
@@ -187,24 +194,28 @@ void CS_SSR(uint3 DTid : SV_DispatchThreadID) {
     bool found_hit = false;
     float hit_confidence = 1.0f;
 
-    uint3 seed = uint3(DTid.xy, g_CB.frameID);
-    float3 jitter = pcg3d(seed);
-    float2 rand = fibonacci2D(0, 1.0f / 8);
-    rand = fmod(rand + jitter.xy, 1.0f);
+    uint3 seed = uint3(DTid.xy * uint2(5, 1), g_CB.frameID);
 
-    // Cut tails of distribution to reduce noise (introduces bias)
-    rand.x *= g_CB.GGXBias;
-
-    float3 h = importanceSampleGGX(rand, linear_roughness);
+    float3 h;
+    float3 jitter;
+    float3 v_in_TBN_space = mul(TBN, v);
+    for (int i = 0; i < 5; ++i) { // regenerate h if LoN < 0
+        jitter = pcg3d(seed + uint3(i, 0, 0));
+        float2 rand = jitter.xy;
+        rand.x *= g_CB.GGXBias; // Cut tails of distribution to reduce noise (introduces bias)
+        h = importanceSampleGGX(rand, linear_roughness);
+        float3 TBN_l = reflect(-v_in_TBN_space, h);
+        if (TBN_l.z > 0) break;
+    }
     h = Tangent2World(h, TBN);
 
     const float3 l = reflect(-v, h);
 
-    const float LoN = saturate(dot(l, normal));
-    if (LoN == 0.0f) {
-        //Output[DTid.xy] = float4(1.0f, 0.0f, 0.0f, 1.0f); // todo: IMPORTANT, solve this problem
-        //return;
-    }
+    //const float LoN = saturate(dot(l, normal));
+    //if (LoN == 0.0f) {
+    //    Output[DTid.xy] = float4(1.0f, 0.0f, 0.0f, 1.0f); // Debug
+    //    return;
+    //}
 
     const float3 rayUVDir = ViewPositionToUV(pos + l * 0.01f) - float3(uv, centerDepth);
     const float3 rayScreenDir = rayUVDir * float3(g_CB.FrameSize, 1.0f);
@@ -250,9 +261,14 @@ void CS_SSR(uint3 DTid : SV_DispatchThreadID) {
         //}
     }
     if (found_hit) {
-        Output[DTid.xy] = float4(Frame.SampleLevel(LinearSampler, sampleUV.xy, 0).rgb, hit_confidence);
+        float3 reflection_pos = ReconstructViewPosition(sampleUV.xy, sampleUV.z);
+        float dist = length(reflection_pos - pos);
+        float lod = min(dist * g_CB.PrefilterDistanceMult, 1.0f) * roughness * g_CB.MaxFrameMipLevel;
+        Output[DTid.xy] = float4(Frame.SampleLevel(LinearSampler, sampleUV.xy, lod).rgb, hit_confidence);
+        OutputDepth[DTid.xy] = dist * abs(v.z);
     } else {
         Output[DTid.xy] = 0.0f;
+        OutputDepth[DTid.xy] = 0.0f;
     }
 
 }

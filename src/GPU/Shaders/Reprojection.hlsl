@@ -1,11 +1,14 @@
 struct ReprojectionCSInput {
     float4x4 Reprojection;
     float4x4 Projection_prev;
+    float proj_22;
+    float proj_23;
     uint2 FrameSize;
     float2 texel_size;
     float depth_threshold; // default: 0.001f
     float new_mix_factor;
     int weak_depth_condition;
+    int use_reflection_distance;
     int DebugMode;  // 0 - normal, 1 - show reprojection failure in red
 };
 
@@ -21,6 +24,9 @@ RWTexture2D<float4> NewTexture : register(u0, space0);
 // New Depth
 Texture2D<float> NewDepth : register(t2, space0);
 
+// Reflection Distance Texture for SSR parallax
+Texture2D<float> NewReflectionDistance : register(t3, space0);
+
 // Constant Buffer
 ConstantBuffer<ReprojectionCSInput> g_CB : register(b0);
 
@@ -29,6 +35,21 @@ SamplerState PointSampler : register(s0, space0);
 
 // Default Linear sampler
 SamplerState LinearSampler : register(s1, space0);
+
+float ndc_depth(float linear_depth) {
+    const float proj_22 = g_CB.proj_22;
+    const float proj_23 = g_CB.proj_23;
+    float inv_z = 1.0f / linear_depth;
+    float z_ndc = -proj_22 - proj_23 * inv_z;
+    return z_ndc;
+}
+
+float new_linear_depth(float non_linear_depth) {
+    // Assuming standard perspective projection matrix, reconstruct linear depth from non-linear depth
+    const float proj_22 = g_CB.proj_22;
+    const float proj_23 = g_CB.proj_23;
+    return -proj_23 / (proj_22 + non_linear_depth);
+}
 
 float linear_depth(float non_linear_depth) {
     // Assuming standard perspective projection matrix, reconstruct linear depth from non-linear depth
@@ -55,18 +76,30 @@ void CS_Reprojection(uint3 DTid : SV_DispatchThreadID) {
     const float centerDepth = NewDepth.Load(DTid);
     const float4 NewColor = NewTexture.Load(DTid);
 
-    const float4 ndc = float4(uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), centerDepth, 1.0f);
+    float4 ndc = float4(uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), centerDepth, 1.0f);
+
+    float reflection_distance = 0.0f;
+    if (g_CB.use_reflection_distance) {
+        reflection_distance = NewReflectionDistance.Load(DTid);
+        if (reflection_distance > 0) {
+            float pos_z = new_linear_depth(ndc.z);
+            pos_z -= reflection_distance;
+            ndc.z = ndc_depth(pos_z);
+        }
+    }
 
     const float4 prevClip = mul(g_CB.Reprojection, ndc);
 
     const float3 prevNDC = prevClip.xyz / prevClip.w;
-    const float prevDepth = linear_depth(prevNDC.z);
+    float prevDepth = linear_depth(prevNDC.z);
+
+    prevDepth += max(reflection_distance, 0);
 
     const float2 prevUV = prevNDC.xy * float2(0.5f, -0.5f) + float2(0.5f, 0.5f);
 
     bool UsePrevSample = true;
 
-    if (any(prevUV < 0.0f) || any(prevUV > 1.0f)) UsePrevSample = false;  // UV out of bounds
+    if (any(prevUV < 0.0f) || any(prevUV > 1.0f) || reflection_distance < 0) UsePrevSample = false;  // UV out of bounds
 
     bool strong_condition = (g_CB.weak_depth_condition == 0);
     const float4 gatheredDepth = OldDepth.Gather(PointSampler, prevUV);

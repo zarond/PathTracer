@@ -26,6 +26,8 @@ class SSR_helper {
     float DepthThreshold = 0.01f;
     float MaxRoughness = 0.8f;
     float SSR_GGXClamp = 0.0f;
+    bool UsePrefiltering = true;
+    float PrefilteringDistance = 0.1f;
 
   private:
     void CreateRootSignature();
@@ -37,6 +39,7 @@ class SSR_helper {
     ComPtr<ID3D12PipelineState> m_PipelineState;
 
     GPU_texture m_SSR_texture_previous;
+    GPU_texture m_SSR_reflection_depth;
     GPU_texture m_Frame_reprojected;
     UINT64 currentWidth = 0;
     UINT currentHeight = 0;

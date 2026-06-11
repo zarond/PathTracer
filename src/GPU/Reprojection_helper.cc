@@ -11,6 +11,7 @@ enum Value : int {
     OldDepth,
     NewTexture,
     NewDepth,
+    NewReflectionDistance,
     RootConstants,
 
     Count
@@ -24,11 +25,14 @@ using namespace glm;
 struct ReprojectionCSInput {
     fmat4x4 Reprojection;
     fmat4x4 Projection_prev;
+    float proj_22;
+    float proj_23;
     uvec2 FrameSize;
     fvec2 texel_size;
     float depth_threshold;  // default: 0.001f
     float new_mix_factor;
     int weak_depth_condition;
+    int use_reflection_distance;
     int DebugMode;
 };
 
@@ -42,8 +46,11 @@ bool Reprojection_helper::DebugMode = false;
 Reprojection_helper::~Reprojection_helper() { release_gpu_resources(); }
 
 void Reprojection_helper::Reproject(GPU_texture& old_texture, GPU_texture& old_depth_texture, GPU_texture& new_texture,
-    GPU_texture& new_depth_texture, const fmat4x4& invViewProjection, const fmat4x4& ViewProjection_previous,
-    const fmat4x4& Projection_previous, float new_value_mix_factor, float depth_threshold, bool weak_depth_condition) {
+    GPU_texture& new_depth_texture, const fmat4x4& Projection, const fmat4x4& invViewProjection,
+    const fmat4x4& ViewProjection_previous, const fmat4x4& Projection_previous, 
+    float new_value_mix_factor, float depth_threshold, bool weak_depth_condition,
+    GPU_texture* reflection_distance_texture) 
+{
     const auto& resource = new_texture.get_gpu_resource();
     const auto description = resource->GetDesc();
     const auto width = description.Width;
@@ -59,17 +66,26 @@ void Reprojection_helper::Reproject(GPU_texture& old_texture, GPU_texture& old_d
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OldDepth, old_depth_texture.GetSRVHandle());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::NewTexture, new_texture.GetUAVHandle());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::NewDepth, new_depth_texture.GetSRVHandle());
+    bool use_reflection_distance = false;
+    if (reflection_distance_texture) {
+        commandList->SetComputeRootDescriptorTable(
+            GlobalRootSignatureParams::NewReflectionDistance, reflection_distance_texture->GetSRVHandle());
+        use_reflection_distance = true;
+    }
 
     fvec2 texel{1.0f / width, 1.0f / height};
     fmat4x4 Reprojection = ViewProjection_previous * invViewProjection;
     ReprojectionCSInput input{
         Reprojection, 
         Projection_previous, 
+        Projection[2][2],
+        Projection[3][2],
         {width, height}, 
         texel,
         depth_threshold,
         new_value_mix_factor,
         weak_depth_condition, 
+        use_reflection_distance,
         DebugMode
     };
     constexpr int inputSizeInInt = sizeof(ReprojectionCSInput) / 4;
@@ -89,13 +105,15 @@ void Reprojection_helper::CreateRootSignature() {
     ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 1 OldDepth srv
     ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 NewTexture uav
     ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 1 NewDepth srv
-    ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);  // 1 constant buffer.
+    ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 1 NewReflectionDistance srv
+    ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);  // 1 constant buffer.
 
     CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
     rootParameters[GlobalRootSignatureParams::OldTexture].InitAsDescriptorTable(1, &ranges[0]);
     rootParameters[GlobalRootSignatureParams::OldDepth].InitAsDescriptorTable(1, &ranges[1]);
     rootParameters[GlobalRootSignatureParams::NewTexture].InitAsDescriptorTable(1, &ranges[2]);
     rootParameters[GlobalRootSignatureParams::NewDepth].InitAsDescriptorTable(1, &ranges[3]);
+    rootParameters[GlobalRootSignatureParams::NewReflectionDistance].InitAsDescriptorTable(1, &ranges[4]);
     rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(ReprojectionCSInput) / 4, 0);
 
     D3D12_STATIC_SAMPLER_DESC point_sampler = {};

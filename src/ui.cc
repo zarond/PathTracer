@@ -694,6 +694,9 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
     raster_settings_changed |= ImGui::SliderFloat(
         "SSR GGX Distribution Bias", &render_settings.SSR_GGXClamp, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
     HelpTooltip("Clamp ray's max angle of GGX distribution. Value of 0.0 is no bias. Higher values - less noise, but less accurate");
+    raster_settings_changed |= ImGui::Checkbox("Use SSR prefiltering", &render_settings.SSRUsePrefiltering);
+    raster_settings_changed |= ImGui::SliderFloat(
+        "SSR Prefiltering Distance", &render_settings.SSRPrefilteringDistance, 0.0f, 10.0f, nullptr);
     raster_settings_changed |= ImGui::Checkbox("Reprojection Debug", &render_settings.ReprojectionDebugMode);
     raster_settings_changed |= ImGui::Checkbox("Enable specular AA", &render_settings.specular_aa_enabled);
     raster_settings_changed |= ImGui::SliderFloat(
