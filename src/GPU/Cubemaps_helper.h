@@ -28,15 +28,17 @@ class EnvCube_helper {
 
     void ReleaseTemporaryGPUResources();
 
-  private:
-    void CreateRootSignature();
-    void CreatePipelineStateObject();
-    ComPtr<ID3D12RootSignature> m_rootSignature;
-    ComPtr<ID3D12PipelineState> m_DiffusePipelineState;
-    ComPtr<ID3D12PipelineState> m_SpecularPipelineState;
+    static void Reload();
 
-    const wchar_t* c_cs_diffuse_file_name = L"CS_Diffuse_Lut.dxil";
-    const wchar_t* c_cs_specular_file_name = L"CS_Specular_Lut.dxil";
+  private:
+    static void CreateRootSignature();
+    static void CreatePipelineStateObject();
+    static ComPtr<ID3D12RootSignature> m_rootSignature;
+    static ComPtr<ID3D12PipelineState> m_DiffusePipelineState;
+    static ComPtr<ID3D12PipelineState> m_SpecularPipelineState;
+
+    static constexpr const wchar_t* c_cs_diffuse_file_name = L"CS_Diffuse_Lut.dxil";
+    static constexpr const wchar_t* c_cs_specular_file_name = L"CS_Specular_Lut.dxil";
 
     GPU_texture Diffuse_lut{};
     GPU_texture Specular_lut{};

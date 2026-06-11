@@ -33,7 +33,16 @@ struct GTAOCSInput {
     unsigned int frameID;
 };
 
+ComPtr<ID3D12RootSignature> GTAO_helper::m_rootSignature{};
+ComPtr<ID3D12PipelineState> GTAO_helper::m_PipelineState{};
+
 GTAO_helper::GTAO_helper() {
+    if (!m_rootSignature || !m_PipelineState) {
+        Reload();
+    }
+}
+
+void GTAO_helper::Reload() {
     CreateRootSignature();
     CreatePipelineStateObject();
 }

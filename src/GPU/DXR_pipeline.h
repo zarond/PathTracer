@@ -66,19 +66,21 @@ class DXR_pipeline : public IRender_pipeline {
 
     void OnEnvmapLoad(GPU_texture& envmap) override;
 
+    static void Reload();
+
   private:
     // Root signatures
-    ComPtr<ID3D12RootSignature> m_raytracingGlobalRootSignature;
-    ComPtr<ID3D12RootSignature> m_raytracingLocalRootSignature;
+    static ComPtr<ID3D12RootSignature> m_raytracingGlobalRootSignature;
+    static ComPtr<ID3D12RootSignature> m_raytracingLocalRootSignature;
 
     // Create root signatures for the shaders.
-    void CreateRootSignatures();
+    static void CreateRootSignatures();
 
-    void CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
+    static void CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
 
-    void CreateRaytracingPipelines();
+    static void CreateRaytracingPipelines();
 
-    void CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const wchar_t* c_anyHitShaderName,
+    static void CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const wchar_t* c_anyHitShaderName,
         const wchar_t* c_closestHitShaderName, const wchar_t* c_missShaderName, ComPtr<ID3D12StateObject>& m_dxrStateObject,
         UINT maxRecursionDepth);
 
@@ -90,16 +92,16 @@ class DXR_pipeline : public IRender_pipeline {
 
     void CreateConstantBuffers();
 
-    const wchar_t* c_dxilLibraryName = L"RaytracingShaders.dxil";  // DXIL library file name
+    static constexpr const wchar_t* c_dxilLibraryName = L"RaytracingShaders.dxil";  // DXIL library file name
 
-    const wchar_t* c_hitGroupName = L"MyHitGroup";
-    const wchar_t* c_raygenShaderName = L"RayGen";
-    const wchar_t* c_anyHitRCShaderName = L"AnyHitRC";
-    const wchar_t* c_closestHitAOShaderName = L"ClosestHitAO";
-    const wchar_t* c_closestHitRCShaderName = L"ClosestHitRC";
-    const wchar_t* c_closestHitPBRShaderName = L"ClosestHitPBR";
-    const wchar_t* c_missAOShaderName = L"MissAO";
-    const wchar_t* c_missEnvmapShaderName = L"MissEnvmap";
+    static constexpr const wchar_t* c_hitGroupName = L"MyHitGroup";
+    static constexpr const wchar_t* c_raygenShaderName = L"RayGen";
+    static constexpr const wchar_t* c_anyHitRCShaderName = L"AnyHitRC";
+    static constexpr const wchar_t* c_closestHitAOShaderName = L"ClosestHitAO";
+    static constexpr const wchar_t* c_closestHitRCShaderName = L"ClosestHitRC";
+    static constexpr const wchar_t* c_closestHitPBRShaderName = L"ClosestHitPBR";
+    static constexpr const wchar_t* c_missAOShaderName = L"MissAO";
+    static constexpr const wchar_t* c_missEnvmapShaderName = L"MissEnvmap";
 
     union AlignedSceneConstantBuffer {
         RayGenConstantBuffer constants;
@@ -127,9 +129,9 @@ class DXR_pipeline : public IRender_pipeline {
     ComPtr<ID3D12Resource> m_PBR_hitGroupShaderTable;
 
     // Ray tracing pipeline states
-    ComPtr<ID3D12StateObject> m_dxrStateObjectRayCaster;
-    ComPtr<ID3D12StateObject> m_dxrStateObjectAmbientOcclusion;
-    ComPtr<ID3D12StateObject> m_dxrStateObjectPBR;
+    static ComPtr<ID3D12StateObject> m_dxrStateObjectRayCaster;
+    static ComPtr<ID3D12StateObject> m_dxrStateObjectAmbientOcclusion;
+    static ComPtr<ID3D12StateObject> m_dxrStateObjectPBR;
 
     RayProgramMode RaytracingMode = RayProgramMode::AmbientOcclusion;
 

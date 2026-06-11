@@ -20,15 +20,16 @@ class Bilateral_filter {
 
     float AODistance = 1.0f;
 
+    static void Reload();
+
   private:
-    void CreateRootSignature();
-    void CreatePipelineStateObject();
-    void CreateDescriptorHeap();
+    static void CreatePipelineStateObject();
+    static void CreateRootSignature();
 
-    ComPtr<ID3D12RootSignature> m_rootSignature;
-    ComPtr<ID3D12PipelineState> m_PipelineState;
+    static ComPtr<ID3D12RootSignature> m_rootSignature;
+    static ComPtr<ID3D12PipelineState> m_PipelineState;
 
-    const wchar_t* c_cs_file_name = L"CS_Bilateral_filter.dxil";
+    static constexpr const wchar_t* c_cs_file_name = L"CS_Bilateral_filter.dxil";
 
     void release_gpu_resources();
 };

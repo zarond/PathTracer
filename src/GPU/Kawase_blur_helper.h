@@ -21,17 +21,19 @@ class Kawase_blur_helper {
 
     constexpr static int BlurIterations = 10;
 
+    static void Reload();
+
   private:
-    void CreateRootSignature();
-    void CreatePipelineStateObject();
+    static void CreateRootSignature();
+    static void CreatePipelineStateObject();
     void CreateDescriptorHeap();
 
-    ComPtr<ID3D12RootSignature> m_rootSignature;
-    ComPtr<ID3D12PipelineState> m_DownsamplePipelineState;
-    ComPtr<ID3D12PipelineState> m_UpsamplePipelineState;
+    static ComPtr<ID3D12RootSignature> m_rootSignature;
+    static ComPtr<ID3D12PipelineState> m_DownsamplePipelineState;
+    static ComPtr<ID3D12PipelineState> m_UpsamplePipelineState;
 
-    const wchar_t* c_cs_downsample_file_name = L"CS_KawaseBlurDownsample_13.dxil";
-    const wchar_t* c_cs_upsample_file_name = L"CS_KawaseBlurUpsample.dxil";
+    static constexpr const wchar_t* c_cs_downsample_file_name = L"CS_KawaseBlurDownsample_13.dxil";
+    static constexpr const wchar_t* c_cs_upsample_file_name = L"CS_KawaseBlurUpsample.dxil";
 
     ComPtr<ID3D12DescriptorHeap> m_SrvDescHeap;
     D3D12_CPU_DESCRIPTOR_HANDLE HeapStartCpu = {};

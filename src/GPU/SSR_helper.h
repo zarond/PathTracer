@@ -29,14 +29,15 @@ class SSR_helper {
     bool UsePrefiltering = true;
     float PrefilteringDistance = 0.1f;
 
+    static void Reload();
+
   private:
-    void CreateRootSignature();
-    void CreatePipelineStateObject();
-    void CreateDescriptorHeap();
+    static void CreateRootSignature();
+    static void CreatePipelineStateObject();
     void ResizeInnerResource(int new_width, int new_height);
 
-    ComPtr<ID3D12RootSignature> m_rootSignature;
-    ComPtr<ID3D12PipelineState> m_PipelineState;
+    static ComPtr<ID3D12RootSignature> m_rootSignature;
+    static ComPtr<ID3D12PipelineState> m_PipelineState;
 
     GPU_texture m_SSR_texture_previous;
     GPU_texture m_SSR_reflection_depth;
@@ -48,7 +49,7 @@ class SSR_helper {
     fmat4x4 ViewProjection_previous{};
     fmat4x4 Projection_previous{};
 
-    const wchar_t* c_cs_file_name = L"CS_SSR.dxil";
+    static constexpr const wchar_t* c_cs_file_name = L"CS_SSR.dxil";
 
     void release_gpu_resources();
 };

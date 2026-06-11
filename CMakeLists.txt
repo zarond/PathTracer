@@ -74,6 +74,7 @@ if(ON_WINDOWS)
         src/GPU/Silhouette_helper.cc
         src/GPU/Reprojection_helper.cc
         src/GPU/SSR_helper.cc
+        src/GPU/Reload_shader.cc
     )
 endif()
 

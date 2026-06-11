@@ -21,13 +21,15 @@ class DFG_Lut_helper {
 
     static GPU_texture GetBlankSRVTexture();
 
-  private:
-    void CreateRootSignature();
-    void CreatePipelineStateObject();
-    ComPtr<ID3D12RootSignature> m_rootSignature;
-    ComPtr<ID3D12PipelineState> m_pipelineState;
+    static void Reload();
 
-    const wchar_t* c_cs_file_name = L"CS_DFG_Lut.dxil";
+  private:
+    static void CreateRootSignature();
+    static void CreatePipelineStateObject();
+    static ComPtr<ID3D12RootSignature> m_rootSignature;
+    static ComPtr<ID3D12PipelineState> m_pipelineState;
+
+    static constexpr const wchar_t* c_cs_file_name = L"CS_DFG_Lut.dxil";
 
     GPU_texture DFG_lut{};
 

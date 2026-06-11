@@ -36,7 +36,16 @@ struct ReprojectionCSInput {
     int DebugMode;
 };
 
+ComPtr<ID3D12RootSignature> Reprojection_helper::m_rootSignature{};
+ComPtr<ID3D12PipelineState> Reprojection_helper::m_PipelineState{};
+
 Reprojection_helper::Reprojection_helper() {
+    if (!m_rootSignature || !m_PipelineState) {
+        Reload();
+    }
+}
+
+void Reprojection_helper::Reload() {
     CreateRootSignature();
     CreatePipelineStateObject();
 }

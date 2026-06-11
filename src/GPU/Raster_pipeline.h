@@ -83,9 +83,11 @@ class Raster_pipeline : public IRender_pipeline {
 
     void OnEnvmapLoad(GPU_texture& envmap) override;
 
+    static void Reload();
+
   private:
-    void CreateRootSignatures();
-    void CreatePipelineStateObjects();
+    static void CreateRootSignatures();
+    static void CreatePipelineStateObjects();
     void CreateConstantBuffers();
     void ComputeDFGLut();
     void ComputeEnvmapLut(const GPU_texture& envmap);
@@ -96,12 +98,12 @@ class Raster_pipeline : public IRender_pipeline {
     void copy_render_target_to_framebuffer(const CPUFrameBuffer& framebuffer);
     void copy_ssr_to_framebuffer(const CPUFrameBuffer& framebuffer);
 
-    const wchar_t* c_vs_file_name = L"VS_Main.dxil";
-    const wchar_t* c_ps_file_name = L"PS_Main.dxil";
-    const wchar_t* c_vs_background_file_name = L"VS_Background.dxil";
-    const wchar_t* c_ps_background_file_name = L"PS_Background.dxil";
-    const wchar_t* c_vs_gbuff_file_name = L"VS_Gbuffer.dxil";
-    const wchar_t* c_ps_gbuff_file_name = L"PS_Gbuffer.dxil";
+    static constexpr const wchar_t* c_vs_file_name = L"VS_Main.dxil";
+    static constexpr const wchar_t* c_ps_file_name = L"PS_Main.dxil";
+    static constexpr const wchar_t* c_vs_background_file_name = L"VS_Background.dxil";
+    static constexpr const wchar_t* c_ps_background_file_name = L"PS_Background.dxil";
+    static constexpr const wchar_t* c_vs_gbuff_file_name = L"VS_Gbuffer.dxil";
+    static constexpr const wchar_t* c_ps_gbuff_file_name = L"PS_Gbuffer.dxil";
 
     union AlignedSceneConstantBuffer {
         RasterConstantBuffer constants;
@@ -116,11 +118,11 @@ class Raster_pipeline : public IRender_pipeline {
     // Pipeline state objects
     CD3DX12_VIEWPORT m_viewport;
     CD3DX12_RECT m_scissorRect;
-    ComPtr<ID3D12RootSignature> m_rootSignature;
-    ComPtr<ID3D12PipelineState> m_pipelineState;
-    ComPtr<ID3D12PipelineState> m_alphaBlendingPipelineState;
-    ComPtr<ID3D12PipelineState> m_backgroundPipelineState;
-    ComPtr<ID3D12PipelineState> m_GbufferPipelineState;
+    static ComPtr<ID3D12RootSignature> m_rootSignature;
+    static ComPtr<ID3D12PipelineState> m_pipelineState;
+    static ComPtr<ID3D12PipelineState> m_alphaBlendingPipelineState;
+    static ComPtr<ID3D12PipelineState> m_backgroundPipelineState;
+    static ComPtr<ID3D12PipelineState> m_GbufferPipelineState;
     
     Kawase_blur_helper m_blur_helper{};
     GTAO_helper m_GTAO_helper{};

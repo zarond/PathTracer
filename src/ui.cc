@@ -8,6 +8,7 @@
 #include "cpu_framebuffer.h"
 #include "d3d_context.h"
 #include "GPU/GPU_renderer.h"
+#include "GPU/Reload_shaders.h"
 
 #include "backends/imgui_impl_dx12.h"
 #include "backends/imgui_impl_win32.h"
@@ -664,6 +665,19 @@ static void CommonRenderSettingsUI(Viewer& viewer, ConsoleArgs& console_argument
     }
 }
 
+static void ReloadShadersUI(Viewer& viewer) {
+    if (!viewer.is_using_gpu_renderer()) {
+        return;
+    }
+    if (viewer.get_rendering_state() != RenderingState::Idle) {
+        ImGui::Text("Stop rendering process to reload shaders");
+        return;
+    }
+    if (ImGui::Button("Reload shaders")) {
+        ReloadShaders();
+    }
+}
+
 static void RasterRenderSettingsUI(Viewer& viewer) {
     RenderPipelineMode pipeline_mode = viewer.get_active_gpu_pipeline_mode();
     if (!viewer.is_using_gpu_renderer() || pipeline_mode != RenderPipelineMode::RasterPipeline) {
@@ -735,6 +749,7 @@ void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector
     }
     ImGui::Separator();
     GeneralRenderSettingsUI(viewer, console_arguments, deferredDeletes, hardware_ray_tracing_support);
+    ReloadShadersUI(viewer);
     CommonRenderSettingsUI(viewer, console_arguments);
     RaytracingRenderSettingsUI(viewer, console_arguments);
     RasterRenderSettingsUI(viewer);

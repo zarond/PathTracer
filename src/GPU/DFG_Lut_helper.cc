@@ -13,7 +13,16 @@ enum Value : int {
 
 namespace app {
 
-DFG_Lut_helper::DFG_Lut_helper() { 
+ComPtr<ID3D12RootSignature> DFG_Lut_helper::m_rootSignature{};
+ComPtr<ID3D12PipelineState> DFG_Lut_helper::m_pipelineState{};
+
+DFG_Lut_helper::DFG_Lut_helper() {
+    if (!m_rootSignature || !m_pipelineState) {
+        Reload();
+    }
+}
+
+void DFG_Lut_helper::Reload() {
     CreateRootSignature();
     CreatePipelineStateObject();
 }

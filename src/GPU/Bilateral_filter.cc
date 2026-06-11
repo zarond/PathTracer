@@ -29,7 +29,16 @@ struct FilterCSInput {
     float rcp_NormalRangeDenom;
 };
 
+ComPtr<ID3D12RootSignature> Bilateral_filter::m_rootSignature{};
+ComPtr<ID3D12PipelineState> Bilateral_filter::m_PipelineState{};
+
 Bilateral_filter::Bilateral_filter() {
+    if (!m_rootSignature || !m_PipelineState) {
+        Reload();
+    }
+}
+
+void Bilateral_filter::Reload() {
     CreateRootSignature();
     CreatePipelineStateObject();
 }

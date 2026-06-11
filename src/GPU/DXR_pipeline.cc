@@ -32,11 +32,24 @@ namespace app {
 
 using namespace glm;
 
+ComPtr<ID3D12RootSignature> DXR_pipeline::m_raytracingGlobalRootSignature{};
+ComPtr<ID3D12RootSignature> DXR_pipeline::m_raytracingLocalRootSignature{};
+ComPtr<ID3D12StateObject> DXR_pipeline::m_dxrStateObjectRayCaster{};
+ComPtr<ID3D12StateObject> DXR_pipeline::m_dxrStateObjectAmbientOcclusion{};
+ComPtr<ID3D12StateObject> DXR_pipeline::m_dxrStateObjectPBR{};
+
 DXR_pipeline::DXR_pipeline() {
-    CreateRootSignatures();
-    CreateRaytracingPipelines();
+    if (!m_raytracingGlobalRootSignature || !m_raytracingLocalRootSignature || !m_dxrStateObjectRayCaster ||
+        !m_dxrStateObjectAmbientOcclusion || !m_dxrStateObjectPBR) {
+        Reload();
+    }
     CreateConstantBuffers();
     BuildAllShaderTables();
+}
+
+void DXR_pipeline::Reload() {
+    CreateRootSignatures();
+    CreateRaytracingPipelines();
 }
 
 DXR_pipeline::~DXR_pipeline() { release_gpu_resources(); }

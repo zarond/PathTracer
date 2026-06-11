@@ -35,12 +35,25 @@ namespace app {
 
 using namespace glm;
 
+ComPtr<ID3D12RootSignature> Raster_pipeline::m_rootSignature{};
+ComPtr<ID3D12PipelineState> Raster_pipeline::m_pipelineState{};
+ComPtr<ID3D12PipelineState> Raster_pipeline::m_alphaBlendingPipelineState{};
+ComPtr<ID3D12PipelineState> Raster_pipeline::m_backgroundPipelineState{};
+ComPtr<ID3D12PipelineState> Raster_pipeline::m_GbufferPipelineState{};
+
 Raster_pipeline::Raster_pipeline() {
-    CreateRootSignatures();
-    CreatePipelineStateObjects();
+    if (!m_rootSignature || !m_pipelineState || !m_alphaBlendingPipelineState || !m_backgroundPipelineState ||
+        !m_GbufferPipelineState) {
+        Reload();
+    }
     CreateConstantBuffers();
 
     ComputeDFGLut();
+}
+
+void Raster_pipeline::Reload() {
+    CreateRootSignatures();
+    CreatePipelineStateObjects();
 }
 
 void Raster_pipeline::OnModelLoad(GPU_model& gpu_model) {

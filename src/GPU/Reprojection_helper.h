@@ -23,15 +23,16 @@ class Reprojection_helper {
 
     static bool DebugMode;
 
+    static void Reload();
+
   private:
-    void CreateRootSignature();
-    void CreatePipelineStateObject();
-    void CreateDescriptorHeap();
+    static void CreateRootSignature();
+    static void CreatePipelineStateObject();
 
-    ComPtr<ID3D12RootSignature> m_rootSignature;
-    ComPtr<ID3D12PipelineState> m_PipelineState;
+    static ComPtr<ID3D12RootSignature> m_rootSignature;
+    static ComPtr<ID3D12PipelineState> m_PipelineState;
 
-    const wchar_t* c_cs_file_name = L"CS_Reprojection.dxil";
+    static constexpr const wchar_t* c_cs_file_name = L"CS_Reprojection.dxil";
 
     void release_gpu_resources();
 };

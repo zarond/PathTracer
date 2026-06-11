@@ -26,10 +26,20 @@ struct MipCSInput {
     int baseMip;
 };
 
+ComPtr<ID3D12RootSignature> Mipmaps_helper::m_rootSignature{};
+ComPtr<ID3D12PipelineState> Mipmaps_helper::m_PipelineState{};
+ComPtr<ID3D12PipelineState> Mipmaps_helper::m_HiZ_PipelineState{};
+
 Mipmaps_helper::Mipmaps_helper() {
+    if (!m_rootSignature || !m_PipelineState || !m_HiZ_PipelineState) {
+        Reload();
+    }
+    CreateDescriptorHeap();
+}
+
+void Mipmaps_helper::Reload() {
     CreateRootSignature();
     CreatePipelineStateObject();
-    CreateDescriptorHeap();
 }
 
 Mipmaps_helper::~Mipmaps_helper() {

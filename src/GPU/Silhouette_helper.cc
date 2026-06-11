@@ -16,7 +16,16 @@ namespace app {
 
 using namespace glm;
 
+ComPtr<ID3D12RootSignature> Silhouette_helper::m_rootSignature{};
+ComPtr<ID3D12PipelineState> Silhouette_helper::m_PipelineState{};
+
 Silhouette_helper::Silhouette_helper() {
+    if (!m_rootSignature || !m_PipelineState) {
+        Reload();
+    }
+}
+
+void Silhouette_helper::Reload() {
     CreateRootSignature();
     CreatePipelineStateObject();
 }

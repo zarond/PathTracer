@@ -39,7 +39,16 @@ struct SSRCSInput {
     float PrefilterDistanceMult;
 };
 
+ComPtr<ID3D12RootSignature> SSR_helper::m_rootSignature{};
+ComPtr<ID3D12PipelineState> SSR_helper::m_PipelineState{};
+
 SSR_helper::SSR_helper() {
+    if (!m_rootSignature || !m_PipelineState) {
+        Reload();
+    }
+}
+
+void SSR_helper::Reload() {
     CreateRootSignature();
     CreatePipelineStateObject();
 }

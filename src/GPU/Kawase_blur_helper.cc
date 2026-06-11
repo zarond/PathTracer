@@ -22,10 +22,20 @@ struct KawaseCSInput {
     int numMips;
 };
 
+ComPtr<ID3D12RootSignature> Kawase_blur_helper::m_rootSignature{};
+ComPtr<ID3D12PipelineState> Kawase_blur_helper::m_DownsamplePipelineState{};
+ComPtr<ID3D12PipelineState> Kawase_blur_helper::m_UpsamplePipelineState{};
+
 Kawase_blur_helper::Kawase_blur_helper() {
+    if (!m_rootSignature || !m_DownsamplePipelineState || !m_UpsamplePipelineState) {
+        Reload();
+    }
+    CreateDescriptorHeap();
+}
+
+void Kawase_blur_helper::Reload() {
     CreateRootSignature();
     CreatePipelineStateObject();
-    CreateDescriptorHeap();
 }
 
 Kawase_blur_helper::~Kawase_blur_helper() { release_gpu_resources(); }

@@ -28,14 +28,15 @@ class GTAO_helper {
     float AODepthSigma = 0.01;
     float AONormalSigma = 0.01;
 
+    static void Reload();
+
   private:
-    void CreateRootSignature();
-    void CreatePipelineStateObject();
-    void CreateDescriptorHeap();
+    static void CreateRootSignature();
+    static void CreatePipelineStateObject();
     void ResizeInnerResource(int new_width, int new_height);
 
-    ComPtr<ID3D12RootSignature> m_rootSignature;
-    ComPtr<ID3D12PipelineState> m_PipelineState;
+    static ComPtr<ID3D12RootSignature> m_rootSignature;
+    static ComPtr<ID3D12PipelineState> m_PipelineState;
 
     GPU_texture m_SpatialDenoised;
     GPU_texture m_SpatialDenoised_previous;
@@ -46,7 +47,7 @@ class GTAO_helper {
     fmat4x4 ViewProjection_previous{};
     fmat4x4 Projection_previous{};
 
-    const wchar_t* c_cs_file_name = L"CS_GTAO.dxil";
+    static constexpr const wchar_t* c_cs_file_name = L"CS_GTAO.dxil";
 
     void release_gpu_resources();
 };

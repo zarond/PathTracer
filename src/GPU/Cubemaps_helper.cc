@@ -21,7 +21,17 @@ struct LutCSInput {
     float roughness;
 };
 
+ComPtr<ID3D12RootSignature> EnvCube_helper::m_rootSignature{};
+ComPtr<ID3D12PipelineState> EnvCube_helper::m_DiffusePipelineState{};
+ComPtr<ID3D12PipelineState> EnvCube_helper::m_SpecularPipelineState{};
+
 EnvCube_helper::EnvCube_helper() {
+    if (!m_rootSignature || !m_DiffusePipelineState || !m_SpecularPipelineState) {
+        Reload();
+    }
+}
+
+void EnvCube_helper::Reload() {
     CreateRootSignature();
     CreatePipelineStateObject();
 }

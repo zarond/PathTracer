@@ -21,18 +21,20 @@ class Mipmaps_helper {
 
     static GPU_texture GetBlankCompatibleUAVTex(GPU_texture& texture);
 
+    static void Reload();
+
   private:
-    void CreateRootSignature();
-    void CreatePipelineStateObject();
+    static void CreateRootSignature();
+    static void CreatePipelineStateObject();
     void CreateDescriptorHeap();
     void CreateCounterBuffer();
 
-    ComPtr<ID3D12RootSignature> m_rootSignature;
-    ComPtr<ID3D12PipelineState> m_PipelineState;
-    ComPtr<ID3D12PipelineState> m_HiZ_PipelineState;
+    static ComPtr<ID3D12RootSignature> m_rootSignature;
+    static ComPtr<ID3D12PipelineState> m_PipelineState;
+    static ComPtr<ID3D12PipelineState> m_HiZ_PipelineState;
 
-    const wchar_t* c_cs_file_name = L"CS_SinglePassMips.dxil";
-    const wchar_t* c_cs_hi_z_file_name = L"CS_MinFilter.dxil";
+    static constexpr const wchar_t* c_cs_file_name = L"CS_SinglePassMips.dxil";
+    static constexpr const wchar_t* c_cs_hi_z_file_name = L"CS_MinFilter.dxil";
 
     ComPtr<ID3D12DescriptorHeap> m_SrvDescHeap;
     D3D12_CPU_DESCRIPTOR_HANDLE HeapStartCpu = {};

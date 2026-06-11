@@ -110,7 +110,7 @@ float ThresholdFade(float value, float threshold, float mult_range, float lin_ra
 
 bool IsPotentialHit(float3 sampleUV, float sampleDepth) { return sampleUV.z >= sampleDepth; }
 
-bool CheckPotentialHit(inout float3 sampleUV, float3 sampleDepth, float3 rayUVDirNorm, float3 l, inout float hit_confidence)
+bool CheckPotentialHit(inout float3 sampleUV, float sampleDepth, float3 rayUVDirNorm, float3 l, inout float hit_confidence)
 {
     const float3 hit_normals = Gbuffer.SampleLevel(PointSampler, sampleUV.xy, 0).xyz;
     const float LoN = dot(l, hit_normals);
