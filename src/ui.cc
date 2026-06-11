@@ -340,6 +340,9 @@ void RenderedImageUI(Viewer& viewer, const bool hardware_ray_tracing_support) {
             offset.x += drag_delta.x / scale;
             offset.y += drag_delta.y / scale;
         }
+        if (ImGui::IsKeyPressed(ImGuiKey_C)) {
+            offset = {-WorkSize.x * 0.5f, -WorkSize.y * 0.5f};
+        }
     }
     const auto texture_srv_gpu_handle = framebuffer.srv_gpu_handle;
     ImGui::SetCursorPos(ImVec2(scale * offset.x + WorkSize.x * 0.5f, scale * offset.y + WorkSize.y * 0.5f));
@@ -369,13 +372,15 @@ static void RenderingProgressUI(Viewer& viewer) {
     ImGui::Text("Render progress %.1f percent.", 100.f * progress);
     ImGui::ProgressBar(progress);
     if (rendering_state == RenderingState::Idle) {
-        if (ImGui::Button("Render")) {
+        if (ImGui::Button("Render") || ImGui::IsKeyPressed(ImGuiKey_Space)) {
             viewer.async_start_render();
         }
+        HelpTooltip("Press Space to start rendering");
     } else {
-        if (ImGui::Button("Stop Rendering")) {
+        if (ImGui::Button("Stop Rendering") || ImGui::IsKeyPressed(ImGuiKey_Space)) {
             viewer.cancel_rendering();
         }
+        HelpTooltip("Press Space to stop rendering");
     }
     {
         bool continuous_rendering = viewer.continuous_rendering.load();
@@ -584,6 +589,7 @@ static void GeneralRenderSettingsUI(Viewer& viewer, ConsoleArgs& console_argumen
     {
         bool size_changed = false;
         InputUInt("Width", &console_arguments.windowWidth, 100);
+        HelpTooltip("Press C to move image to the upper left corner of the window");
         size_changed |= ImGui::IsItemDeactivatedAfterEdit();
         InputUInt("Height", &console_arguments.windowHeight, 100);
         size_changed |= ImGui::IsItemDeactivatedAfterEdit();
