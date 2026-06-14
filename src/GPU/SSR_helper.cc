@@ -12,8 +12,8 @@ enum Value : int {
     Gbuffer = 0,
     Depth,
     Frame,
+    SSR_buffer,
     OutputUAV,
-    OutputUAVDepth,
     RootConstants,
 
     Count
@@ -40,10 +40,11 @@ struct SSRCSInput {
 };
 
 ComPtr<ID3D12RootSignature> SSR_helper::m_rootSignature{};
-ComPtr<ID3D12PipelineState> SSR_helper::m_PipelineState{};
+ComPtr<ID3D12PipelineState> SSR_helper::m_TracePipelineState{};
+ComPtr<ID3D12PipelineState> SSR_helper::m_ResolvePipelineState{};
 
 SSR_helper::SSR_helper() {
-    if (!m_rootSignature || !m_PipelineState) {
+    if (!m_rootSignature || !m_TracePipelineState || !m_ResolvePipelineState) {
         Reload();
     }
 }
@@ -76,7 +77,7 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
     std::swap(m_SSR_texture_previous, SSR_uav_texture); // at the top because SSR_uav_texture is used after outside of this call to function
 
     // Reproject previous Frame before doing SSR
-    if (consecutive_frame_count > 1) {
+    {
         reprojection_helper.Reproject(Frame_texture, DepthUAVTexture_previous, m_Frame_reprojected, DepthUAVTexture, Projection,
             glm::inverse(ViewProjection), ViewProjection_previous, Projection_previous, 0.0f, 10000.0f, true, nullptr);
         const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(m_Frame_reprojected.get_gpu_resource().Get());
@@ -98,13 +99,12 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
     commandList->ResourceBarrier(2, bariers_in);
 
     commandList->SetComputeRootSignature(m_rootSignature.Get());
-    commandList->SetPipelineState(m_PipelineState.Get());
+    commandList->SetPipelineState(m_TracePipelineState.Get());
 
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::Gbuffer, G_buff_texture.GetSRVHandle());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::Depth, DepthUAVTexture.GetSRVHandle());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::Frame, m_Frame_reprojected.GetSRVHandle());
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputUAV, SSR_uav_texture.GetUAVHandle());
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputUAVDepth, m_SSR_reflection_depth.GetUAVHandle());
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputUAV, m_SSR_buff.GetUAVHandle());
 
     int MaxDepthMipLevel = GPU_texture::CalculateMipCount(width, height) - 1;
     float MaxFrameMipLevel = UsePrefiltering? RenderFrameMips - 1.0f : 0.0f;
@@ -122,14 +122,28 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
 
     commandList->Dispatch(GroupsX, GroupsY, 1);
 
+    auto barrier_ssr_buff = CD3DX12_RESOURCE_BARRIER::Transition(m_SSR_buff.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    commandList->ResourceBarrier(1, &barrier_ssr_buff);
+
+    commandList->SetPipelineState(m_ResolvePipelineState.Get());
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::SSR_buffer, m_SSR_buff.GetSRVHandle());
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputUAV, SSR_uav_texture.GetUAVHandle());
+
+    commandList->Dispatch(GroupsX, GroupsY, 1);
+
     // Temporal reprojection denoiser
     if (DenoiseEnabled && consecutive_frame_count > 1) {
         auto barrier_ssr_uav = CD3DX12_RESOURCE_BARRIER::UAV(SSR_uav_texture.get_gpu_resource().Get());
         commandList->ResourceBarrier(1, &barrier_ssr_uav);
         reprojection_helper.Reproject(m_SSR_texture_previous, DepthUAVTexture_previous, SSR_uav_texture, DepthUAVTexture,
             Projection, glm::inverse(ViewProjection), ViewProjection_previous, Projection_previous, 
-            1.0f / 16.0f, DepthThreshold, false, &m_SSR_reflection_depth);
+            1.0f / 16.0f, DepthThreshold, false, ParallaxReprojection ? &m_SSR_buff : nullptr);
     }
+
+    barrier_ssr_buff = CD3DX12_RESOURCE_BARRIER::Transition(m_SSR_buff.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    commandList->ResourceBarrier(1, &barrier_ssr_buff);
 
     barrier_depth_uav = CD3DX12_RESOURCE_BARRIER::Transition(DepthUAVTexture.get_gpu_resource().Get(),
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -158,8 +172,8 @@ void SSR_helper::ResizeInnerResource(int new_width, int new_height) {
     m_Frame_reprojected = GPU_texture{currentWidth, currentHeight, flags};
 
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
-    m_SSR_reflection_depth.release_gpu_resource();
-    m_SSR_reflection_depth = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R32_FLOAT};
+    m_SSR_buff.release_gpu_resource();
+    m_SSR_buff = GPU_texture{currentWidth, currentHeight, flags};
 }
 
 void SSR_helper::CreateRootSignature() {
@@ -169,16 +183,16 @@ void SSR_helper::CreateRootSignature() {
     ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 Gbuffer srv
     ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 1 Depth srv
     ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 1 Frame srv
-    ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output uav
-    ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);  // 1 output depth uav
+    ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 1 SSR_buffer srv
+    ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output uav
     ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);  // 1 constant buffer.
 
     CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
     rootParameters[GlobalRootSignatureParams::Gbuffer].InitAsDescriptorTable(1, &ranges[0]);
     rootParameters[GlobalRootSignatureParams::Depth].InitAsDescriptorTable(1, &ranges[1]);
     rootParameters[GlobalRootSignatureParams::Frame].InitAsDescriptorTable(1, &ranges[2]);
-    rootParameters[GlobalRootSignatureParams::OutputUAV].InitAsDescriptorTable(1, &ranges[3]);
-    rootParameters[GlobalRootSignatureParams::OutputUAVDepth].InitAsDescriptorTable(1, &ranges[4]);
+    rootParameters[GlobalRootSignatureParams::SSR_buffer].InitAsDescriptorTable(1, &ranges[3]);
+    rootParameters[GlobalRootSignatureParams::OutputUAV].InitAsDescriptorTable(1, &ranges[4]);
     rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(SSRCSInput) / 4, 0);
 
     D3D12_STATIC_SAMPLER_DESC point_sampler = {};
@@ -210,23 +224,28 @@ void SSR_helper::CreateRootSignature() {
 }
 
 void SSR_helper::CreatePipelineStateObject() {
-    auto [cs_shaderBlob, cs_bytecode] = LoadShader(c_cs_file_name);
+    auto [cs_trace_shaderBlob, cs_trace_bytecode] = LoadShader(c_cs_trace_file_name);
+    auto [cs_resolve_shaderBlob, cs_resolve_bytecode] = LoadShader(c_cs_resolve_file_name);
 
     D3DContext& d3d_ctx = D3DContext::Get();
     auto device = d3d_ctx.m_d3dDevice;
 
     D3D12_COMPUTE_PIPELINE_STATE_DESC computePsoDesc = {};
     computePsoDesc.pRootSignature = m_rootSignature.Get();
-    computePsoDesc.CS = cs_bytecode;
+    computePsoDesc.CS = cs_trace_bytecode;
     computePsoDesc.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
     computePsoDesc.NodeMask = 1;
 
-    ThrowIfFailed(device->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&m_PipelineState)));
+    ThrowIfFailed(device->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&m_TracePipelineState)));
+
+    computePsoDesc.CS = cs_resolve_bytecode;
+    ThrowIfFailed(device->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&m_ResolvePipelineState)));
 }
 
 void SSR_helper::release_gpu_resources() {
     m_rootSignature.Reset();
-    m_PipelineState.Reset();
+    m_TracePipelineState.Reset();
+    m_ResolvePipelineState.Reset();
 }
 
 }  // namespace app

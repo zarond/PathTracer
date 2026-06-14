@@ -4,7 +4,6 @@
 
 #include "../d3d_context.h"
 #include "Common_helpers.h"
-#include "Mipmaps_helper.h"
 #include "Bilateral_filter.h"
 #include "Reprojection_helper.h"
 

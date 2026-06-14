@@ -40,7 +40,8 @@ set(SHADER_SOURCES
     CS_Bilateral_filter     BilateralFilter.hlsl    cs_6_6
     CS_Silhouette       Silhouette.hlsl             cs_6_6
     CS_Reprojection     Reprojection.hlsl           cs_6_6
-    CS_SSR              SSR.hlsl                    cs_6_6
+    CS_SSR_trace        SSR.hlsl                    cs_6_6
+    CS_SSR_resolve      SSR.hlsl                    cs_6_6
 )
 
 set(APP_SOURCES

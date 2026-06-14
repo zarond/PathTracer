@@ -28,6 +28,7 @@ class SSR_helper {
     float SSR_GGXClamp = 0.0f;
     bool UsePrefiltering = true;
     float PrefilteringDistance = 0.1f;
+    bool ParallaxReprojection = true;
 
     static void Reload();
 
@@ -37,10 +38,11 @@ class SSR_helper {
     void ResizeInnerResource(int new_width, int new_height);
 
     static ComPtr<ID3D12RootSignature> m_rootSignature;
-    static ComPtr<ID3D12PipelineState> m_PipelineState;
+    static ComPtr<ID3D12PipelineState> m_TracePipelineState;
+    static ComPtr<ID3D12PipelineState> m_ResolvePipelineState;
 
     GPU_texture m_SSR_texture_previous;
-    GPU_texture m_SSR_reflection_depth;
+    GPU_texture m_SSR_buff; 
     GPU_texture m_Frame_reprojected;
     UINT64 currentWidth = 0;
     UINT currentHeight = 0;
@@ -49,7 +51,8 @@ class SSR_helper {
     fmat4x4 ViewProjection_previous{};
     fmat4x4 Projection_previous{};
 
-    static constexpr const wchar_t* c_cs_file_name = L"CS_SSR.dxil";
+    static constexpr const wchar_t* c_cs_trace_file_name = L"CS_SSR_trace.dxil";
+    static constexpr const wchar_t* c_cs_resolve_file_name = L"CS_SSR_resolve.dxil";
 
     void release_gpu_resources();
 };

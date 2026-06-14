@@ -25,11 +25,11 @@ Texture2D<float> Depth : register(t1, space0);
 // Frame
 Texture2D<float4> Frame : register(t2, space0);
 
+// SSR buffeer
+Texture2D<float4> SSR_buffer : register(t3, space0);
+
 // Output
 RWTexture2D<float4> Output : register(u0, space0);
-
-// Output reflection depth
-RWTexture2D<float> OutputDepth : register(u1, space0);
 
 // Constant Buffer
 ConstantBuffer<SSRCSInput> g_CB : register(b0);
@@ -163,7 +163,7 @@ void AdvanceToNextCell(
 }
 
 [numthreads(16, 16, 1)] 
-void CS_SSR(uint3 DTid : SV_DispatchThreadID, uint Gidx : SV_GroupIndex) {
+void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
     if (DTid.x >= g_CB.FrameSize.x || DTid.y >= g_CB.FrameSize.y) return;
 
     const int STEPS = 128;
@@ -174,7 +174,6 @@ void CS_SSR(uint3 DTid : SV_DispatchThreadID, uint Gidx : SV_GroupIndex) {
     const float centerDepth = Depth.Load(DTid);
     if (centerDepth >= 1.0f || centerDepth <= 0.0f) {
         Output[DTid.xy] = float4(0.0f, 0.0f, 0.0f, 0.0f);
-        OutputDepth[DTid.xy] = -1.0f;
         return;
     }
 
@@ -261,14 +260,40 @@ void CS_SSR(uint3 DTid : SV_DispatchThreadID, uint Gidx : SV_GroupIndex) {
         //}
     }
     if (found_hit) {
-        float3 reflection_pos = ReconstructViewPosition(sampleUV.xy, sampleUV.z);
-        float dist = length(reflection_pos - pos);
-        float lod = min(dist * g_CB.PrefilterDistanceMult, 1.0f) * roughness * g_CB.MaxFrameMipLevel;
-        Output[DTid.xy] = float4(Frame.SampleLevel(LinearSampler, sampleUV.xy, lod).rgb, hit_confidence);
-        OutputDepth[DTid.xy] = dist * abs(v.z);
+        float3 reflection_ray = ReconstructViewPosition(sampleUV.xy, sampleUV.z) - pos;
+        float dist = length(reflection_ray);
+        dist *= abs(v.z);
+        Output[DTid.xy] = float4(sampleUV.xy, dist, hit_confidence);
     } else {
-        Output[DTid.xy] = 0.0f;
-        OutputDepth[DTid.xy] = 0.0f;
+        Output[DTid.xy] = float4(0.0f, 0.0f, 0.0f, 0.0f);
+    }
+}
+
+[numthreads(16, 16, 1)] 
+void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
+    if (DTid.x >= g_CB.FrameSize.x || DTid.y >= g_CB.FrameSize.y) return;
+
+    const float4 GbufferData = Gbuffer.Load(DTid);
+    const float roughness = GbufferData.w;
+
+    const float4 SSR_sample = SSR_buffer.Load(DTid);
+    const float sampleDepth = Depth.Load(DTid);
+    const float2 sampleUV = SSR_sample.xy;
+    float reflection_dist = SSR_sample.z;
+    const float hit_confidence = SSR_sample.w;
+
+    if (hit_confidence == 0.0f) {
+        Output[DTid.xy].w = hit_confidence;
+        return;
     }
 
+    const float2 texel = g_CB.texel_size;
+    const float2 uv = (DTid.xy + 0.5f) * texel;
+    const float3 v = normalize(-ReconstructViewPosition(uv, 0.0f));
+    reflection_dist /= abs(v.z);
+
+    float lod = min(reflection_dist * g_CB.PrefilterDistanceMult, 1.0f) * roughness * g_CB.MaxFrameMipLevel;
+    float3 frame_sample = Frame.SampleLevel(LinearSampler, sampleUV, lod).rgb;
+
+    Output[DTid.xy] = float4(frame_sample, hit_confidence);
 }

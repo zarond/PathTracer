@@ -130,6 +130,7 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_SSR_helper.MaxRoughness = render_settings.SSRMaxRoughness;
     m_SSR_helper.SSR_GGXClamp = render_settings.SSR_GGXClamp;
     m_SSR_helper.UsePrefiltering = render_settings.SSRUsePrefiltering;
+    m_SSR_helper.ParallaxReprojection = render_settings.SSRParallaxReprojection;
     m_SSR_helper.PrefilteringDistance = render_settings.SSRPrefilteringDistance;
     Reprojection_helper::DebugMode = render_settings.ReprojectionDebugMode;
     RaytracingMode = render_settings.programMode;

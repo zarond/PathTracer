@@ -148,3 +148,9 @@ float SpecularAntialiasing(float roughness, float3 n, float SIGMA2, float KAPPA)
     float square_roughness = saturate(roughness * roughness + kernel_roughness2);
     return sqrt(square_roughness);
 }
+
+float GGX_brdf(float NoH, float LoH, float VoN, float LoN, float a) { 
+    float V = V_SmithGGXCorrelated(VoN, LoN, a);
+    float D = D_GGX(NoH, a);
+    return D * V;
+}

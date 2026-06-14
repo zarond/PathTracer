@@ -717,6 +717,8 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
     raster_settings_changed |= ImGui::Checkbox("Use SSR prefiltering", &render_settings.SSRUsePrefiltering);
     raster_settings_changed |= ImGui::SliderFloat(
         "SSR Prefiltering Distance", &render_settings.SSRPrefilteringDistance, 0.0f, 10.0f, nullptr);
+    raster_settings_changed |=
+        ImGui::Checkbox("SSR Use parallax for reprojection", &render_settings.SSRParallaxReprojection);
     raster_settings_changed |= ImGui::Checkbox("Reprojection Debug", &render_settings.ReprojectionDebugMode);
     raster_settings_changed |= ImGui::Checkbox("Enable specular AA", &render_settings.specular_aa_enabled);
     raster_settings_changed |= ImGui::SliderFloat(
