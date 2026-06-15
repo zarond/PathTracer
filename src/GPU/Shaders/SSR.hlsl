@@ -262,7 +262,7 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
     if (found_hit) {
         float3 reflection_ray = ReconstructViewPosition(sampleUV.xy, sampleUV.z) - pos;
         float dist = length(reflection_ray);
-        dist *= abs(v.z);
+        dist *= abs(v.z); // linear depth in view space instead of distance
         Output[DTid.xy] = float4(sampleUV.xy, dist, hit_confidence);
     } else {
         Output[DTid.xy] = float4(0.0f, 0.0f, 0.0f, 0.0f);

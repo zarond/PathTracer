@@ -1,8 +1,8 @@
 # PathTracer
 
-A small path-tracing renderer written in C++ 20 for educational purposes.
+A small path-tracing renderer written in C++ 20 for educational purposes. Now featuring a real-time raster graphics mode as well.
 
-You can choose either a CPU Renderer or a DirectX Raytracing (DXR) GPU Renderer in GUI (it is available only from GUI mode).
+You can choose either a CPU Renderer, a DirectX Raytracing (DXR) GPU Renderer, or a Raster mode renderer in GUI (it is available only from GUI mode).
 
 The program has GUI, but you can also run it in command-line mode to render images without opening a window.
 
@@ -54,6 +54,8 @@ Try it by running this command in binary (build/Release) folder:
 This image was rendered in 199 seconds on Intel Core i7-11800H @ 2.30GHz; 
 
 And for DXR GPU rendering mode it took 6.9 seconds on NVIDIA GeForce RTX 3070 Laptop GPU.
+
+A real-time raster mode takes 3 ms for the same scene.
 
 ![rendered image](example/render.png)
 
