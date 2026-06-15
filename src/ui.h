@@ -104,14 +104,11 @@ bool InputUInt(
 
 void HelpTooltip(const char* msg);
 
-void ImDrawCallback_ImplDX12_SetSamplerNearest(const ImDrawList* parent_list, const ImDrawCmd* cmd);
-void ImDrawCallback_ImplDX12_SetSamplerLinear(const ImDrawList* parent_list, const ImDrawCmd* cmd);
-
 void SetupImGuiStyle();
 
-void RenderedImageUI(Viewer& viewer, const bool hardware_raytracing_support);
+void RenderedImageUI(Viewer& viewer, const bool hardware_ray_tracing_support);
 
 void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector<PendingDelete>& deferredDeletes,
-    const bool hardware_raytracing_support);
+    const bool hardware_ray_tracing_support);
 
 }  // namespace app

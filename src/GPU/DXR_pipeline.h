@@ -1,0 +1,145 @@
+#pragma once
+
+#define NOMINMAX
+#include <directx/d3d12.h>
+#include <wrl.h>
+#include <directx/d3dx12.h>
+
+#include <cstdint>
+#include <glm/fwd.hpp>
+
+#include "../arguments.h"
+#include "../cpu_framebuffer.h"
+#include "../render_settings.h"
+#include "GPU_model.h"
+
+namespace app {
+
+using glm::fmat4x4;
+using glm::fvec2;
+using glm::fvec3;
+using glm::fvec4;
+
+constexpr int PBR_DXR_RECURSION_DEPTH = 11;
+
+using Microsoft::WRL::ComPtr;
+
+struct RayGenConstantBuffer {
+    fmat4x4 projectionToWorld;
+    fvec4 cameraPosition;
+    fvec2 subpixelOffset;
+    unsigned int frameID;
+    int iteration;
+    float invIterationCount;
+    int samplesPerPixel;
+    float invSamplesPerPixel;
+    int maxNewRaysPerBounce;
+    float invMaxNewRaysPerBounce;
+    int maxRayBounces;
+    float envmapRotation;
+};
+
+class IRender_pipeline {
+  public:
+    virtual ~IRender_pipeline() = default;
+    virtual void SetRenderingSettings(const RenderSettings& render_settings, fvec3 origin, const fmat4x4& NDC2WorldMatrix,
+        const fmat4x4& ViewMatrix, const fmat4x4& ProjectionMatrix, fvec2 subpixelOffset, unsigned int frameID, int iteration,
+        float invIterationCount) = 0;
+    virtual void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) = 0;
+    virtual void OnModelLoad(GPU_model& gpu_model) = 0;
+    virtual void OnEnvmapLoad(GPU_texture& envmap) = 0;
+};
+;
+
+class DXR_pipeline : public IRender_pipeline {
+  public:
+    DXR_pipeline();
+    ~DXR_pipeline();
+
+    void SetRenderingSettings(const RenderSettings& render_settings, fvec3 origin, const fmat4x4& NDC2WorldMatrix,
+        const fmat4x4& ViewMatrix, const fmat4x4& ProjectionMatrix, fvec2 subpixelOffset, unsigned int frameID, int iteration,
+        float invIterationCount) override;
+
+    void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) override;
+
+    void OnModelLoad(GPU_model& gpu_model) override;
+
+    void OnEnvmapLoad(GPU_texture& envmap) override;
+
+    static void Reload();
+
+  private:
+    // Root signatures
+    static ComPtr<ID3D12RootSignature> m_raytracingGlobalRootSignature;
+    static ComPtr<ID3D12RootSignature> m_raytracingLocalRootSignature;
+
+    // Create root signatures for the shaders.
+    static void CreateRootSignatures();
+
+    static void CreateLocalRootSignatureSubobjects(CD3DX12_STATE_OBJECT_DESC* raytracingPipeline);
+
+    static void CreateRaytracingPipelines();
+
+    static void CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const wchar_t* c_anyHitShaderName,
+        const wchar_t* c_closestHitShaderName, const wchar_t* c_missShaderName, ComPtr<ID3D12StateObject>& m_dxrStateObject,
+        UINT maxRecursionDepth);
+
+    void BuildAllShaderTables();
+
+    void BuildShaderTables(const wchar_t* c_closestHitShaderName, const wchar_t* c_missShaderName,
+        ComPtr<ID3D12StateObject>& m_dxrStateObject, ComPtr<ID3D12Resource>& m_missShaderTable,
+        ComPtr<ID3D12Resource>& m_hitGroupShaderTable);
+
+    void CreateConstantBuffers();
+
+    static constexpr const wchar_t* c_dxilLibraryName = L"RaytracingShaders.dxil";  // DXIL library file name
+
+    static constexpr const wchar_t* c_hitGroupName = L"MyHitGroup";
+    static constexpr const wchar_t* c_raygenShaderName = L"RayGen";
+    static constexpr const wchar_t* c_anyHitRCShaderName = L"AnyHitRC";
+    static constexpr const wchar_t* c_closestHitAOShaderName = L"ClosestHitAO";
+    static constexpr const wchar_t* c_closestHitRCShaderName = L"ClosestHitRC";
+    static constexpr const wchar_t* c_closestHitPBRShaderName = L"ClosestHitPBR";
+    static constexpr const wchar_t* c_missAOShaderName = L"MissAO";
+    static constexpr const wchar_t* c_missEnvmapShaderName = L"MissEnvmap";
+
+    union AlignedSceneConstantBuffer {
+        RayGenConstantBuffer constants;
+        uint8_t alignmentPadding[D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT];
+    };
+    AlignedSceneConstantBuffer* m_mappedConstantData;
+
+    // Raytracing scene
+    RayGenConstantBuffer m_rayGenCB;
+    ComPtr<ID3D12Resource> m_perFrameConstants;
+
+    // Shader table for RayGen (common)
+    ComPtr<ID3D12Resource> m_rayGenShaderTable;
+
+    // Shader tables RC
+    ComPtr<ID3D12Resource> m_RC_missShaderTable;
+    ComPtr<ID3D12Resource> m_RC_hitGroupShaderTable;
+
+    // Shader tables AO
+    ComPtr<ID3D12Resource> m_AO_missShaderTable;
+    ComPtr<ID3D12Resource> m_AO_hitGroupShaderTable;
+
+    // Shader tables PBR
+    ComPtr<ID3D12Resource> m_PBR_missShaderTable;
+    ComPtr<ID3D12Resource> m_PBR_hitGroupShaderTable;
+
+    // Ray tracing pipeline states
+    static ComPtr<ID3D12StateObject> m_dxrStateObjectRayCaster;
+    static ComPtr<ID3D12StateObject> m_dxrStateObjectAmbientOcclusion;
+    static ComPtr<ID3D12StateObject> m_dxrStateObjectPBR;
+
+    RayProgramMode RaytracingMode = RayProgramMode::AmbientOcclusion;
+
+    // Ray tracing pipeline state properties, retaining the shader identifiers
+    // to use in the Shader Binding Table
+    ComPtr<ID3D12StateObjectProperties> m_rtStateObjectProps;
+
+    void release_gpu_resources();
+};
+
+}  // namespace app

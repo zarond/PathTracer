@@ -1,0 +1,53 @@
+#pragma once
+
+#define NOMINMAX
+#include <directx/d3d12.h>
+#include <directx/d3dx12.h>
+#include <wrl.h>
+
+#include "GPU_model.h"
+
+namespace app {
+using Microsoft::WRL::ComPtr;
+
+class Mipmaps_helper {
+  public:
+    Mipmaps_helper();
+    ~Mipmaps_helper();
+
+    void Init(); // must call this once before use, contains GPU command list instructions
+
+    void CreateMips(GPU_texture& uav_texture, bool only5Mips = false, bool HiZ = false);
+
+    static GPU_texture GetBlankCompatibleUAVTex(GPU_texture& texture);
+
+    static void Reload();
+
+  private:
+    static void CreateRootSignature();
+    static void CreatePipelineStateObject();
+    void CreateDescriptorHeap();
+    void CreateCounterBuffer();
+
+    static ComPtr<ID3D12RootSignature> m_rootSignature;
+    static ComPtr<ID3D12PipelineState> m_PipelineState;
+    static ComPtr<ID3D12PipelineState> m_HiZ_PipelineState;
+
+    static constexpr const wchar_t* c_cs_file_name = L"CS_SinglePassMips.dxil";
+    static constexpr const wchar_t* c_cs_hi_z_file_name = L"CS_MinFilter.dxil";
+
+    ComPtr<ID3D12DescriptorHeap> m_SrvDescHeap;
+    D3D12_CPU_DESCRIPTOR_HANDLE HeapStartCpu = {};
+    D3D12_GPU_DESCRIPTOR_HANDLE HeapStartGpu = {};
+    UINT HeapHandleIncrement = 0;
+
+    ComPtr<ID3D12Resource> GroupCounters;
+
+    ComPtr<ID3D12Resource2> zero_uploadBuffer;
+
+    constexpr static int MipsLimit = 16;
+
+    void release_gpu_resources();
+};
+
+}  // namespace app

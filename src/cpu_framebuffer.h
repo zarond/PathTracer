@@ -9,7 +9,7 @@
 
 #ifdef WINDOWS_SPECIFIC
 #define NOMINMAX
-#include <d3d12.h>
+#include <directx/d3d12.h>
 #include <wrl.h>
 #endif
 
@@ -219,8 +219,8 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
     D3D12_GPU_DESCRIPTOR_HANDLE uav_gpu_handle{};
     void transition_from_copy_to_srv() const;
     void transition_from_srv_to_copy() const;
-    void transition_from_srv_to_uav();
-    void transition_from_uav_to_srv();
+    void transition_from_srv_to_uav() const;
+    void transition_from_uav_to_srv() const;
     bool nearest_filtering = true;
 
     ComPtr<ID3D12Resource> get_gpu_resource() const;

@@ -69,14 +69,20 @@ Model ModelLoader::construct_model() const {
 
     for (const auto& material : asset_.materials) {
         int baseColor_imageIndex = -1;
+        int AO_imageIndex = -1;
         int metallicRoughness_imageIndex = -1;
         int normal_imageIndex = -1;
         int transmission_imageIndex = -1;
         int emissive_imageIndex = -1;
+        int thickness_imageIndex = -1;
         if (material.pbrData.baseColorTexture.has_value()) {
             auto textureIndex = material.pbrData.baseColorTexture->textureIndex;
             baseColor_imageIndex = asset_.textures[textureIndex].imageIndex.value_or(
                 0);  // narrows size_t to int, but imageIndex should be small enough not to overflow
+        }
+        if (material.occlusionTexture.has_value()) {
+            auto textureIndex = material.occlusionTexture->textureIndex;
+            AO_imageIndex = asset_.textures[textureIndex].imageIndex.value_or(0);
         }
         if (material.pbrData.metallicRoughnessTexture.has_value()) {
             auto textureIndex = material.pbrData.metallicRoughnessTexture->textureIndex;
@@ -95,14 +101,18 @@ Model ModelLoader::construct_model() const {
             emissive_imageIndex = asset_.textures[textureIndex].imageIndex.value_or(0);
         }
         fvec3 attenuationFactor = fvec3(0.0f);
+        fvec3 attenuationColor = fvec3(0.0f);
         if (material.volume) {
-            attenuationFactor = fvec3{material.volume->attenuationColor.x(), material.volume->attenuationColor.y(),
+            attenuationColor = fvec3{material.volume->attenuationColor.x(), material.volume->attenuationColor.y(),
                 material.volume->attenuationColor.z()};
             // Following Gltf standard of KHR_materials_volume:
-            // attenuationFactor = -log(attenuationFactor) / max(1e-5f, material.volume->attenuationDistance);
+            // attenuationFactor = -log(attenuationColor) / max(1e-5f, material.volume->attenuationDistance);
             // Following Blender implementation instead, prefer it more for better control for saturated colors and low
             // density mediums:
-            attenuationFactor = (1.0f - attenuationFactor) / max(1e-5f, material.volume->attenuationDistance);
+            attenuationFactor = (1.0f - attenuationColor) / max(1e-5f, material.volume->attenuationDistance);
+            if (material.volume->thicknessTexture) {
+                thickness_imageIndex = material.volume->thicknessTexture->textureIndex;
+            }
         }
         Material mat{
             .baseColorFactor = std::bit_cast<fvec4>(material.pbrData.baseColorFactor),
@@ -122,7 +132,15 @@ Model ModelLoader::construct_model() const {
             .doubleSided = material.doubleSided,
             .hasVolume = material.volume ? true : false,
             .alphaBlending = (material.alphaMode == fastgltf::AlphaMode::Blend),
-            .alphaCutoff = (material.alphaMode == fastgltf::AlphaMode::Mask) ? material.alphaCutoff : -1.0f};
+            .alphaCutoff = (material.alphaMode == fastgltf::AlphaMode::Mask) ? material.alphaCutoff : -1.0f, 
+            .AOStrength = material.occlusionTexture.has_value() ? material.occlusionTexture->strength : 0.0f,
+            .aoTextureIndex = AO_imageIndex,
+            .thicknessTextureIndex = thickness_imageIndex,
+            .thicknessFactor = material.volume ? material.volume->thicknessFactor : 0.0f,
+            .attenuationColor = attenuationColor,
+            .attenuationDistance = material.volume ? material.volume->attenuationDistance : 0.0f,
+            .useBlenderAttenuation = true,
+        };
         model.materials.push_back(mat);
         model.materials_names.emplace_back(material.name);
     }

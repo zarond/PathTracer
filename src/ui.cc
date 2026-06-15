@@ -7,6 +7,8 @@
 #include "brdf.h"
 #include "cpu_framebuffer.h"
 #include "d3d_context.h"
+#include "GPU/GPU_renderer.h"
+#include "GPU/Reload_shaders.h"
 
 #include "backends/imgui_impl_dx12.h"
 #include "backends/imgui_impl_win32.h"
@@ -225,6 +227,21 @@ void SetupImGuiStyle() {
     }
 }
 
+static bool AttenuationColorSettings(Material& material) {
+    bool settings_changed = ImGui::ColorEdit3(
+        "Attenuation Col.", reinterpret_cast<float*>(&material.attenuationColor), ImGuiColorEditFlags_Float);
+    settings_changed |= ImGui::SliderFloat(
+        "Attenuation Distance", &material.attenuationDistance, 0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
+    settings_changed |= ImGui::Checkbox("Use Blender attenuation", &material.useBlenderAttenuation);
+    HelpTooltip("Calculate attenuation coefficient as in Blender, otherwise do as defined in KHR Extension Volume");
+    if (material.useBlenderAttenuation) {
+        material.attenuationFactor = (1.0f - material.attenuationColor) / glm::max(1e-5f, material.attenuationDistance);
+    } else {
+        material.attenuationFactor = -log(material.attenuationColor) / glm::max(1e-5f, material.attenuationDistance);
+    }
+    return settings_changed;
+}
+
 static void MaterialsSettingsUI(Viewer& viewer) {
     auto& model = viewer.get_model();
     const int materials_size = model.materials.size();
@@ -247,13 +264,14 @@ static void MaterialsSettingsUI(Viewer& viewer) {
         useTextureCheckbox("Use Transmission Texture", current_material.transmissionTextureIndex, original_material.transmissionTextureIndex);
     settings_changed |= 
         useTextureCheckbox("Use Emissive Texture", current_material.emissiveTextureIndex, original_material.emissiveTextureIndex);
+    settings_changed |=
+        useTextureCheckbox("Use Thickness Texture", current_material.thicknessTextureIndex, original_material.thicknessTextureIndex);
 
     settings_changed |=
         ImGui::ColorEdit4("BaseColor F.", reinterpret_cast<float*>(&current_material.baseColorFactor), ImGuiColorEditFlags_Float);
     settings_changed |=
         ImGui::ColorEdit3("Emissive F.", reinterpret_cast<float*>(&current_material.emissiveFactor), ImGuiColorEditFlags_Float);
-    settings_changed |= 
-        ImGui::ColorEdit3("Attenuation F.", reinterpret_cast<float*>(&current_material.attenuationFactor), ImGuiColorEditFlags_Float);
+    settings_changed |= AttenuationColorSettings(current_material);
     settings_changed |=
         ImGui::SliderFloat("Metallic F.", &current_material.metallicFactor, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
     settings_changed |=
@@ -268,6 +286,7 @@ static void MaterialsSettingsUI(Viewer& viewer) {
     settings_changed |= 
         ImGui::SliderFloat("Transmission F.", &current_material.transmisionFactor, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
     settings_changed |= ImGui::SliderFloat("Emissive Strength F.", &current_material.emissiveStrength, 0.0f, 10.0f, "%.3f");
+    settings_changed |= ImGui::SliderFloat("Thickness F.", &current_material.thicknessFactor, 0.0f, 10.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
     settings_changed |= ImGui::Checkbox("Double Sided", &current_material.doubleSided);
     settings_changed |= ImGui::Checkbox("Has Volume", &current_material.hasVolume);
     settings_changed |= ImGui::Checkbox("Alpha Blending", &current_material.alphaBlending);
@@ -281,7 +300,7 @@ static void MaterialsSettingsUI(Viewer& viewer) {
     }
 }
 
-void RenderedImageUI(Viewer& viewer, const bool hardware_raytracing_support) {
+void RenderedImageUI(Viewer& viewer, const bool hardware_ray_tracing_support) {
     // Show window with image
     ImGuiIO& io = ImGui::GetIO();
     const ImGuiWindowFlags flags =  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
@@ -322,11 +341,14 @@ void RenderedImageUI(Viewer& viewer, const bool hardware_raytracing_support) {
             offset.x += drag_delta.x / scale;
             offset.y += drag_delta.y / scale;
         }
+        if (ImGui::IsKeyPressed(ImGuiKey_C)) {
+            offset = {-WorkSize.x * 0.5f, -WorkSize.y * 0.5f};
+        }
     }
     const auto texture_srv_gpu_handle = framebuffer.srv_gpu_handle;
     ImGui::SetCursorPos(ImVec2(scale * offset.x + WorkSize.x * 0.5f, scale * offset.y + WorkSize.y * 0.5f));
     // todo: hardware_ray_tracing_support check is a temporary fix for problem with integrated GPU and ImGui
-    if (framebuffer.nearest_filtering && hardware_raytracing_support) {
+    if (framebuffer.nearest_filtering && hardware_ray_tracing_support) {
         auto& platform_io = ImGui::GetPlatformIO();
         ImGui::GetWindowDrawList()->AddCallback(platform_io.DrawCallback_SetSamplerNearest);  // Set custom sampler
         ImGui::Image((ImTextureID)texture_srv_gpu_handle.ptr, ImVec2(scale * (float)dims.x, scale * (float)dims.y));
@@ -351,15 +373,15 @@ static void RenderingProgressUI(Viewer& viewer) {
     ImGui::Text("Render progress %.1f percent.", 100.f * progress);
     ImGui::ProgressBar(progress);
     if (rendering_state == RenderingState::Idle) {
-        if (ImGui::Button("Render")) {
+        if (ImGui::Button("Render") || ImGui::IsKeyPressed(ImGuiKey_Space)) {
             viewer.async_start_render();
         }
-    } else if (rendering_state == RenderingState::Rendering) {
-        if (ImGui::Button("Stop Rendering")) {
+        HelpTooltip("Press Space to start rendering");
+    } else {
+        if (ImGui::Button("Stop Rendering") || ImGui::IsKeyPressed(ImGuiKey_Space)) {
             viewer.cancel_rendering();
         }
-    } else {
-        ImGui::Button("Stop Rendering");  // disabled button to prevent UI jumping
+        HelpTooltip("Press Space to stop rendering");
     }
     {
         bool continuous_rendering = viewer.continuous_rendering.load();
@@ -367,7 +389,9 @@ static void RenderingProgressUI(Viewer& viewer) {
             viewer.continuous_rendering = continuous_rendering;
         }
     }
-    {
+    if (viewer.is_using_gpu_renderer() && viewer.get_active_gpu_pipeline_mode() == RenderPipelineMode::RasterPipeline) {
+        viewer.reset_iteration_counter();
+    } else {
         bool iterative_rendering = viewer.iterative_rendering.load();
         if (ImGui::Checkbox("Iterative Rendering", &iterative_rendering)) {
             viewer.iterative_rendering = iterative_rendering;
@@ -395,27 +419,37 @@ static void CameraUI(Viewer& viewer) {
             settings_changed = ImGui::Checkbox("Use Camera from Gltf file", &use_camera);
         }
         if (use_camera) {
-            int new_acive_camera_index = active_camera.has_value() ? static_cast<int>(active_camera.value()) : 0;
-            bool camera_changed = ImGui::SliderInt("Active Camera", &new_acive_camera_index, 0, cameras_N - 1, nullptr,
+            int new_active_camera_index = active_camera.has_value() ? static_cast<int>(active_camera.value()) : 0;
+            bool camera_changed = ImGui::SliderInt("Active Camera", &new_active_camera_index, 0, cameras_N - 1, nullptr,
                 ImGuiSliderFlags_ClampOnInput | ImGuiSliderFlags_NoInput);
             if (camera_changed || settings_changed) {
-                viewer.set_active_camera(static_cast<uint32_t>(new_acive_camera_index));
+                viewer.set_active_camera(static_cast<uint32_t>(new_active_camera_index));
             }
         } else if (settings_changed) {
             viewer.set_active_camera(std::nullopt);
         }
         if (!use_camera) {
+            auto near_far_values = viewer.get_near_far_camera_values();
+            bool near_far_changed = false;
+            near_far_changed |=
+                ImGui::SliderFloat("Camera Z Near", &near_far_values.x, 0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
+            near_far_changed |=
+                ImGui::SliderFloat("Camera Z Far", &near_far_values.y, 0.0f, 1000.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
+            if (near_far_changed) {
+                viewer.set_near_far_camera_values(near_far_values.x, near_far_values.y);
+            }
             // manual camera controls
             auto& yfov = viewer.get_yfov();
             auto euler_angles = glm::degrees(viewer.get_euler_angles_camera());
             static float camera_speed = 1.0f;
             static float camera_rotation_speed = 10.0f;
-            bool transform_changed = false;
-            transform_changed |=
+            bool angle_changed = false;
+            bool position_changed = false;
+            position_changed |=
                 ImGui::DragFloat3("Camera Position", &viewer.position.x, camera_speed * 0.001f, 0.0f, 0.0f, "%.4f");
-            transform_changed |=
+            angle_changed |=
                 ImGui::DragFloat3("Camera Euler", &euler_angles.x, 0.1f, -180.0f, 180.0f, nullptr, ImGuiSliderFlags_WrapAround);
-            transform_changed |=
+            position_changed |=
                 ImGui::SliderFloat("Camera Y fov", &yfov, 0.01f, 3.1415f, nullptr, ImGuiSliderFlags_ClampOnInput);
             ImGui::SliderFloat("Camera Speed", &camera_speed, 0.01f, 20.0f);
             ImGui::SliderFloat("Camera Rotation Speed", &camera_rotation_speed, 0.01f, 50.0f);
@@ -426,7 +460,7 @@ static void CameraUI(Viewer& viewer) {
                 if (fps_free_camera) {
                     float dT = io.DeltaTime;
                     if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
-                        transform_changed |= true;
+                        angle_changed |= true;
                         ImVec2 drag_delta = io.MouseDelta;
                         euler_angles.x -= drag_delta.y * camera_rotation_speed * dT;
                         euler_angles.y -= drag_delta.x * camera_rotation_speed * dT;
@@ -435,35 +469,38 @@ static void CameraUI(Viewer& viewer) {
                     }
                     if (ImGui::IsKeyDown(ImGuiKey_W)) {
                         viewer.position += viewer.direction * camera_speed * dT;
-                        transform_changed |= true;
+                        position_changed |= true;
                     }
                     if (ImGui::IsKeyDown(ImGuiKey_A)) {
                         viewer.position -= viewer.right() * camera_speed * dT;
-                        transform_changed |= true;
+                        position_changed |= true;
                     }
                     if (ImGui::IsKeyDown(ImGuiKey_S)) {
                         viewer.position -= viewer.direction * camera_speed * dT;
-                        transform_changed |= true;
+                        position_changed |= true;
                     }
                     if (ImGui::IsKeyDown(ImGuiKey_D)) {
                         viewer.position += viewer.right() * camera_speed * dT;
-                        transform_changed |= true;
+                        position_changed |= true;
                     }
                     if (ImGui::IsKeyDown(ImGuiKey_E)) {
                         viewer.position += viewer.up * camera_speed * dT;
-                        transform_changed |= true;
+                        position_changed |= true;
                     }
                     if (ImGui::IsKeyDown(ImGuiKey_Q)) {
                         viewer.position -= viewer.up * camera_speed * dT;
-                        transform_changed |= true;
+                        position_changed |= true;
                     }
                 }
             }
-            if (transform_changed) {
+            if (angle_changed) {
                 euler_angles = glm::radians(euler_angles);
                 auto quat = glm::quat(euler_angles);
-                viewer.direction = quat * fvec3(0.0f, 0.0f, -1.0f);
+                viewer.direction = normalize(quat * fvec3(0.0f, 0.0f, -1.0f));
                 viewer.up = quat * fvec3(0.0f, 1.0f, 0.0f);
+                viewer.up = normalize(viewer.up - viewer.direction * dot(viewer.up, viewer.direction));
+            }
+            if (position_changed || angle_changed || near_far_changed) {
                 viewer.snap_to_camera(false);
             }
         }
@@ -471,21 +508,30 @@ static void CameraUI(Viewer& viewer) {
     }
 }
 
-static void RenderSettingsUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector<PendingDelete>& deferredDeletes,
-    const bool hardware_raytracing_support) {
-    if (hardware_raytracing_support) {
-        static RendererMode renderer_mode = viewer.get_renderer_mode();
-        bool renderer_changed = imgui_combo("Choose Renderer:", std::array{"CPU renderer", "GPU renderer"}, renderer_mode);
-        if (renderer_changed) {
-            viewer.switch_to_renderer(renderer_mode);
-        }
-    } else {
-        ImGui::Text("GPU does not support raytracing, DXR rendering mode is unavailable");
+static void GeneralRenderSettingsUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector<PendingDelete>& deferredDeletes,
+    const bool hardware_ray_tracing_support) {
+    if (viewer.get_rendering_state() != RenderingState::Idle) {
+        ImGui::Text("Stop rendering process to access rendering options");
+        return;
     }
-    if (!viewer.is_using_gpu_renderer()) {
-        if (ImGui::Button("Clear image with black")) {
-            viewer.clear_framebuffer_black();
+    ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.5f);
+    static RendererMode renderer_mode = viewer.get_renderer_mode();
+    bool renderer_changed = imgui_combo("Choose Renderer:", std::array{"CPU renderer", "GPU renderer"}, renderer_mode);
+    if (renderer_changed) {
+        viewer.switch_to_renderer(renderer_mode);
+    }
+    if (hardware_ray_tracing_support) {
+        if (viewer.is_using_gpu_renderer()) {
+            static RenderPipelineMode pipeline_mode = viewer.get_active_gpu_pipeline_mode();
+            bool pipeline_changed =
+                imgui_combo("Choose Rendering mode:", std::array{"DXR path-tracing", "Rasterization"}, pipeline_mode);
+            if (pipeline_changed) {
+                viewer.switch_gpu_pipeline_mode(pipeline_mode);
+            }
         }
+    } else if (renderer_mode == RendererMode::GPURenderer) {
+        ImGui::Text("GPU does not support raytracing, DXR rendering mode is unavailable");
+        ImGui::Text("Rasterization rendering mode will be used");
     }
     if (ImGui::Button("Save image")) {
         fs::path filepath = SaveFileDialog();
@@ -542,54 +588,151 @@ static void RenderSettingsUI(Viewer& viewer, ConsoleArgs& console_arguments, std
     }
     ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.5f);
     {
-        static bool size_changed = false;
-        size_changed |= InputUInt("Width", &console_arguments.windowWidth);
-        size_changed |= InputUInt("Height", &console_arguments.windowHeight);
+        bool size_changed = false;
+        InputUInt("Width", &console_arguments.windowWidth, 100);
+        HelpTooltip("Press C to move image to the upper left corner of the window");
+        size_changed |= ImGui::IsItemDeactivatedAfterEdit();
+        InputUInt("Height", &console_arguments.windowHeight, 100);
+        size_changed |= ImGui::IsItemDeactivatedAfterEdit();
 
-        static bool settings_changed = false;
-        settings_changed |= SliderUInt("samples per pixel", &console_arguments.samplesPerPixel, 1, 128);
-        HelpTooltip("For GPU raytracing best to use Iterative Rendering and set Samples per pixel = 1 ");
-        settings_changed |= SliderUInt("max ray bounces", &console_arguments.maxRayBounces, 0, 10);
-        settings_changed |= SliderUInt("max new rays per bounce", &console_arguments.maxNewRaysPerBounce, 0, 32);
-        HelpTooltip("For AmbientOcclusion mode only, set >= 1");
-        if (!viewer.is_using_gpu_renderer()) {
-            settings_changed |= SliderUInt("max triangles per BVH leaf", &console_arguments.maxTrianglesPerBVHLeaf, 1, 32);
-        }
-        settings_changed |= ImGui::DragInt("environment rotation", &console_arguments.envmapRotation, 1.0f, 0, 360);
-        HelpTooltip("environment rotation in degrees around UP axis.");
+        bool settings_changed = false;
+        
         settings_changed |=
             imgui_combo("Ray Program Mode:", std::array{"RayCaster", "AmbientOcclusion", "PBR"}, console_arguments.programMode);
-        if (!viewer.is_using_gpu_renderer()) {
-            settings_changed |=
-                imgui_combo("Acceleration Struct Type:", std::array{"Naive", "BVH"}, console_arguments.accelStructType);
-        }
 
-        if (settings_changed || size_changed) {
-            ImGui::PushStyleColor(ImGuiCol_Button, (ImVec4)ImColor::HSV(0.0f, 0.6f, 0.6f));
-            if (ImGui::Button("Update render settings")) {
-                if (settings_changed) {
-                    auto new_render_settings = RenderSettings{console_arguments};
-                    viewer.set_render_settings(new_render_settings);
-                    settings_changed = false;
-                }
-                if (size_changed) {
-                    auto& framebuffer = viewer.get_framebuffer();
-                    deferredDeletes.emplace_back(framebuffer.get_gpu_resource());
-                    deferredDeletes.emplace_back(framebuffer.get_gpu_upload_resource());
-                    viewer.resize_window(ivec2(console_arguments.windowWidth, console_arguments.windowHeight), true);
-                    viewer.snap_to_camera();
-                    viewer.clear_framebuffer_black();
-                    size_changed = false;
-                }
-            }
-            ImGui::PopStyleColor();
+        if (settings_changed) {
+            auto new_render_settings = RenderSettings{console_arguments};
+            viewer.set_render_settings(new_render_settings);
+        }
+        if (size_changed) {
+            auto& framebuffer = viewer.get_framebuffer();
+            deferredDeletes.emplace_back(framebuffer.get_gpu_resource());
+            deferredDeletes.emplace_back(framebuffer.get_gpu_upload_resource());
+            viewer.resize_window(ivec2(console_arguments.windowWidth, console_arguments.windowHeight), true);
+            viewer.snap_to_camera(false);
+            viewer.clear_framebuffer_black();
         }
     }
     ImGui::PopItemWidth();
 }
 
+static void RaytracingRenderSettingsUI(Viewer& viewer, ConsoleArgs& console_arguments) {
+    RenderPipelineMode pipeline_mode = viewer.get_active_gpu_pipeline_mode();
+    if (viewer.is_using_gpu_renderer() && pipeline_mode == RenderPipelineMode::RasterPipeline) {
+        return;
+    }
+    ImGui::Separator();
+    if (!viewer.is_using_gpu_renderer() && viewer.get_rendering_state() != RenderingState::Idle) {
+        ImGui::Text("Stop rendering process to access CPU rendering options");
+        return;
+    }
+
+    bool settings_changed = false;
+
+    settings_changed |= SliderUInt("samples per pixel", &console_arguments.samplesPerPixel, 1, 128);
+    HelpTooltip("For GPU raytracing best to use Iterative Rendering and set Samples per pixel = 1 ");
+    settings_changed |= SliderUInt("max ray bounces", &console_arguments.maxRayBounces, 0, 10);
+    settings_changed |= SliderUInt("max new rays per bounce", &console_arguments.maxNewRaysPerBounce, 0, 32);
+    HelpTooltip("For AmbientOcclusion mode only, set >= 1");
+    if (!viewer.is_using_gpu_renderer()) {
+        SliderUInt("max triangles per BVH leaf", &console_arguments.maxTrianglesPerBVHLeaf, 1, 32);
+        settings_changed |= ImGui::IsItemDeactivatedAfterEdit();
+        settings_changed |=
+            imgui_combo("Acceleration Struct Type:", std::array{"Naive", "BVH"}, console_arguments.accelStructType);
+    }
+    if (settings_changed) {
+        auto new_render_settings = RenderSettings{console_arguments};
+        viewer.set_render_settings(new_render_settings);
+    }
+}
+
+static void CommonRenderSettingsUI(Viewer& viewer, ConsoleArgs& console_arguments) {
+    ImGui::Separator();
+
+    if (!viewer.is_using_gpu_renderer() && viewer.get_rendering_state() != RenderingState::Idle) {
+        ImGui::Text("Stop rendering process to access CPU rendering options");
+        return;
+    }
+
+    bool settings_changed = false;
+
+    settings_changed |=
+        ImGui::DragInt("environment rotation", &console_arguments.envmapRotation, 1.0f, 0, 360, nullptr, ImGuiSliderFlags_WrapAround);
+    HelpTooltip("environment rotation in degrees around UP axis.");
+    if (settings_changed) {
+        auto new_render_settings = RenderSettings{console_arguments};
+        viewer.set_render_settings(new_render_settings);
+    }
+}
+
+static void ReloadShadersUI(Viewer& viewer) {
+    if (!viewer.is_using_gpu_renderer()) {
+        return;
+    }
+    if (viewer.get_rendering_state() != RenderingState::Idle) {
+        ImGui::Text("Stop rendering process to reload shaders");
+        return;
+    }
+    if (ImGui::Button("Reload shaders")) {
+        ReloadShaders();
+    }
+}
+
+static void RasterRenderSettingsUI(Viewer& viewer) {
+    RenderPipelineMode pipeline_mode = viewer.get_active_gpu_pipeline_mode();
+    if (!viewer.is_using_gpu_renderer() || pipeline_mode != RenderPipelineMode::RasterPipeline) {
+        return;
+    }
+    ImGui::Separator();
+    ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.5f);
+    auto render_settings = viewer.get_render_settings();
+    bool raster_settings_changed = false;
+    raster_settings_changed |= ImGui::SliderFloat(
+        "GTAO strength", &render_settings.GTAOStrength, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
+    HelpTooltip("Ground Truth Ambient Occlusion");
+    raster_settings_changed |=
+        ImGui::SliderFloat("AO distance", &render_settings.AODistance, 0.0f, 5.0f, nullptr);
+    raster_settings_changed |= ImGui::Checkbox("AO denoise", &render_settings.AODenoiseEnabled);
+    raster_settings_changed |= ImGui::SliderFloat(
+        "AO Reprojection Thickness Threshold", &render_settings.AOReprojectionDepthThreshold, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_Logarithmic);
+    HelpTooltip("Spatial and temporal denoising");
+    raster_settings_changed |=
+        ImGui::SliderFloat("Spatial Sigma", &render_settings.AOSpatialSigma, 0.0f, 10.0f, nullptr, ImGuiSliderFlags_Logarithmic);
+    raster_settings_changed |= ImGui::SliderFloat("Depth Sigma", &render_settings.AODepthSigma, 0.0f, 1.0f, nullptr,
+        ImGuiSliderFlags_Logarithmic);
+    raster_settings_changed |= ImGui::SliderFloat("Normals Sigma", &render_settings.AONormalSigma, 0.0f, 1.0f, nullptr,
+        ImGuiSliderFlags_Logarithmic);
+    raster_settings_changed |= ImGui::SliderFloat(
+        "AO from textures strength", &render_settings.TexturesAOStrength, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
+    raster_settings_changed |= ImGui::Checkbox("Enable SSR", &render_settings.SSREnabled);
+    raster_settings_changed |= ImGui::Checkbox("SSR denoise", &render_settings.SSRDenoiseEnabled);
+    raster_settings_changed |= ImGui::Checkbox("SSR Debug", &render_settings.DrawSSROnly);
+    raster_settings_changed |= ImGui::SliderFloat(
+        "SSR Thickness", &render_settings.SSRDepthThreshold, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_Logarithmic);
+    raster_settings_changed |= ImGui::SliderFloat(
+        "SSR Max Roughness", &render_settings.SSRMaxRoughness, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
+    raster_settings_changed |= ImGui::SliderFloat(
+        "SSR GGX Distribution Bias", &render_settings.SSR_GGXClamp, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
+    HelpTooltip("Clamp ray's max angle of GGX distribution. Value of 0.0 is no bias. Higher values - less noise, but less accurate");
+    raster_settings_changed |= ImGui::Checkbox("Use SSR prefiltering", &render_settings.SSRUsePrefiltering);
+    raster_settings_changed |= ImGui::SliderFloat(
+        "SSR Prefiltering Distance", &render_settings.SSRPrefilteringDistance, 0.0f, 10.0f, nullptr);
+    raster_settings_changed |=
+        ImGui::Checkbox("SSR Use parallax for reprojection", &render_settings.SSRParallaxReprojection);
+    raster_settings_changed |= ImGui::Checkbox("Reprojection Debug", &render_settings.ReprojectionDebugMode);
+    raster_settings_changed |= ImGui::Checkbox("Enable specular AA", &render_settings.specular_aa_enabled);
+    raster_settings_changed |= ImGui::SliderFloat(
+        "Specular AA Variance", &render_settings.specular_aa_variance, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
+    raster_settings_changed |= ImGui::SliderFloat(
+        "Specular AA Threshold", &render_settings.specular_aa_threshold, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
+    if (raster_settings_changed) {
+        viewer.set_render_settings(render_settings);
+    }
+    ImGui::Separator();
+}
+
 void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector<PendingDelete>& deferredDeletes,
-    const bool hardware_raytracing_support) {
+    const bool hardware_ray_tracing_support) {
     ImGui::Begin("Options", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
 
     RenderingProgressUI(viewer);
@@ -607,11 +750,12 @@ void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector
         ImGui::TreePop();
     }
     ImGui::Separator();
-    if (viewer.get_rendering_state() == RenderingState::Idle) {
-        RenderSettingsUI(viewer, console_arguments, deferredDeletes, hardware_raytracing_support);
-    } else {
-        ImGui::Text("Stop rendering process to access rendering options");
-    }
+    GeneralRenderSettingsUI(viewer, console_arguments, deferredDeletes, hardware_ray_tracing_support);
+    ReloadShadersUI(viewer);
+    CommonRenderSettingsUI(viewer, console_arguments);
+    RaytracingRenderSettingsUI(viewer, console_arguments);
+    RasterRenderSettingsUI(viewer);
+    
     ImGui::End();
     // Show materials settings window
     if (show_material_settings) {

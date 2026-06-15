@@ -18,6 +18,10 @@
 #include "render_settings.h"
 #include "renderer.h"
 
+#ifdef WINDOWS_SPECIFIC
+#include "GPU/GPU_renderer.h"
+#endif
+
 namespace app {
 
 using glm::dvec2;
@@ -77,9 +81,15 @@ class Viewer {
     float& get_yfov();
     fvec3 get_euler_angles_camera() const;
 
+    fvec2 get_near_far_camera_values() const;
+    void set_near_far_camera_values(float near_, float far_);
+
     bool is_using_gpu_renderer() const;
 
 #ifdef WINDOWS_SPECIFIC
+    RenderPipelineMode get_active_gpu_pipeline_mode() const;
+    void switch_gpu_pipeline_mode(RenderPipelineMode mode);
+
     void init_GPU_renderer();
     void switch_to_renderer(RendererMode mode);
     RendererMode get_renderer_mode() const;
@@ -112,6 +122,8 @@ class Viewer {
     ivec2 window_dimensions_ = ivec2(800, 600);
 
     fastgltf::Camera::Perspective cam_params_;
+
+    std::atomic<bool> camera_updated_in_last_frame_ = true;
 
     void set_up_default_camera_transforms();
 };

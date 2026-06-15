@@ -37,7 +37,9 @@ void Renderer::update_camera_transform_state(
         perspectiveParams.aspectRatio.value_or(1.77777777777777777f),
         perspectiveParams.znear, 
         perspectiveParams.zfar.value_or(1000.f));
-    NDC2WorldMatrix_ = glm::inverse(projectionMatrix_ * viewMatrix_);
+    auto viewMatrixNoTranslation = viewMatrix_;
+    viewMatrixNoTranslation[3] = fvec4(0.0f, 0.0f, 0.0f, 1.0f);  // Remove translation from view matrix for direction calculation
+    NDC2WorldMatrix_ = glm::inverse(projectionMatrix_ * viewMatrixNoTranslation);
 }
 
 void Renderer::load_scene(
@@ -101,7 +103,7 @@ ray_with_payload Renderer::generate_camera_ray(
     auto ndc_coords = ndc_from_pixel(pixel_coords.x, pixel_coords.y, inv_width, inv_height);
     auto world_coords = NDC2WorldMatrix_ * ndc_coords;
     world_coords /= world_coords.w;
-    auto direction = normalize(xyz(world_coords) - origin_);
+    auto direction = normalize(xyz(world_coords));
     return ray_with_payload{
         {origin_, direction}, 
         fvec4(1.0f), 

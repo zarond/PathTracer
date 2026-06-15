@@ -342,7 +342,7 @@ void CPUFrameBuffer::transition_from_srv_to_copy() const {
     d3d_ctx.m_CommandList->ResourceBarrier(1, &toCopyDest);
 }
 
-void CPUFrameBuffer::transition_from_srv_to_uav() {
+void CPUFrameBuffer::transition_from_srv_to_uav() const {
     if (!pTexture) return;
 
     D3DContext& d3d_ctx = D3DContext::Get();
@@ -360,7 +360,7 @@ void CPUFrameBuffer::transition_from_srv_to_uav() {
     };
     d3d_ctx.m_DXRCommandList->ResourceBarrier(1, &toUAV);
 }
-void CPUFrameBuffer::transition_from_uav_to_srv() {
+void CPUFrameBuffer::transition_from_uav_to_srv() const {
     if (!pTexture) return;
 
     D3DContext& d3d_ctx = D3DContext::Get();
@@ -385,8 +385,9 @@ ComPtr<ID3D12Resource> CPUFrameBuffer::get_gpu_upload_resource() const { return 
 
 void CPUFrameBuffer::release_gpu_resource() {
     if (pTexture) {
-        D3DContext::Get().m_SrvDescHeapAlloc.Free(srv_cpu_handle, srv_gpu_handle);
-        D3DContext::Get().m_SrvDescHeapAlloc.Free(uav_cpu_handle, uav_gpu_handle);
+        D3DContext& d3d_ctx = D3DContext::Get();
+        d3d_ctx.m_SrvDescHeapAlloc.Free(srv_cpu_handle, srv_gpu_handle);
+        d3d_ctx.m_SrvDescHeapAlloc.Free(uav_cpu_handle, uav_gpu_handle);
         pTexture.Reset();
     }
     if (uploadBuffer) {

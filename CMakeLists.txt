@@ -21,7 +21,28 @@ message(STATUS "${PROJECT_NAME}: ASAN option is currently: ${ASAN}")
 
 set(LIBS_DIR libs)
 
-set(SHADER_SOURCES)
+set(SHADER_SOURCES
+    RaytracingShaders   RaytracingShaders.hlsl      lib_6_6      
+    VS_Main             RasterizationShaders.hlsl   vs_6_6
+    PS_Main             RasterizationShaders.hlsl   ps_6_6
+    VS_Background       RasterizationShaders.hlsl   vs_6_6
+    PS_Background       RasterizationShaders.hlsl   ps_6_6
+    VS_Gbuffer          RasterizationShaders.hlsl   vs_6_6
+    PS_Gbuffer          RasterizationShaders.hlsl   ps_6_6
+    CS_DFG_Lut          DFGLut.hlsl                 cs_6_6
+    CS_Diffuse_Lut      CubemapsLut.hlsl            cs_6_6
+    CS_Specular_Lut     CubemapsLut.hlsl            cs_6_6
+    CS_SinglePassMips   MipMapsShaders.hlsl         cs_6_6
+    CS_MinFilter        MipMapsShaders.hlsl         cs_6_6
+    CS_KawaseBlurDownsample_13  KawaseBlur.hlsl     cs_6_6
+    CS_KawaseBlurUpsample       KawaseBlur.hlsl     cs_6_6
+    CS_GTAO             GTAO.hlsl                   cs_6_6
+    CS_Bilateral_filter     BilateralFilter.hlsl    cs_6_6
+    CS_Silhouette       Silhouette.hlsl             cs_6_6
+    CS_Reprojection     Reprojection.hlsl           cs_6_6
+    CS_SSR_trace        SSR.hlsl                    cs_6_6
+    CS_SSR_resolve      SSR.hlsl                    cs_6_6
+)
 
 set(APP_SOURCES
     src/main.cc
@@ -41,12 +62,20 @@ if(ON_WINDOWS)
         src/ui.cc
         src/d3d_debug_layer.cc
         src/d3d_context.cc
-        src/DXR/GPU_model.cc
-        src/DXR/GPU_renderer.cc
-        src/DXR/GPU_pipeline.cc
-    )
-    list(APPEND SHADER_SOURCES
-        src/DXR/Shaders/RaytracingShaders.hlsl
+        src/GPU/GPU_model.cc
+        src/GPU/GPU_renderer.cc
+        src/GPU/DXR_pipeline.cc
+        src/GPU/Raster_pipeline.cc
+        src/GPU/DFG_Lut_helper.cc
+        src/GPU/Cubemaps_helper.cc
+        src/GPU/Mipmaps_helper.cc
+        src/GPU/Kawase_blur_helper.cc
+        src/GPU/GTAO_helper.cc
+        src/GPU/Bilateral_filter.cc
+        src/GPU/Silhouette_helper.cc
+        src/GPU/Reprojection_helper.cc
+        src/GPU/SSR_helper.cc
+        src/GPU/Reload_shader.cc
     )
 endif()
 
@@ -75,21 +104,29 @@ if(ON_WINDOWS)
         set(DXC_FLAGS -Zi -Qembed_debug)
     endif()
 
-    foreach(SHADER ${SHADER_SOURCES})
-        get_filename_component(FILE_NAME ${SHADER} NAME_WE)
+    # compile shaders
+    list(LENGTH SHADER_SOURCES len)
+    math(EXPR last "${len} - 1")
+    foreach(i RANGE 0 ${last} 3)
+        math(EXPR i1 "${i} + 1")
+        math(EXPR i2 "${i} + 2")
 
+        list(GET SHADER_SOURCES ${i}  SHADER)
+        list(GET SHADER_SOURCES ${i1} SHADER_SOURCE_FILE_NAME)
+        list(GET SHADER_SOURCES ${i2} SHADER_STAGE_TYPE)
         # compile into build dir (config-independent)
-        set(COMPILED_SHADER ${CMAKE_CURRENT_BINARY_DIR}/${FILE_NAME}.dxil)
+        set(COMPILED_SHADER ${CMAKE_CURRENT_BINARY_DIR}/${SHADER}.dxil)
 
         # todo: better yet, compile into object file and link into executable, use extern const in code
         add_custom_command(
             OUTPUT ${COMPILED_SHADER}
             COMMAND ${DXC}
-                    -T lib_6_6
+                    -T ${SHADER_STAGE_TYPE}
                     ${DXC_FLAGS}
+                    -E ${SHADER}
                     -Fo ${COMPILED_SHADER}
-                    ${CMAKE_SOURCE_DIR}/${SHADER}
-            DEPENDS ${SHADER}
+                    ${CMAKE_SOURCE_DIR}/src/GPU/Shaders/${SHADER_SOURCE_FILE_NAME}
+            DEPENDS src/GPU/Shaders/${SHADER_SOURCE_FILE_NAME}
             COMMENT "Compiling shader ${SHADER}"
         )
         list(APPEND COMPILED_SHADERS ${COMPILED_SHADER})
@@ -101,8 +138,8 @@ if(ON_WINDOWS)
             POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     ${COMPILED_SHADER}
-                    $<TARGET_FILE_DIR:${PROJECT_NAME}>/${FILE_NAME}.dxil
-            COMMENT "Copying ${FILE_NAME}.dxil from ${COMPILED_SHADER} to target $<TARGET_FILE_DIR:${PROJECT_NAME}>/${FILE_NAME}.dxil"
+                    $<TARGET_FILE_DIR:${PROJECT_NAME}>/${SHADER}.dxil
+            COMMENT "Copying ${SHADER}.dxil from ${COMPILED_SHADER} to target $<TARGET_FILE_DIR:${PROJECT_NAME}>/${SHADER}.dxil"
             VERBATIM
         )
     endforeach()
@@ -134,6 +171,9 @@ if(ON_WINDOWS)
         ${LIBS_DIR}/imgui/backends/imgui_impl_dx12.cpp
     )
     target_include_directories(imgui PUBLIC ${LIBS_DIR}/imgui)
+    # Directx12 helper headers (and <d3d12.h> is from here too named <directx/d3d12.h>)
+    add_subdirectory(${LIBS_DIR}/DirectX-Headers)
+    target_link_libraries(${PROJECT_NAME} PRIVATE Microsoft::DirectX-Headers)
 endif()
 
 add_library(argparse INTERFACE)

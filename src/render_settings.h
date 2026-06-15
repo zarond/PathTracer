@@ -11,6 +11,29 @@ struct RenderSettings {
     unsigned int maxTrianglesPerBVHLeaf = 8;
     float envmapRotation = 0;  // in radians
 
+    // only for raster pipeline
+    float GTAOStrength = 1.0f;
+    float AODistance = 1.0f;
+    bool AODenoiseEnabled = true;
+    float AOReprojectionDepthThreshold = 0.01f;
+    float AOSpatialSigma = 10.0f;   // default is nearly uniform weights
+    float AODepthSigma = 0.01;
+    float AONormalSigma = 0.01;
+    float TexturesAOStrength = 1.0f;
+    bool SSREnabled = true;
+    bool SSRDenoiseEnabled = true;
+    bool DrawSSROnly = false;
+    float SSR_GGXClamp = 0.1f;  // 0.0 means no clamp, > 0.0 reduces tail of distribution
+    float SSRDepthThreshold = 0.01f;
+    float SSRMaxRoughness = 0.8f;
+    bool SSRUsePrefiltering = true;
+    float SSRPrefilteringDistance = 0.1f;
+    bool SSRParallaxReprojection = true;
+    bool ReprojectionDebugMode = false;
+    bool specular_aa_enabled = true;
+    float specular_aa_variance = 0.15f;
+    float specular_aa_threshold = 0.2f;
+
     RenderSettings() = default;
     explicit RenderSettings(const ConsoleArgs& args);
 

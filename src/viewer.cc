@@ -3,12 +3,13 @@
 #include <fastgltf/util.hpp>
 #include <glm/ext.hpp>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <utility>
 #include <variant>
 
 #ifdef WINDOWS_SPECIFIC
-#include "DXR/GPU_renderer.h"
+#include "GPU/GPU_renderer.h"
 #include "d3d_context.h"
 #endif
 
@@ -43,10 +44,7 @@ void Viewer::init_GPU_renderer() {
     if (renderers_[(int)RendererMode::GPURenderer]) {
         return;
     }
-    D3DContext& d3d_ctx = D3DContext::Get();
-    if (d3d_ctx.hardware_ray_tracing_support) {
-        renderers_[(int)RendererMode::GPURenderer] = std::make_shared<GPURenderer>();
-    }
+    renderers_[(int)RendererMode::GPURenderer] = std::make_shared<GPURenderer>();
 }
 
 void Viewer::switch_to_renderer(RendererMode mode) {
@@ -93,11 +91,16 @@ void Viewer::render() {
         renderer_->reload_materials();
         need_materials_update_ = false;
     }
-    renderer_->render_frame(framebuffer_, continuous_rendering, iterative_rendering, iterations_counter_);
-    if (iterative_rendering) {
+    bool camera_moved = camera_updated_in_last_frame_.load();
+    bool use_iterative_rendering = !camera_moved && iterative_rendering;
+    renderer_->render_frame(framebuffer_, continuous_rendering, use_iterative_rendering, iterations_counter_);
+    if (use_iterative_rendering) {
         ++iterations_counter_;
     } else {
         reset_iteration_counter();
+    }
+    if (camera_moved) {
+        camera_updated_in_last_frame_.store(false);
     }
 }
 
@@ -134,6 +137,7 @@ void Viewer::take_snapshot(const std::filesystem::path& filePath) const {
 }
 
 bool Viewer::snap_to_camera(bool use_default) {
+    camera_updated_in_last_frame_.store(true);
     bool success = false;
 
     if (active_camera_index_.has_value()) {
@@ -229,7 +233,34 @@ fvec3 Viewer::get_euler_angles_camera() const {
     return euler;
 }
 
+fvec2 Viewer::get_near_far_camera_values() const { 
+    return fvec2(cam_params_.znear, cam_params_.zfar.value_or(std::numeric_limits<float>::infinity()));
+}
+void Viewer::set_near_far_camera_values(float near_, float far_) { 
+    cam_params_.znear = near_; 
+    cam_params_.zfar = far_;
+}
+
 bool Viewer::is_using_gpu_renderer() const { return (active_renderer_mode_ == RendererMode::GPURenderer); }
+
+#ifdef WINDOWS_SPECIFIC
+RenderPipelineMode Viewer::get_active_gpu_pipeline_mode() const { 
+    const auto& gpu_renderer = renderers_[(int)RendererMode::GPURenderer];
+    if (gpu_renderer != nullptr) {
+        return static_cast<GPURenderer*>(gpu_renderer.get())->get_active_pipeline_mode();
+    }
+    return RenderPipelineMode::Count; 
+}
+
+void Viewer::switch_gpu_pipeline_mode(RenderPipelineMode mode) {
+    const auto& gpu_renderer = renderers_[(int)RendererMode::GPURenderer];
+    if (gpu_renderer == nullptr) return;
+    if ((int)mode < 0 || mode >= RenderPipelineMode::Count) {
+        return;
+    }
+    static_cast<GPURenderer*>(gpu_renderer.get())->set_active_pipeline_mode(mode);
+}
+#endif
 
 void Viewer::wait_for_render_start(std::stop_token stop) {
     std::unique_lock<std::mutex> lock(mtx_render_);

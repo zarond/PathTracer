@@ -5,22 +5,23 @@
 
 namespace app {
 
-void ExampleDescriptorHeapAllocator::Create(ID3D12Device* device, ID3D12DescriptorHeap* heap) {
+void DescriptorHeapAllocator::Create(ID3D12Device* device, ID3D12DescriptorHeap* heap) {
     assert(Heap == nullptr && FreeIndices.empty());
     Heap = heap;
     D3D12_DESCRIPTOR_HEAP_DESC desc = heap->GetDesc();
     HeapType = desc.Type;
+    isHeapShaderVisible = (desc.Flags & D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
     HeapStartCpu = Heap->GetCPUDescriptorHandleForHeapStart();
     HeapStartGpu = Heap->GetGPUDescriptorHandleForHeapStart();
     HeapHandleIncrement = device->GetDescriptorHandleIncrementSize(HeapType);
     FreeIndices.reserve((int)desc.NumDescriptors);
     for (int n = desc.NumDescriptors; n > 0; n--) FreeIndices.push_back(n - 1);
 }
-void ExampleDescriptorHeapAllocator::Destroy() {
+void DescriptorHeapAllocator::Destroy() {
     Heap = nullptr;
     FreeIndices.clear();
 }
-void ExampleDescriptorHeapAllocator::Alloc(
+void DescriptorHeapAllocator::Alloc(
     D3D12_CPU_DESCRIPTOR_HANDLE* out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE* out_gpu_desc_handle) {
     if (!out_cpu_desc_handle || !out_gpu_desc_handle) return;
     assert(FreeIndices.size() > 0);
@@ -29,14 +30,21 @@ void ExampleDescriptorHeapAllocator::Alloc(
     out_cpu_desc_handle->ptr = HeapStartCpu.ptr + (idx * HeapHandleIncrement);
     out_gpu_desc_handle->ptr = HeapStartGpu.ptr + (idx * HeapHandleIncrement);
 }
-void ExampleDescriptorHeapAllocator::Free(
-    D3D12_CPU_DESCRIPTOR_HANDLE out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE out_gpu_desc_handle) {
-    int cpu_idx = (int)((out_cpu_desc_handle.ptr - HeapStartCpu.ptr) / HeapHandleIncrement);
-    int gpu_idx = (int)((out_gpu_desc_handle.ptr - HeapStartGpu.ptr) / HeapHandleIncrement);
-    assert(cpu_idx == gpu_idx);
+void DescriptorHeapAllocator::Alloc(D3D_Handle_Pair* out_desc_handle) { 
+    Alloc(&out_desc_handle->cpuHandle, &out_desc_handle->gpuHandle);
+}
+void DescriptorHeapAllocator::Free(
+    D3D12_CPU_DESCRIPTOR_HANDLE cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE gpu_desc_handle) {
+    if (cpu_desc_handle.ptr == 0 && gpu_desc_handle.ptr == 0) return;
+    int cpu_idx = (int)((cpu_desc_handle.ptr - HeapStartCpu.ptr) / HeapHandleIncrement);
+    int gpu_idx = (int)((gpu_desc_handle.ptr - HeapStartGpu.ptr) / HeapHandleIncrement);
+    assert(cpu_idx == gpu_idx || !isHeapShaderVisible);
     FreeIndices.push_back(cpu_idx);
 }
-int ExampleDescriptorHeapAllocator::GetIndex(D3D12_GPU_DESCRIPTOR_HANDLE gpu_desc_handle) const {
+void DescriptorHeapAllocator::Free(D3D_Handle_Pair desc_handle) {
+    Free(desc_handle.cpuHandle, desc_handle.gpuHandle);
+}
+int DescriptorHeapAllocator::GetIndex(D3D12_GPU_DESCRIPTOR_HANDLE gpu_desc_handle) const {
     int gpu_idx = (int)((gpu_desc_handle.ptr - HeapStartGpu.ptr) / HeapHandleIncrement);
     return gpu_idx;
 }
@@ -191,6 +199,26 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
         if (FAILED(m_d3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_SrvDescHeap)))) return false;
         m_SrvDescHeapAlloc.Create(m_d3dDevice.Get(), m_SrvDescHeap.Get());
     }
+    // Create additional RTV Heap for custom rendering passes
+    {
+        D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+        desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+        desc.NumDescriptors = 8;
+        desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+        desc.NodeMask = 0;
+        if (FAILED(m_d3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_additional_RtvDescHeap)))) return false;
+        m_RtvDescHeapAlloc.Create(m_d3dDevice.Get(), m_additional_RtvDescHeap.Get());
+    }
+    // Create additional DSV Heap for custom rendering passes
+    {
+        D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+        desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+        desc.NumDescriptors = 8;
+        desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+        desc.NodeMask = 0;
+        if (FAILED(m_d3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_additional_DsvDescHeap)))) return false;
+        m_DsvDescHeapAlloc.Create(m_d3dDevice.Get(), m_additional_DsvDescHeap.Get());
+    }
 
     hardware_ray_tracing_support = CheckRaytracingSupport();
 
@@ -249,9 +277,13 @@ void D3DContext::CleanupDeviceD3D() {
     CleanupRenderTarget();
 
     m_SrvDescHeapAlloc.Destroy();
+    m_RtvDescHeapAlloc.Destroy();
+    m_DsvDescHeapAlloc.Destroy();
 
     m_SrvDescHeap.Reset();
     m_RtvDescHeap.Reset();
+    m_additional_RtvDescHeap.Reset();
+    m_additional_DsvDescHeap.Reset();
     if (m_SwapChain) {
         m_SwapChain->SetFullscreenState(false, nullptr);
         m_SwapChain.Reset();
@@ -270,6 +302,11 @@ void D3DContext::CleanupDeviceD3D() {
     if (m_copy_fenceEvent) {
         CloseHandle(m_copy_fenceEvent);
         m_copy_fenceEvent = nullptr;
+    }
+    m_dxr_fence.Reset();
+    if (m_dxr_fenceEvent) {
+        CloseHandle(m_dxr_fenceEvent);
+        m_dxr_fenceEvent = nullptr;
     }
     m_DXRCommandList.Reset();
     m_DXRAllocator.Reset();
