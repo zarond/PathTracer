@@ -1,5 +1,8 @@
 # PathTracer
 
+[![Watch the video](https://img.youtube.com/vi/y_9sgQ1A5yA/maxresdefault.jpg)](https://youtu.be/y_9sgQ1A5yA) 
+###### *Video Showcase*
+
 A small path-tracing renderer written in C++ 20 for educational purposes. Now featuring a real-time raster graphics mode as well.
 
 You can choose either a CPU Renderer, a DirectX Raytracing (DXR) GPU Renderer, or a Raster mode renderer in GUI (it is available only from GUI mode).
