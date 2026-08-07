@@ -252,4 +252,10 @@ void Renderer::generate_subsample_positions() {
     }
 }
 
+void Renderer::update_transforms() {
+    if (model_ref_ && accel_struct_) {
+        accel_struct_->update_transforms(*model_ref_);
+    }
+}
+
 }  // namespace app

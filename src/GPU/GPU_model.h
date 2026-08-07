@@ -186,6 +186,8 @@ class GPU_model {
     void update_materials_array_buffer(const Model& cpu_model);
     const std::vector<GPU_Material>& get_materials_cpu_array() const;
 
+    void update_transforms(const Model& model, bool updateTLAS);
+
     const GPU_mesh& get_combined_mesh() const;
 
   private:
@@ -208,7 +210,7 @@ class GPU_model {
     ComPtr<ID3D12Resource> MeshIndicesOffsets;
     ComPtr<ID3D12Resource> MaterialsArray;
     std::vector<GPU_Material> MaterialsCPUArray;
-    //std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;  // ??? 
+    std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;
 
     bool isEmpty_ = true;
 

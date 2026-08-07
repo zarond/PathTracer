@@ -239,11 +239,6 @@ NaiveAS::NaiveAS(const Model& model) {
             obj.meshIndex, 
             mesh.indices.size());
     }
-    // sort by complexity (number of triangles) to try easier objects first (starting from the back of array) in case of any_hit
-    const auto complexity_cmp = [](const ObjectData& obj_a, const ObjectData& obj_b) {
-        return obj_a.complexity > obj_b.complexity;  // more complex first
-    };
-    std::sort(object_data_.begin(), object_data_.end(), complexity_cmp);
 
     for (const auto& mesh : model.meshes) {
         std::vector<fvec3> data;
@@ -351,6 +346,17 @@ BBox NaiveAS::get_scene_bounds() const noexcept {
     return dop.to_bbox();
 }
 
+void NaiveAS::update_transforms(const Model& model) {
+    object_data_.clear();
+    object_data_.reserve(model.objects.size());
+    for (uint32_t i = 0; i < model.objects.size(); ++i) {
+        const auto& obj = model.objects[i];
+        const auto& mesh = model.meshes[obj.meshIndex];
+        DOP volume = object_to_ws_dop(obj, mesh); // ??? todo: dont recalc whole DOP
+        object_data_.emplace_back(volume, obj.ModelMatrix, transpose(obj.NormalMatrix), i, obj.meshIndex, mesh.indices.size());
+    }
+}
+
 // NaiveAS
 
 BVH_AS::BVH_AS(const Model& model, int max_triangles_per_leaf) {
@@ -369,13 +375,6 @@ BVH_AS::BVH_AS(const Model& model, int max_triangles_per_leaf) {
             obj.meshIndex, 
             mesh.indices.size());
     }
-    // sort by complexity (number of triangles) to try easier objects first (starting from the back of array) in case of
-    // any_hit
-    const auto complexity_cmp = [](const ObjectData& obj_a, const ObjectData& obj_b) {
-        ;
-        return obj_a.complexity > obj_b.complexity;  // more complex first
-    };
-    std::sort(object_data_.begin(), object_data_.end(), complexity_cmp);
 
     for (const auto& mesh : model.meshes) {
         const auto& mat = model.materials[mesh.materialIndex];
@@ -718,6 +717,17 @@ BBox BVH_AS::get_scene_bounds() const noexcept {
         dop.expand(obj.volume);
     }
     return dop.to_bbox();
+}
+
+void BVH_AS::update_transforms(const Model& model) {
+    object_data_.clear();
+    object_data_.reserve(model.objects.size());
+    for (uint32_t i = 0; i < model.objects.size(); ++i) {
+        const auto& obj = model.objects[i];
+        const auto& mesh = model.meshes[obj.meshIndex];
+        DOP volume = object_to_ws_dop(obj, mesh); // ??? todo: dont recalc whole DOP
+        object_data_.emplace_back(volume, obj.ModelMatrix, transpose(obj.NormalMatrix), i, obj.meshIndex, mesh.indices.size());
+    }
 }
 
 // BVH_AS

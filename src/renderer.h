@@ -76,6 +76,8 @@ class IRenderer {
     virtual void cancel_rendering() = 0;
     virtual RenderingState get_rendering_state() const = 0;
     virtual void set_render_starting_state() = 0;
+
+    virtual void update_transforms() = 0;
 };
 
 class Renderer : public IRenderer {
@@ -105,6 +107,8 @@ class Renderer : public IRenderer {
     void cancel_rendering();
     RenderingState get_rendering_state() const;
     void set_render_starting_state();
+
+    void update_transforms();
 
   private:
     std::unique_ptr<IAccelerationStructure> accel_struct_;

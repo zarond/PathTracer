@@ -72,6 +72,7 @@ class IAccelerationStructure {
     virtual ~IAccelerationStructure() = default;
     virtual ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const noexcept = 0;
 
+    virtual void update_transforms(const Model& model) = 0;
     virtual BBox get_scene_bounds() const noexcept = 0;
 };
 
@@ -102,6 +103,8 @@ class NaiveAS : public IAccelerationStructure {
 
     BBox get_scene_bounds() const noexcept override;
 
+    void update_transforms(const Model& model) override;
+
   private:
     struct MeshData {
         std::vector<fvec3> vertices;  // tuples of 3 vertices positions that form triangles
@@ -124,6 +127,8 @@ class BVH_AS : public IAccelerationStructure {
     ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const noexcept override;
 
     BBox get_scene_bounds() const noexcept override;
+
+    void update_transforms(const Model& model) override;
 
   private:
     struct MeshBVHNode {
