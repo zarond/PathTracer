@@ -186,7 +186,7 @@ target_include_directories(stb INTERFACE ${LIBS_DIR}/stb)
 add_library(quickhull STATIC
     ${LIBS_DIR}/quickhull/QuickHull.cpp
 )
-target_include_directories(quickhull INTERFACE ${LIBS_DIR}/quickhull)
+target_include_directories(quickhull PUBLIC ${LIBS_DIR}/quickhull)
 
 set(FASTGLTF_COMPILE_AS_CPP20 True)
 #set(FASTGLTF_USE_CUSTOM_SMALLVECTOR True)

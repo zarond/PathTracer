@@ -2,7 +2,7 @@
 #include <glm/glm.hpp>
 #include "model_loader.h"
 
-#include "quickhull.hpp"
+#include "QuickHull.hpp"
 
 namespace app {
 
