@@ -356,8 +356,6 @@ Animation::Animation(const fastgltf::Animation& gltf_animation, const fastgltf::
     name = gltf_animation.name;
 }
 
-Animation::~Animation() { raw_data.clear(); }
-
 namespace {
     // Helper function to find the keyframe indices for a given time
     // Uses cached index for optimization - assumes sequential animation playback

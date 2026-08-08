@@ -97,7 +97,6 @@ struct Animation {
     using AnimationData = std::variant<ScalarData, Vec2Data, Vec3Data, Vec4Data>;
 
     Animation(const fastgltf::Animation& gltf_animation, const fastgltf::Asset& asset);
-    ~Animation();
 
     std::vector<AnimationChannel> channels;
     std::vector<AnimationSampler> samplers;
@@ -119,8 +118,8 @@ struct Model {
     std::vector<Animation> animations;
 
     Model() = default;
-    Model(Model&&) = default;
-    Model& operator=(Model&&) = default;
+    Model(Model&&) noexcept = default;
+    Model& operator=(Model&&) noexcept = default;
 
     Model(const Model&) = delete;
     Model& operator=(const Model&) = delete;
