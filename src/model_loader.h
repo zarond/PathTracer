@@ -114,7 +114,8 @@ struct Model {
     std::vector<Object> objects;
     std::vector<CPUTexture<sdr_pixel>> images;
     std::vector<std::string> materials_names;
-    NodeTree nodes_transforms;
+    NodeTree nodes_transforms;              // current transforms
+    NodeTree nodes_original_transforms;     // "rest" transforms
     std::vector<Animation> animations;
 
     Model() = default;

@@ -249,6 +249,7 @@ Model ModelLoader::construct_model() const {
             model.nodes_transforms[child].parent = i;
         }
     }
+    model.nodes_original_transforms.assign(model.nodes_transforms.begin(), model.nodes_transforms.end());
 
     model.animations.reserve(asset_.animations.size());
     for (const auto& animation : asset_.animations) {
@@ -469,7 +470,7 @@ void Model::apply_animation(int animation_index, double time_d, bool looping) {
 
         if (channel.path == fastgltf::AnimationPath::Translation) {
             if (const auto* values = std::get_if<Animation::Vec3Data>(&value_variant)) {
-                fvec3 result;
+                fvec3 result{};
                 if (sampler.interpolation == fastgltf::AnimationInterpolation::Step) {
                     result = (*values)[t0_idx];
                 } else if (sampler.interpolation == fastgltf::AnimationInterpolation::Linear) {
@@ -489,7 +490,7 @@ void Model::apply_animation(int animation_index, double time_d, bool looping) {
             }
         } else if (channel.path == fastgltf::AnimationPath::Rotation) {
             if (const auto* values = std::get_if<Animation::Vec4Data>(&value_variant)) {
-                glm::quat result;
+                glm::quat result{};
                 if (sampler.interpolation == fastgltf::AnimationInterpolation::Step) {
                     const fvec4& q = (*values)[t0_idx];
                     result = glm::quat(q.w, q.x, q.y, q.z);
@@ -512,15 +513,20 @@ void Model::apply_animation(int animation_index, double time_d, bool looping) {
                     result = glm::quat(cubic_result.w, cubic_result.x, cubic_result.y, cubic_result.z);
                 }
 
+                auto column1 = xyz(node.lsTransformMatrix[0]);
+                auto column2 = xyz(node.lsTransformMatrix[1]);
+                auto column3 = xyz(node.lsTransformMatrix[2]);
+                fvec3 scale = {length(column1), length(column2), length(column3)};
+
                 // Update node rotation (convert quaternion to rotation matrix)
                 fmat4x4 rotation_matrix = mat4_cast(result);
-                node.lsTransformMatrix[0] = rotation_matrix[0];
-                node.lsTransformMatrix[1] = rotation_matrix[1];
-                node.lsTransformMatrix[2] = rotation_matrix[2];
+                node.lsTransformMatrix[0] = rotation_matrix[0] * scale.x;
+                node.lsTransformMatrix[1] = rotation_matrix[1] * scale.y;
+                node.lsTransformMatrix[2] = rotation_matrix[2] * scale.z;
             }
         } else if (channel.path == fastgltf::AnimationPath::Scale) {
             if (const auto* values = std::get_if<Animation::Vec3Data>(&value_variant)) {
-                fvec3 result;
+                fvec3 result{};
                 if (sampler.interpolation == fastgltf::AnimationInterpolation::Step) {
                     result = (*values)[t0_idx];
                 } else if (sampler.interpolation == fastgltf::AnimationInterpolation::Linear) {
@@ -534,10 +540,28 @@ void Model::apply_animation(int animation_index, double time_d, bool looping) {
                     result = CubicInterpolation(t0, t1, interpolation_factor, v0, v1, a1, b0);
                 }
 
+                auto column1 = xyz(node.lsTransformMatrix[0]);
+                auto column2 = xyz(node.lsTransformMatrix[1]);
+                auto column3 = xyz(node.lsTransformMatrix[2]);
+
+                column1 = glm::normalize(column1);
+                column2 = glm::normalize(column2);
+                column3 = glm::normalize(column3);
+
+                if (any(glm::isnan(column1))) {
+                    column1 = fvec3(1.0f, 0.0f, 0.0f);
+                }
+                if (any(glm::isnan(column2))) {
+                    column2 = fvec3(0.0f, 1.0f, 0.0f);
+                }
+                if (any(glm::isnan(column3))) {
+                    column3 = fvec3(0.0f, 0.0f, 1.0f);
+                }
+
                 // Apply scale to the transformation matrix
-                node.lsTransformMatrix[0] = fvec4(glm::normalize(fvec3(node.lsTransformMatrix[0])) * result.x, 0.0f);
-                node.lsTransformMatrix[1] = fvec4(glm::normalize(fvec3(node.lsTransformMatrix[1])) * result.y, 0.0f);
-                node.lsTransformMatrix[2] = fvec4(glm::normalize(fvec3(node.lsTransformMatrix[2])) * result.z, 0.0f);
+                node.lsTransformMatrix[0] = fvec4(column1 * result.x, 0.0f);
+                node.lsTransformMatrix[1] = fvec4(column2 * result.y, 0.0f);
+                node.lsTransformMatrix[2] = fvec4(column3 * result.z, 0.0f);
             }
         }
     }

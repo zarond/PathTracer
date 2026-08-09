@@ -331,6 +331,16 @@ bool Viewer::get_animation_looping() const {
     return animation_looping;
 }
 
+bool Viewer::get_animation_playing() const {
+    return animation_playing_;
+}
+
+void Viewer::apply_rest_pose() {
+    model_.nodes_transforms.assign(model_.nodes_original_transforms.begin(), model_.nodes_original_transforms.end());
+    model_.update_objects();
+    need_transforms_update_ = true;
+}
+
 void save_render_image_timed_action(const Viewer& viewer, const std::filesystem::path& image_path) {
     auto start = std::chrono::high_resolution_clock::now();
     viewer.take_snapshot(image_path);

@@ -102,7 +102,9 @@ class Viewer {
     void choose_animation(uint32_t animationIndex);
     void set_animation_looping(bool loop);
     bool get_animation_looping() const;
+    bool get_animation_playing() const;
     void rewind_animation();
+    void apply_rest_pose();
 
   private:
     Model model_;

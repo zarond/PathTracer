@@ -776,6 +776,10 @@ static void AnimationsUI(Viewer& viewer) {
             ImGui::EndCombo();
         }
     }
+    ImGui::Separator();
+    if (!viewer.get_animation_playing() && ImGui::Button("Apply rest pose")) {
+        viewer.apply_rest_pose();
+    }
 }
 
 void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector<PendingDelete>& deferredDeletes,
