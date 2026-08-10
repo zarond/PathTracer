@@ -365,6 +365,12 @@ GPU_Material::GPU_Material(const Material& mat, const std::vector<int>& texture_
     padding = 0;
 }
 
+GPU_object_info::GPU_object_info(const Object& obj) :
+    ModelMatrix(obj.ModelMatrix),
+    ModelMatrix_prev(obj.ModelMatrix),
+    NormalMatrix(obj.NormalMatrix),
+    meshIndex(obj.meshIndex) {}
+
 GPU_model::GPU_model(const Model& cpu_model, bool raytracing_support) {
     if (cpu_model.meshes.size() == 0) {
         return;
@@ -385,7 +391,7 @@ GPU_model::GPU_model(const Model& cpu_model, bool raytracing_support) {
     prepare_combined_vertex_index_buffers(cpu_model);
     prepare_textures_array_buffer(cpu_model);
     prepare_materials_array_buffer(cpu_model);
-    objects = cpu_model.objects;
+    objects.assign(cpu_model.objects.begin(), cpu_model.objects.end());
     isEmpty_ = false;
 }
 
@@ -445,7 +451,6 @@ bool GPU_model::isEmpty() const { return isEmpty_; }
 void GPU_model::create_top_level_AS(const Model& cpu_model) {
     D3DContext& d3d_ctx = D3DContext::Get();
 
-    const auto& objects = cpu_model.objects;
     const size_t instanceCount = objects.size();
     if (instanceCount == 0) return;
 
@@ -473,7 +478,7 @@ void GPU_model::create_top_level_AS(const Model& cpu_model) {
         bool alphaBlending = material.alphaBlending;
         bool alphaTest = (material.alphaCutoff >= 0.0f);
 
-        inst.InstanceID = objects[i].meshIndex;  // can be used to identify object in shaders
+        inst.InstanceID = obj.meshIndex;  // can be used to identify object in shaders
         inst.InstanceMask = 0xFF;
         inst.InstanceContributionToHitGroupIndex = 0;  // shader binding table offsets if used
         inst.Flags = 0;
@@ -794,14 +799,22 @@ void GPU_model::update_materials_array_buffer(const Model& cpu_model) {
 const std::vector<GPU_Material>& GPU_model::get_materials_cpu_array() const { return MaterialsCPUArray; }
 
 void GPU_model::update_transforms(const Model& model, bool updateTLAS) {
-    objects.assign(model.objects.begin(), model.objects.end());
+    // copy new transforms and keep previous matrix for reprojections
+    for (size_t i = 0; i < std::min(objects.size(), model.objects.size()); ++i) {
+        auto& obj = objects[i];
+        const auto& obj_new = model.objects[i];
+        obj.ModelMatrix_prev = obj.ModelMatrix;
+        obj.ModelMatrix = obj_new.ModelMatrix;
+        obj.NormalMatrix = obj_new.NormalMatrix;
+        obj.meshIndex = obj_new.meshIndex;
+    }
     if (!updateTLAS) return;
 
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
 
-    assert(instances.size() == model.objects.size());
-    if (instances.size() != model.objects.size()) {
+    assert(instances.size() == objects.size());
+    if (instances.size() != objects.size()) {
         return;
     }
 

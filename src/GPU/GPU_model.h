@@ -152,6 +152,15 @@ class GPU_texture {
     // ComPtr<ID3D12Resource> uploadBuffer;
 };
 
+struct GPU_object_info {
+    fmat4x4 ModelMatrix;
+    fmat4x4 ModelMatrix_prev;
+    fmat4x4 NormalMatrix;
+    uint32_t meshIndex;
+
+    GPU_object_info(const Object& obj);
+};
+
 class GPU_model {
   public:
     explicit GPU_model(const Model& cpu_model, bool raytracing_support = true);
@@ -177,7 +186,7 @@ class GPU_model {
     std::vector<uint32_t> indicesOffsets;
     std::vector<uint32_t> indicesSizes;
     
-    std::vector<Object> objects;
+    std::vector<GPU_object_info> objects;
 
     std::vector<GPU_texture> textures;
 

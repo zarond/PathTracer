@@ -277,7 +277,8 @@ float4 PS_Background(BG_VS_OUTPUT input) : SV_TARGET {
 
 struct GBInput {
     float4 ndc_position : SV_POSITION;
-    //float4 view_position : POSITION;
+	float4 ndc_position_curr : POSITION;
+    float4 ndc_position_prev : POSITION1;
     float4 normal : NORMAL;
     float4 tangent : TANGENT;
     float4 uv : TEXCOORD;
@@ -285,7 +286,8 @@ struct GBInput {
 
 struct GBOutput {
     float4 normal_roughness : SV_TARGET0;       // normal.xyz, roughness in alpha
-    uint id : SV_TARGET1;                       // material ID in R8_UINT format
+    float3 velocity : SV_TARGET1;               // velocity in R16G16B16A16_FLOAT format
+    uint id : SV_TARGET2;                       // material ID in R8_UINT format
 };
 
 [shader("vertex")] 
@@ -294,11 +296,17 @@ GBInput VS_Gbuffer(float4 position : POSITION, float4 normal : NORMAL, float4 ta
 
     position.w = 1.0f;
     normal.w = 0.0f;
-    position = mul(DrawData.modelMatrix, position);
+
+    float4 current_ws_pos = mul(DrawData.modelMatrix, position);
+    float4 previous_ws_pos = mul(DrawData.modelMatrix_prev, position);
+
     float tangent_sign = tangent.w;
-    tangent.w = 0.0f; 
-    //result.view_position = mul(g_rasterCB.viewMatrix, position);
-    result.ndc_position = mul(g_rasterCB.viewProjection, position);
+    tangent.w = 0.0f;
+
+    result.ndc_position = mul(g_rasterCB.viewProjection, current_ws_pos);
+	result.ndc_position_curr = result.ndc_position;
+    result.ndc_position_prev = mul(g_rasterCB.viewProjection_prev, previous_ws_pos);
+
     result.normal = mul(DrawData.normalMatrix, normal);
     result.tangent = mul(DrawData.modelMatrix, tangent);
     result.normal.w = 0.0f;
@@ -337,8 +345,14 @@ GBOutput PS_Gbuffer(GBInput input) : SV_TARGET {
 
     bool is_transmissive_material = (mat.transmisionFactor != 0.0f || mat.hasVolume);
 
+    // Compute velocity from NDC space positions
+	float3 current_ndc = input.ndc_position_curr.xyz / input.ndc_position_curr.w;
+    float3 previous_ndc = input.ndc_position_prev.xyz / input.ndc_position_prev.w;
+    float3 velocity = current_ndc - previous_ndc;
+
     GBOutput result;
     result.normal_roughness = float4(N, roughness);
+    result.velocity = velocity;
     result.id = is_transmissive_material ? MaterialID::Transmissive : MaterialID::Opaque;
 
     return result;

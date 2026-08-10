@@ -49,7 +49,7 @@ void GTAO_helper::Reload() {
 GTAO_helper::~GTAO_helper() { release_gpu_resources(); }
 
 void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_texture, 
-    GPU_texture& DepthUAVTexture, GPU_texture& DepthUAVTexture_previous,
+    GPU_texture& VelocityBuffer, GPU_texture& DepthUAVTexture, GPU_texture& DepthUAVTexture_previous,
     const fmat4x4& Projection, const fmat4x4& invProjection, const fmat4x4& ViewProjection,
     unsigned int FrameID) 
 {
@@ -68,12 +68,14 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
 
     auto barrier_g_buff = CD3DX12_RESOURCE_BARRIER::Transition(G_buff_texture.get_gpu_resource().Get(),
         D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    auto barrier_velocity = CD3DX12_RESOURCE_BARRIER::Transition(VelocityBuffer.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     auto barrier_depth_uav = CD3DX12_RESOURCE_BARRIER::Transition(DepthUAVTexture.get_gpu_resource().Get(),
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     auto barrier_depth_uav_previous = CD3DX12_RESOURCE_BARRIER::Transition(DepthUAVTexture_previous.get_gpu_resource().Get(),
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    D3D12_RESOURCE_BARRIER bariers_in[] = {barrier_g_buff, barrier_depth_uav, barrier_depth_uav_previous};
-    commandList->ResourceBarrier(3, bariers_in);
+    D3D12_RESOURCE_BARRIER bariers_in[] = {barrier_g_buff, barrier_velocity, barrier_depth_uav, barrier_depth_uav_previous};
+    commandList->ResourceBarrier(4, bariers_in);
 
     commandList->SetComputeRootSignature(m_rootSignature.Get());
     commandList->SetPipelineState(m_PipelineState.Get());
@@ -107,7 +109,7 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
             auto barrier_uav = CD3DX12_RESOURCE_BARRIER::UAV(m_SpatialDenoised.get_gpu_resource().Get());
             commandList->ResourceBarrier(1, &barrier_uav);
             reprojection_helper.Reproject(m_SpatialDenoised_previous, DepthUAVTexture_previous, m_SpatialDenoised,
-                DepthUAVTexture, Projection, glm::inverse(ViewProjection), ViewProjection_previous,
+                DepthUAVTexture, VelocityBuffer, Projection, glm::inverse(ViewProjection), ViewProjection_previous,
                 Projection_previous, 1.0f / 6.0f,
                 DepthThreshold, false, nullptr);
         }
@@ -128,12 +130,14 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
 
     barrier_g_buff = CD3DX12_RESOURCE_BARRIER::Transition(G_buff_texture.get_gpu_resource().Get(),
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    barrier_velocity = CD3DX12_RESOURCE_BARRIER::Transition(VelocityBuffer.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
     barrier_depth_uav = CD3DX12_RESOURCE_BARRIER::Transition(DepthUAVTexture.get_gpu_resource().Get(),
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     barrier_depth_uav_previous = CD3DX12_RESOURCE_BARRIER::Transition(DepthUAVTexture_previous.get_gpu_resource().Get(),
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-    D3D12_RESOURCE_BARRIER bariers_out[] = {barrier_g_buff, barrier_depth_uav, barrier_depth_uav_previous};
-    commandList->ResourceBarrier(3, bariers_out);
+    D3D12_RESOURCE_BARRIER bariers_out[] = {barrier_g_buff, barrier_velocity, barrier_depth_uav, barrier_depth_uav_previous};
+    commandList->ResourceBarrier(4, bariers_out);
 }
 
 void GTAO_helper::ResetFrameCounter() { consecutive_frame_count = 0; }
@@ -192,7 +196,6 @@ void GTAO_helper::CreatePipelineStateObject() {
 
     ThrowIfFailed(device->CreateComputePipelineState(&computePsoDesc, IID_PPV_ARGS(&m_PipelineState)));
 }
-
 
 void GTAO_helper::release_gpu_resources() {
     m_rootSignature.Reset();

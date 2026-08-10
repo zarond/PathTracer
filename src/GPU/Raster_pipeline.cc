@@ -100,6 +100,9 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_rasterCB.cameraPosition = xyz1(origin);
     m_rasterCB.projectionToWorld = NDC2WorldMatrix;
     m_rasterCB.viewProjection = ProjectionMatrix * ViewMatrix;
+    if (frameID == 0) {
+        m_rasterCB.viewProjection_prev = m_rasterCB.viewProjection;
+    }
     m_rasterCB.viewMatrix = ViewMatrix;
     m_rasterCB.Projection = ProjectionMatrix;
     m_rasterCB.invProjection = inverse(ProjectionMatrix);
@@ -243,13 +246,15 @@ void Raster_pipeline::CreatePipelineStateObjects() {
     psoDesc.PS = ps_gbuff_bytecode;
     rtBlend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
     psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-    psoDesc.NumRenderTargets = 2;  // second render target for material ID
-    psoDesc.RTVFormats[1] = DXGI_FORMAT_R8_UINT;
+    psoDesc.NumRenderTargets = 3;  // second render target for Velocity Buffer, third for material ID
+    psoDesc.RTVFormats[1] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    psoDesc.RTVFormats[2] = DXGI_FORMAT_R8_UINT;
     ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_GbufferPipelineState)));
 
     // PSO for alpha blending
     psoDesc.NumRenderTargets = 1;
     psoDesc.RTVFormats[1] = DXGI_FORMAT_UNKNOWN;
+    psoDesc.RTVFormats[2] = DXGI_FORMAT_UNKNOWN;
     psoDesc.VS = vs_bytecode;
     psoDesc.PS = ps_bytecode;
     psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
@@ -339,12 +344,14 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     auto rtvHandle = m_renderTarget.GetRTVHandle();
     auto depthHandle = m_depthTexture.GetDSVHandle();
     auto gbufferRTVHandle = m_gbuffer.GetRTVHandle();
+    auto velocityRTVHandle = m_VelocityBuffer.GetRTVHandle();
     auto ID_RTVHandle = m_IDTexture.GetRTVHandle();
-    D3D12_CPU_DESCRIPTOR_HANDLE GbuffRTVHandles[] = {gbufferRTVHandle, ID_RTVHandle};
+    D3D12_CPU_DESCRIPTOR_HANDLE GbuffRTVHandles[] = {gbufferRTVHandle, velocityRTVHandle, ID_RTVHandle};
 
     const float clearColor[] = {0.0f, 0.0f, 0.0f, 1.0f};
-    commandList->OMSetRenderTargets(2, GbuffRTVHandles, FALSE, &depthHandle);
+    commandList->OMSetRenderTargets(3, GbuffRTVHandles, FALSE, &depthHandle);
     commandList->ClearRenderTargetView(gbufferRTVHandle, clearColor, 0, nullptr);
+    commandList->ClearRenderTargetView(velocityRTVHandle, clearColor, 0, nullptr);
     commandList->ClearRenderTargetView(ID_RTVHandle, clearColor, 0, nullptr);
 
     commandList->ClearDepthStencilView(depthHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
@@ -370,7 +377,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
         const auto& obj = *element.object;
         index_count = gpu_model.indicesSizes[obj.meshIndex];
         UINT baseIndexLocation = gpu_model.indicesOffsets[obj.meshIndex];
-        RasterPerDrawData draw_data{obj.ModelMatrix, obj.NormalMatrix, obj.meshIndex, element.modelScale, UseAOTexture};
+        RasterPerDrawData draw_data{obj.ModelMatrix, obj.ModelMatrix_prev, obj.NormalMatrix, obj.meshIndex, element.modelScale, UseAOTexture};
         constexpr int drawDataSizeInInt = sizeof(RasterPerDrawData) / 4;
         commandList->SetGraphicsRoot32BitConstants(GlobalRootSignatureParams::RootConstants, drawDataSizeInInt, &draw_data, 0);
         commandList->DrawIndexedInstanced(index_count, 1, baseIndexLocation, 0, 0);
@@ -414,13 +421,13 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     }
 
     if (UseGTAO) {
-        m_GTAO_helper.CreateAO(m_AOTexture, m_gbuffer, m_DepthUAVTexture, m_DepthUAVTexture_previous, 
+        m_GTAO_helper.CreateAO(m_AOTexture, m_gbuffer, m_VelocityBuffer, m_DepthUAVTexture, m_DepthUAVTexture_previous, 
             m_rasterCB.Projection, m_rasterCB.invProjection, m_rasterCB.viewProjection, m_rasterCB.frameID);
     }
 
     if (UseSSR) {
-        m_SSR_helper.CalculateSSR(m_SSR, m_gbuffer, m_DepthUAVTexture, m_DepthUAVTexture_previous, m_renderTarget_previous,
-            m_rasterCB.Projection, m_rasterCB.invProjection, m_rasterCB.viewProjection, m_rasterCB.frameID);
+        m_SSR_helper.CalculateSSR(m_SSR, m_gbuffer, m_VelocityBuffer, m_DepthUAVTexture, m_DepthUAVTexture_previous,
+            m_renderTarget_previous, m_rasterCB.Projection, m_rasterCB.invProjection, m_rasterCB.viewProjection, m_rasterCB.frameID);
     }
 
     if (UseGTAO || UseSSR) {
@@ -432,6 +439,8 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
         GPU_texture::copy_texture(m_renderTarget, m_AOTexture, D3D12_RESOURCE_STATE_RENDER_TARGET,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS, commandList);
         copy_render_target_to_framebuffer(framebuffer);
+        // set the previous frame VP matrix for next frame
+        m_rasterCB.viewProjection_prev = m_rasterCB.viewProjection;
         return;
     }
 
@@ -501,6 +510,8 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     } else {
         copy_render_target_to_framebuffer(framebuffer);
     }
+    // set the previous frame VP matrix for next frame
+    m_rasterCB.viewProjection_prev = m_rasterCB.viewProjection;
 
     std::swap(m_renderTarget, m_renderTarget_previous);
 }
@@ -571,6 +582,10 @@ void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
     m_SSR.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
     m_SSR = GPU_texture{currentWidth, currentHeight, flags};
+
+    m_VelocityBuffer.release_gpu_resource();
+    flags = TEXTURE_TRAITS::RenderTarget;
+    m_VelocityBuffer = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R16G16B16A16_FLOAT};
 }
 
 void Raster_pipeline::sort_objects_for_rendering(

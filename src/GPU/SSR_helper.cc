@@ -56,8 +56,9 @@ void SSR_helper::Reload() {
 
 SSR_helper::~SSR_helper() { release_gpu_resources(); }
 
-void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_texture, GPU_texture& DepthUAVTexture,
-    GPU_texture& DepthUAVTexture_previous, GPU_texture& Frame_texture, 
+void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_texture, 
+    GPU_texture& VelocityBuffer, GPU_texture & DepthUAVTexture,
+    GPU_texture& DepthUAVTexture_previous, GPU_texture& Frame_texture,
     const fmat4x4& Projection, const fmat4x4& invProjection, const fmat4x4& ViewProjection, unsigned int FrameID) 
 {
     const auto& resource = SSR_uav_texture.get_gpu_resource();
@@ -78,8 +79,9 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
 
     // Reproject previous Frame before doing SSR
     {
-        reprojection_helper.Reproject(Frame_texture, DepthUAVTexture_previous, m_Frame_reprojected, DepthUAVTexture, Projection,
-            glm::inverse(ViewProjection), ViewProjection_previous, Projection_previous, 0.0f, 10000.0f, true, nullptr);
+        reprojection_helper.Reproject(Frame_texture, DepthUAVTexture_previous, m_Frame_reprojected, DepthUAVTexture, 
+            VelocityBuffer, Projection, glm::inverse(ViewProjection), ViewProjection_previous, 
+            Projection_previous, 0.0f, 10000.0f, true, nullptr);
         const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(m_Frame_reprojected.get_gpu_resource().Get());
         commandList->ResourceBarrier(1, &barrier);
 
@@ -95,8 +97,10 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     auto barrier_depth_uav_previous = CD3DX12_RESOURCE_BARRIER::Transition(DepthUAVTexture_previous.get_gpu_resource().Get(),
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    D3D12_RESOURCE_BARRIER bariers_in[] = {barrier_depth_uav, barrier_depth_uav_previous};
-    commandList->ResourceBarrier(2, bariers_in);
+    auto barrier_velocity = CD3DX12_RESOURCE_BARRIER::Transition(VelocityBuffer.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    D3D12_RESOURCE_BARRIER bariers_in[] = {barrier_depth_uav, barrier_depth_uav_previous, barrier_velocity};
+    commandList->ResourceBarrier(3, bariers_in);
 
     commandList->SetComputeRootSignature(m_rootSignature.Get());
     commandList->SetPipelineState(m_TracePipelineState.Get());
@@ -137,7 +141,7 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
         auto barrier_ssr_uav = CD3DX12_RESOURCE_BARRIER::UAV(SSR_uav_texture.get_gpu_resource().Get());
         commandList->ResourceBarrier(1, &barrier_ssr_uav);
         reprojection_helper.Reproject(m_SSR_texture_previous, DepthUAVTexture_previous, SSR_uav_texture, DepthUAVTexture,
-            Projection, glm::inverse(ViewProjection), ViewProjection_previous, Projection_previous, 
+            VelocityBuffer, Projection, glm::inverse(ViewProjection), ViewProjection_previous, Projection_previous, 
             1.0f / 16.0f, DepthThreshold, false, ParallaxReprojection ? &m_SSR_buff : nullptr);
     }
 
@@ -149,8 +153,10 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     barrier_depth_uav_previous = CD3DX12_RESOURCE_BARRIER::Transition(DepthUAVTexture_previous.get_gpu_resource().Get(),
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-    D3D12_RESOURCE_BARRIER bariers_out[] = {barrier_depth_uav, barrier_depth_uav_previous};
-    commandList->ResourceBarrier(2, bariers_out);
+    barrier_velocity = CD3DX12_RESOURCE_BARRIER::Transition(VelocityBuffer.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    D3D12_RESOURCE_BARRIER bariers_out[] = {barrier_depth_uav, barrier_depth_uav_previous, barrier_velocity};
+    commandList->ResourceBarrier(3, bariers_out);
 
     ViewProjection_previous = ViewProjection;
     Projection_previous = Projection;

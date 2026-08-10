@@ -15,8 +15,9 @@ class GTAO_helper {
     GTAO_helper();
     ~GTAO_helper();
 
-    void CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_texture, GPU_texture& DepthUAVTexture,
-        GPU_texture& DepthUAVTexture_previous, const fmat4x4& Projection, const fmat4x4& invProjection,
+    void CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_texture, GPU_texture& VelocityBuffer,
+        GPU_texture& DepthUAVTexture, GPU_texture& DepthUAVTexture_previous, 
+        const fmat4x4& Projection, const fmat4x4& invProjection,
         const fmat4x4& ViewProjection, unsigned int FrameID);
 
     void ResetFrameCounter();

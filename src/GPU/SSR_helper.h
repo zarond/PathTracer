@@ -15,9 +15,10 @@ class SSR_helper {
     SSR_helper();
     ~SSR_helper();
 
-    void CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_texture, GPU_texture& DepthUAVTexture,
-        GPU_texture& DepthUAVTexture_previous,
-        GPU_texture& Frame_texture, const fmat4x4& Projection, const fmat4x4& invProjection, const fmat4x4& ViewProjection,
+    void CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_texture,
+        GPU_texture& VelocityBuffer, GPU_texture & DepthUAVTexture,
+        GPU_texture& DepthUAVTexture_previous, GPU_texture& Frame_texture, const fmat4x4& Projection,
+        const fmat4x4& invProjection, const fmat4x4& ViewProjection,
         unsigned int FrameID);
 
     void ResetFrameCounter();
