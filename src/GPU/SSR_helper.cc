@@ -59,7 +59,8 @@ SSR_helper::~SSR_helper() { release_gpu_resources(); }
 void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_texture, 
     GPU_texture& VelocityBuffer, GPU_texture & DepthUAVTexture,
     GPU_texture& DepthUAVTexture_previous, GPU_texture& Frame_texture,
-    const fmat4x4& Projection, const fmat4x4& invProjection, const fmat4x4& ViewProjection, unsigned int FrameID) 
+    const fmat4x4& Projection, const fmat4x4& invProjection, const fmat4x4& ViewProjection, 
+    const fmat4x4& ViewProjection_prev, unsigned int FrameID)
 {
     const auto& resource = SSR_uav_texture.get_gpu_resource();
     const auto description = resource->GetDesc();
@@ -80,7 +81,7 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
     // Reproject previous Frame before doing SSR
     {
         reprojection_helper.Reproject(Frame_texture, DepthUAVTexture_previous, m_Frame_reprojected, DepthUAVTexture, 
-            VelocityBuffer, Projection, glm::inverse(ViewProjection), ViewProjection_previous, 
+            VelocityBuffer, Projection, glm::inverse(ViewProjection), ViewProjection_prev, 
             Projection_previous, 0.0f, 10000.0f, true, nullptr);
         const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(m_Frame_reprojected.get_gpu_resource().Get());
         commandList->ResourceBarrier(1, &barrier);
@@ -141,7 +142,7 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
         auto barrier_ssr_uav = CD3DX12_RESOURCE_BARRIER::UAV(SSR_uav_texture.get_gpu_resource().Get());
         commandList->ResourceBarrier(1, &barrier_ssr_uav);
         reprojection_helper.Reproject(m_SSR_texture_previous, DepthUAVTexture_previous, SSR_uav_texture, DepthUAVTexture,
-            VelocityBuffer, Projection, glm::inverse(ViewProjection), ViewProjection_previous, Projection_previous, 
+            VelocityBuffer, Projection, glm::inverse(ViewProjection), ViewProjection_prev, Projection_previous, 
             1.0f / 16.0f, DepthThreshold, false, ParallaxReprojection ? &m_SSR_buff : nullptr);
     }
 
@@ -158,7 +159,6 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
     D3D12_RESOURCE_BARRIER bariers_out[] = {barrier_depth_uav, barrier_depth_uav_previous, barrier_velocity};
     commandList->ResourceBarrier(3, bariers_out);
 
-    ViewProjection_previous = ViewProjection;
     Projection_previous = Projection;
     ++consecutive_frame_count;
 }

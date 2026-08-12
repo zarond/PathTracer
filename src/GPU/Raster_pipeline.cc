@@ -422,12 +422,14 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
 
     if (UseGTAO) {
         m_GTAO_helper.CreateAO(m_AOTexture, m_gbuffer, m_VelocityBuffer, m_DepthUAVTexture, m_DepthUAVTexture_previous, 
-            m_rasterCB.Projection, m_rasterCB.invProjection, m_rasterCB.viewProjection, m_rasterCB.frameID);
+            m_rasterCB.Projection, m_rasterCB.invProjection, m_rasterCB.viewProjection,
+            m_rasterCB.viewProjection_prev, m_rasterCB.frameID);
     }
 
     if (UseSSR) {
         m_SSR_helper.CalculateSSR(m_SSR, m_gbuffer, m_VelocityBuffer, m_DepthUAVTexture, m_DepthUAVTexture_previous,
-            m_renderTarget_previous, m_rasterCB.Projection, m_rasterCB.invProjection, m_rasterCB.viewProjection, m_rasterCB.frameID);
+            m_renderTarget_previous, m_rasterCB.Projection, m_rasterCB.invProjection, m_rasterCB.viewProjection,
+            m_rasterCB.viewProjection_prev, m_rasterCB.frameID);
     }
 
     if (UseGTAO || UseSSR) {

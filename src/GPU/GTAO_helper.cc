@@ -50,8 +50,8 @@ GTAO_helper::~GTAO_helper() { release_gpu_resources(); }
 
 void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_texture, 
     GPU_texture& VelocityBuffer, GPU_texture& DepthUAVTexture, GPU_texture& DepthUAVTexture_previous,
-    const fmat4x4& Projection, const fmat4x4& invProjection, const fmat4x4& ViewProjection,
-    unsigned int FrameID) 
+    const fmat4x4& Projection, const fmat4x4& invProjection, const fmat4x4& ViewProjection, 
+    const fmat4x4& ViewProjection_prev, unsigned int FrameID) 
 {
     const auto& resource = AO_uav_texture.get_gpu_resource();
     const auto description = resource->GetDesc();
@@ -109,7 +109,7 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
             auto barrier_uav = CD3DX12_RESOURCE_BARRIER::UAV(m_SpatialDenoised.get_gpu_resource().Get());
             commandList->ResourceBarrier(1, &barrier_uav);
             reprojection_helper.Reproject(m_SpatialDenoised_previous, DepthUAVTexture_previous, m_SpatialDenoised,
-                DepthUAVTexture, VelocityBuffer, Projection, glm::inverse(ViewProjection), ViewProjection_previous,
+                DepthUAVTexture, VelocityBuffer, Projection, glm::inverse(ViewProjection), ViewProjection_prev,
                 Projection_previous, 1.0f / 6.0f,
                 DepthThreshold, false, nullptr);
         }
@@ -123,7 +123,6 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
 
         std::swap(m_SpatialDenoised, m_SpatialDenoised_previous);
 
-        ViewProjection_previous = ViewProjection;
         Projection_previous = Projection;
         ++consecutive_frame_count;
     }

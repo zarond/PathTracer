@@ -18,7 +18,7 @@ class SSR_helper {
     void CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_texture,
         GPU_texture& VelocityBuffer, GPU_texture & DepthUAVTexture,
         GPU_texture& DepthUAVTexture_previous, GPU_texture& Frame_texture, const fmat4x4& Projection,
-        const fmat4x4& invProjection, const fmat4x4& ViewProjection,
+        const fmat4x4& invProjection, const fmat4x4& ViewProjection, const fmat4x4& ViewProjection_prev,
         unsigned int FrameID);
 
     void ResetFrameCounter();
@@ -49,7 +49,6 @@ class SSR_helper {
     UINT currentHeight = 0;
 
     int consecutive_frame_count = 0;
-    fmat4x4 ViewProjection_previous{};
     fmat4x4 Projection_previous{};
 
     static constexpr const wchar_t* c_cs_trace_file_name = L"CS_SSR_trace.dxil";
