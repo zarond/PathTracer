@@ -27,6 +27,9 @@ Texture2D<float> NewDepth : register(t2, space0);
 // SSR buffer with Distance on B channel for SSR parallax
 Texture2D<float4> SSR_buffer : register(t3, space0);
 
+// Velocity Buffer
+Texture2D<float4> Velocity : register(t4, space0);
+
 // Constant Buffer
 ConstantBuffer<ReprojectionCSInput> g_CB : register(b0);
 
@@ -77,6 +80,7 @@ void CS_Reprojection(uint3 DTid : SV_DispatchThreadID) {
     const float4 NewColor = NewTexture.Load(DTid);
 
     float4 ndc = float4(uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), centerDepth, 1.0f);
+	float3 prevNDC;
 
     float reflection_distance = 0.0f;
     if (g_CB.use_reflection_distance) {
@@ -86,12 +90,13 @@ void CS_Reprojection(uint3 DTid : SV_DispatchThreadID) {
             pos_z -= reflection_distance;
             ndc.z = ndc_depth(pos_z);
         }
-    }
+		const float4 prevClip = mul(g_CB.Reprojection, ndc);
+		prevNDC = prevClip.xyz / prevClip.w;
+	} else {
+		prevNDC = ndc.xyz - Velocity.Load(DTid).xyz;
+	}
 
-    const float4 prevClip = mul(g_CB.Reprojection, ndc);
-
-    const float3 prevNDC = prevClip.xyz / prevClip.w;
-    float prevDepth = linear_depth(prevNDC.z);
+	float prevDepth = linear_depth(prevNDC.z);
 
     prevDepth += max(reflection_distance, 0);
 

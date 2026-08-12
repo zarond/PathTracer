@@ -152,6 +152,15 @@ class GPU_texture {
     // ComPtr<ID3D12Resource> uploadBuffer;
 };
 
+struct GPU_object_info {
+    fmat4x4 ModelMatrix;
+    fmat4x4 ModelMatrix_prev;
+    fmat4x4 NormalMatrix;
+    uint32_t meshIndex;
+
+    GPU_object_info(const Object& obj);
+};
+
 class GPU_model {
   public:
     explicit GPU_model(const Model& cpu_model, bool raytracing_support = true);
@@ -177,7 +186,7 @@ class GPU_model {
     std::vector<uint32_t> indicesOffsets;
     std::vector<uint32_t> indicesSizes;
     
-    std::vector<Object> objects;
+    std::vector<GPU_object_info> objects;
 
     std::vector<GPU_texture> textures;
 
@@ -185,6 +194,8 @@ class GPU_model {
 
     void update_materials_array_buffer(const Model& cpu_model);
     const std::vector<GPU_Material>& get_materials_cpu_array() const;
+
+    void update_transforms(const Model& model, bool updateTLAS);
 
     const GPU_mesh& get_combined_mesh() const;
 
@@ -208,7 +219,7 @@ class GPU_model {
     ComPtr<ID3D12Resource> MeshIndicesOffsets;
     ComPtr<ID3D12Resource> MaterialsArray;
     std::vector<GPU_Material> MaterialsCPUArray;
-    //std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;  // ??? 
+    std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;
 
     bool isEmpty_ = true;
 

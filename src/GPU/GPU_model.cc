@@ -365,6 +365,12 @@ GPU_Material::GPU_Material(const Material& mat, const std::vector<int>& texture_
     padding = 0;
 }
 
+GPU_object_info::GPU_object_info(const Object& obj) :
+    ModelMatrix(obj.ModelMatrix),
+    ModelMatrix_prev(obj.ModelMatrix),
+    NormalMatrix(obj.NormalMatrix),
+    meshIndex(obj.meshIndex) {}
+
 GPU_model::GPU_model(const Model& cpu_model, bool raytracing_support) {
     if (cpu_model.meshes.size() == 0) {
         return;
@@ -385,7 +391,7 @@ GPU_model::GPU_model(const Model& cpu_model, bool raytracing_support) {
     prepare_combined_vertex_index_buffers(cpu_model);
     prepare_textures_array_buffer(cpu_model);
     prepare_materials_array_buffer(cpu_model);
-    objects = cpu_model.objects;
+    objects.assign(cpu_model.objects.begin(), cpu_model.objects.end());
     isEmpty_ = false;
 }
 
@@ -445,12 +451,10 @@ bool GPU_model::isEmpty() const { return isEmpty_; }
 void GPU_model::create_top_level_AS(const Model& cpu_model) {
     D3DContext& d3d_ctx = D3DContext::Get();
 
-    const auto& objects = cpu_model.objects;
     const size_t instanceCount = objects.size();
     if (instanceCount == 0) return;
 
     // Prepare CPU-side instance descriptions
-    std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;
     instances.resize(instanceCount);
 
     for (size_t i = 0; i < instanceCount; ++i) {
@@ -474,7 +478,7 @@ void GPU_model::create_top_level_AS(const Model& cpu_model) {
         bool alphaBlending = material.alphaBlending;
         bool alphaTest = (material.alphaCutoff >= 0.0f);
 
-        inst.InstanceID = objects[i].meshIndex;  // can be used to identify object in shaders
+        inst.InstanceID = obj.meshIndex;  // can be used to identify object in shaders
         inst.InstanceMask = 0xFF;
         inst.InstanceContributionToHitGroupIndex = 0;  // shader binding table offsets if used
         inst.Flags = 0;
@@ -529,7 +533,8 @@ void GPU_model::create_top_level_AS(const Model& cpu_model) {
     inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
     inputs.NumDescs = static_cast<UINT>(instanceCount);
     inputs.InstanceDescs = instancesUploadBuffer->GetGPUVirtualAddress();
-    inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+    inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE |
+                   D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE;
 
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
     d3d_ctx.m_d3dDevice->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
@@ -792,6 +797,81 @@ void GPU_model::update_materials_array_buffer(const Model& cpu_model) {
 }
 
 const std::vector<GPU_Material>& GPU_model::get_materials_cpu_array() const { return MaterialsCPUArray; }
+
+void GPU_model::update_transforms(const Model& model, bool updateTLAS) {
+    // copy new transforms and keep previous matrix for reprojections
+    for (size_t i = 0; i < std::min(objects.size(), model.objects.size()); ++i) {
+        auto& obj = objects[i];
+        const auto& obj_new = model.objects[i];
+        obj.ModelMatrix_prev = obj.ModelMatrix;
+        obj.ModelMatrix = obj_new.ModelMatrix;
+        obj.NormalMatrix = obj_new.NormalMatrix;
+        obj.meshIndex = obj_new.meshIndex;
+    }
+    if (!updateTLAS) return;
+
+    D3DContext& d3d_ctx = D3DContext::Get();
+    d3d_ctx.InitDXRCommandList();
+
+    assert(instances.size() == objects.size());
+    if (instances.size() != objects.size()) {
+        return;
+    }
+
+    const size_t instanceCount = objects.size();
+    if (instanceCount == 0) return;
+
+    for (size_t i = 0; i < instanceCount; ++i) {
+        const auto& obj = objects[i];
+        D3D12_RAYTRACING_INSTANCE_DESC& inst = instances[i];
+
+        // Fill transform: D3D expects row-major 3x4 matrix. glm::mat4 is column-major,
+        // so transpose when copying: inst.Transform[row][col] = mat[col][row]
+        const auto& Mat = obj.ModelMatrix;
+        for (int r = 0; r < 3; ++r) {
+            for (int c = 0; c < 4; ++c) {
+                inst.Transform[r][c] = Mat[c][r];
+            }
+        }
+    }
+
+    void* pInstancesData = nullptr;
+    const UINT64 instancesSizeBytes = sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * instances.size();
+    ThrowIfFailed(instancesUploadBuffer->Map(0, nullptr, &pInstancesData));
+    memcpy(pInstancesData, instances.data(), instancesSizeBytes);
+    instancesUploadBuffer->Unmap(0, nullptr);
+
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC updateDesc = {};
+
+     // Build TLAS inputs
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
+    inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+    inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+    inputs.NumDescs = static_cast<UINT>(instanceCount);
+    inputs.InstanceDescs = instancesUploadBuffer->GetGPUVirtualAddress();
+    inputs.Flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE |
+                   D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE;
+
+    // Describe build
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC buildDesc = {};
+    buildDesc.Inputs = inputs;
+    buildDesc.ScratchAccelerationStructureData = tlasScratchBuffer->GetGPUVirtualAddress();
+    buildDesc.DestAccelerationStructureData = tlasBuffer->GetGPUVirtualAddress();  // in-place update
+    buildDesc.SourceAccelerationStructureData = 0;
+
+    // Build TLAS
+    d3d_ctx.m_DXRCommandList->BuildRaytracingAccelerationStructure(&buildDesc, 0, nullptr);
+
+    // UAV barrier
+    D3D12_RESOURCE_BARRIER uavBarrier{};
+    uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+    uavBarrier.UAV.pResource = tlasBuffer.Get();
+    uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+    d3d_ctx.m_DXRCommandList->ResourceBarrier(1, &uavBarrier);
+
+    d3d_ctx.DispatchDXRCommandList();
+    d3d_ctx.WaitForPendingDXR();
+}
 
 const GPU_mesh& GPU_model::get_combined_mesh() const { return combinedMesh; }
 

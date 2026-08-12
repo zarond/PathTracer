@@ -56,6 +56,7 @@ set(APP_SOURCES
     src/renderer.cc
     src/render_settings.cc
     src/brdf.cc
+    src/convex_hull_helper.cc
 )
 if(ON_WINDOWS)
     list(APPEND APP_SOURCES
@@ -182,6 +183,11 @@ target_include_directories(argparse INTERFACE ${LIBS_DIR}/argparse/include)
 add_library(stb INTERFACE)
 target_include_directories(stb INTERFACE ${LIBS_DIR}/stb)
 
+add_library(quickhull STATIC
+    ${LIBS_DIR}/quickhull/QuickHull.cpp
+)
+target_include_directories(quickhull PUBLIC ${LIBS_DIR}/quickhull)
+
 set(FASTGLTF_COMPILE_AS_CPP20 True)
 #set(FASTGLTF_USE_CUSTOM_SMALLVECTOR True)
 add_subdirectory(${LIBS_DIR}/fastgltf)
@@ -220,6 +226,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     fastgltf::fastgltf
     mikktspace
     glm::glm
+    quickhull
 )
 if(ON_WINDOWS)
     target_link_libraries(${PROJECT_NAME} PRIVATE 

@@ -22,3 +22,6 @@
 [submodule "libs/DirectX-Headers"]
 	path = libs/DirectX-Headers
 	url = https://github.com/microsoft/DirectX-Headers.git
+[submodule "libs/quickhull"]
+	path = libs/quickhull
+	url = https://github.com/akuukka/quickhull.git

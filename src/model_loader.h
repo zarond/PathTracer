@@ -34,6 +34,7 @@ struct Object {  // individual flat nodes with a single mesh
     fmat4x4 ModelMatrix;
     fmat4x4 NormalMatrix;
     uint32_t meshIndex;
+    uint32_t nodeIndex; // original node index from gltf
 };
 
 struct Material {
@@ -67,7 +68,44 @@ struct Material {
 struct Camera {
     fmat4x4 ModelMatrix;
     std::variant<fastgltf::Camera::Perspective, fastgltf::Camera::Orthographic> camera_params;
+    uint32_t nodeIndex;  // original node index from gltf
 };
+
+struct Node {
+    fmat4x4 lsTransformMatrix{};
+    uint32_t parent = -1u;
+};
+
+struct AnimationChannel {
+    uint32_t samplerIndex = -1u;
+    uint32_t nodeIndex = -1u;
+    fastgltf::AnimationPath path;
+};
+
+struct AnimationSampler {
+    uint32_t timeIndex;     // logical input
+    uint32_t valueIndex;    // logical output
+    fastgltf::AnimationInterpolation interpolation = fastgltf::AnimationInterpolation::Linear;
+    mutable uint32_t cached_keyframe_index = 0;  // cached index for optimization
+};
+
+struct Animation {
+    using ScalarData = std::vector<float>;
+    using Vec2Data = std::vector<fvec2>;
+    using Vec3Data = std::vector<fvec3>;
+    using Vec4Data = std::vector<fvec4>;
+    using AnimationData = std::variant<ScalarData, Vec2Data, Vec3Data, Vec4Data>;
+
+    Animation(const fastgltf::Animation& gltf_animation, const fastgltf::Asset& asset);
+
+    std::vector<AnimationChannel> channels;
+    std::vector<AnimationSampler> samplers;
+    std::vector<AnimationData> raw_data;
+    std::string name;
+    float duration = 0.0f;
+};
+
+using NodeTree = std::vector<Node>;
 
 struct Model {
     std::vector<Camera> cameras;
@@ -76,6 +114,19 @@ struct Model {
     std::vector<Object> objects;
     std::vector<CPUTexture<sdr_pixel>> images;
     std::vector<std::string> materials_names;
+    NodeTree nodes_transforms;              // current transforms
+    NodeTree nodes_original_transforms;     // "rest" transforms
+    std::vector<Animation> animations;
+
+    Model() = default;
+    Model(Model&&) noexcept = default;
+    Model& operator=(Model&&) noexcept = default;
+
+    Model(const Model&) = delete;
+    Model& operator=(const Model&) = delete;
+
+    void apply_animation(int animation_index, double time, bool looping);
+    void update_objects(); // update objects from node_transforms
 };
 
 class ModelLoader {

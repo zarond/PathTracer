@@ -75,6 +75,10 @@ float SurfaceAreaHeuristic(const BBox& bbox_l, const BBox& bbox_r, int N_l, int 
 }  // namespace
 
 namespace app {
+
+// declaration for convex hull computation, defined in convex_hull_helper.cc
+std::vector<fvec3> compute_convex_hull(const Mesh& mesh);
+
 BBox::BBox() noexcept : min(std::numeric_limits<float>::max()), max(std::numeric_limits<float>::lowest()) {}
 constexpr BBox::BBox(const fvec3& min_, const fvec3& max_) noexcept : min(min_), max(max_) {}
 
@@ -223,28 +227,24 @@ DOP object_to_ws_dop(const Object& obj, const Mesh& mesh) noexcept {
     // unfortunately no performance benefit using transform_reduce
 }
 
+DOP vertices_to_ws_dop(const fmat4x4& mat, std::span<const fvec3> vertices) noexcept { // version for convex hull
+    auto combine = [](DOP a, const DOP& b) {
+        a.expand(b);
+        return a;
+    };
+    auto make_dop = [mat](const fvec3& v) {
+        auto p = xyz(mat * xyz1(v));
+        return DOP{p};
+    };
+    return std::transform_reduce(std::execution::unseq, vertices.begin(), vertices.end(), DOP{}, combine, make_dop);
+    // unfortunately no performance benefit using transform_reduce
+}
+
 NaiveAS::NaiveAS(const Model& model) {
     auto start = std::chrono::high_resolution_clock::now();
     object_data_.reserve(model.objects.size());
     mesh_data_.reserve(model.meshes.size());
-    for (uint32_t i = 0; i < model.objects.size(); ++i) {
-        const auto& obj = model.objects[i];
-        const auto& mesh = model.meshes[obj.meshIndex];
-        DOP volume = object_to_ws_dop(obj, mesh);
-        object_data_.emplace_back(
-            volume, 
-            obj.ModelMatrix, 
-            transpose(obj.NormalMatrix), 
-            i, 
-            obj.meshIndex, 
-            mesh.indices.size());
-    }
-    // sort by complexity (number of triangles) to try easier objects first (starting from the back of array) in case of any_hit
-    const auto complexity_cmp = [](const ObjectData& obj_a, const ObjectData& obj_b) {
-        return obj_a.complexity > obj_b.complexity;  // more complex first
-    };
-    std::sort(object_data_.begin(), object_data_.end(), complexity_cmp);
-
+    convex_hull_data_.reserve(model.meshes.size());
     for (const auto& mesh : model.meshes) {
         std::vector<fvec3> data;
         data.reserve(mesh.indices.size());
@@ -253,7 +253,20 @@ NaiveAS::NaiveAS(const Model& model) {
         const auto& mat = model.materials[mesh.materialIndex];
         bool doubleSided = mat.doubleSided || mat.hasVolume;
         mesh_data_.emplace_back(std::move(data), doubleSided);
+        convex_hull_data_.emplace_back(compute_convex_hull(mesh));
     }
+    for (uint32_t i = 0; i < model.objects.size(); ++i) {
+        const auto& obj = model.objects[i];
+        const auto& convex_hull = convex_hull_data_[obj.meshIndex];
+        DOP volume = vertices_to_ws_dop(obj.ModelMatrix, convex_hull);
+        object_data_.emplace_back(
+            volume, 
+            obj.ModelMatrix, 
+            transpose(obj.NormalMatrix), 
+            i, 
+            obj.meshIndex);
+    }
+
     auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
     std::cout << "NaiveAS constructed in " << diff.count() << " ms." << '\n';
 }
@@ -351,32 +364,31 @@ BBox NaiveAS::get_scene_bounds() const noexcept {
     return dop.to_bbox();
 }
 
+void NaiveAS::update_transforms(const Model& model) {
+    assert(model.objects.size() == object_data_.size());
+    if (model.objects.size() != object_data_.size()) {
+        std::cout << "Mismatch in object count, cannot update transforms" << '\n';
+        return;
+    }
+    for (uint32_t i = 0; i < object_data_.size(); ++i) {
+        auto& obj_data = object_data_[i];
+        const auto& obj = model.objects[i];
+        const auto& convex_hull = convex_hull_data_[obj_data.meshIndex];
+        DOP volume = vertices_to_ws_dop(obj.ModelMatrix, convex_hull);
+
+        obj_data.volume = volume;
+        obj_data.ModelMatrix = obj.ModelMatrix;
+        obj_data.invModelMatrix = transpose(obj.NormalMatrix);
+    }
+}
+
 // NaiveAS
 
 BVH_AS::BVH_AS(const Model& model, int max_triangles_per_leaf) {
     auto start = std::chrono::high_resolution_clock::now();
     object_data_.reserve(model.objects.size());
     mesh_bvh_data_.reserve(model.meshes.size());
-    for (uint32_t i = 0; i < model.objects.size(); ++i) {
-        const auto& obj = model.objects[i];
-        const auto& mesh = model.meshes[obj.meshIndex];
-        DOP volume = object_to_ws_dop(obj, mesh);
-        object_data_.emplace_back(
-            volume, 
-            obj.ModelMatrix, 
-            transpose(obj.NormalMatrix), 
-            i, 
-            obj.meshIndex, 
-            mesh.indices.size());
-    }
-    // sort by complexity (number of triangles) to try easier objects first (starting from the back of array) in case of
-    // any_hit
-    const auto complexity_cmp = [](const ObjectData& obj_a, const ObjectData& obj_b) {
-        ;
-        return obj_a.complexity > obj_b.complexity;  // more complex first
-    };
-    std::sort(object_data_.begin(), object_data_.end(), complexity_cmp);
-
+    convex_hull_data_.reserve(model.meshes.size());
     for (const auto& mesh : model.meshes) {
         const auto& mat = model.materials[mesh.materialIndex];
         bool doubleSided = mat.doubleSided || mat.hasVolume;
@@ -384,7 +396,20 @@ BVH_AS::BVH_AS(const Model& model, int max_triangles_per_leaf) {
             mesh, 
             doubleSided, 
             max_triangles_per_leaf);
+        convex_hull_data_.emplace_back(compute_convex_hull(mesh));
     }
+    for (uint32_t i = 0; i < model.objects.size(); ++i) {
+        const auto& obj = model.objects[i];
+        const auto& convex_hull = convex_hull_data_[obj.meshIndex];
+        DOP volume = vertices_to_ws_dop(obj.ModelMatrix, convex_hull);
+        object_data_.emplace_back(
+            volume, 
+            obj.ModelMatrix, 
+            transpose(obj.NormalMatrix), 
+            i, 
+            obj.meshIndex);
+    }
+
     auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
     std::cout << "BVH_AS constructed in " << diff.count() << " ms." << '\n';
 
@@ -574,7 +599,7 @@ void BVH_AS::MeshBVHData::collect_tree_info() const noexcept {
     std::cout << "\n";
 }
 
-BBox BVH_AS::MeshBVHNode::triangles_to_bbox(const std::span<MeshBVHNode::triangle> tris) noexcept {
+BBox BVH_AS::MeshBVHNode::triangles_to_bbox(std::span<const MeshBVHNode::triangle> tris) noexcept {
     auto combine = [](BBox a, const BBox& b) {
         a.expand(b);
         return a;
@@ -718,6 +743,24 @@ BBox BVH_AS::get_scene_bounds() const noexcept {
         dop.expand(obj.volume);
     }
     return dop.to_bbox();
+}
+
+void BVH_AS::update_transforms(const Model& model) {
+    assert(model.objects.size() == object_data_.size());
+    if (model.objects.size() != object_data_.size()) {
+        std::cout << "Mismatch in object count, cannot update transforms" << '\n';
+        return;
+    }
+    for (uint32_t i = 0; i < object_data_.size(); ++i) {
+        auto& obj_data = object_data_[i];
+        const auto& obj = model.objects[i];
+        const auto& convex_hull = convex_hull_data_[obj_data.meshIndex];
+        DOP volume = vertices_to_ws_dop(obj.ModelMatrix, convex_hull);
+
+        obj_data.volume = volume;
+        obj_data.ModelMatrix = obj.ModelMatrix;
+        obj_data.invModelMatrix = transpose(obj.NormalMatrix);
+    }
 }
 
 // BVH_AS

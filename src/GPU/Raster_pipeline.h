@@ -30,6 +30,7 @@ using Microsoft::WRL::ComPtr;
 struct RasterConstantBuffer {
     fmat4x4 projectionToWorld;
     fmat4x4 viewProjection;
+    fmat4x4 viewProjection_prev;
     fmat4x4 viewMatrix;
     fmat4x4 Projection;
     fmat4x4 invProjection;
@@ -53,6 +54,7 @@ struct RasterConstantBuffer {
 
 struct RasterPerDrawData {
     fmat4x4 modelMatrix;
+    fmat4x4 modelMatrix_prev;
     fmat4x4 normalMatrix;
     int meshID;
     float modelScale;
@@ -61,7 +63,7 @@ struct RasterPerDrawData {
 };
 
 struct DrawableSortingInfo {
-    const Object* object;
+    const GPU_object_info* object;
     float modelScale;
     float ZDistanceToCamera;
     bool alphaBlending;
@@ -140,6 +142,7 @@ class Raster_pipeline : public IRender_pipeline {
     GPU_texture m_AOTexture;
     GPU_texture m_SSR;
     GPU_texture m_frame_opaque_only;
+    GPU_texture m_VelocityBuffer;
 
     bool DrawSSROnly = false;
 

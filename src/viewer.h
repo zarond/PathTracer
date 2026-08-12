@@ -97,11 +97,21 @@ class Viewer {
 
     void wait_for_render_start(std::stop_token stop);
 
+    void start_animation_playback();
+    void stop_animation_playback();
+    void choose_animation(uint32_t animationIndex);
+    void set_animation_looping(bool loop);
+    bool get_animation_looping() const;
+    bool get_animation_playing() const;
+    void rewind_animation();
+    void apply_rest_pose();
+
   private:
     Model model_;
     CPUTexture<hdr_pixel> environment_texture_;
     std::vector<Material> materials_backups_;
     bool need_materials_update_ = false;
+    bool need_transforms_update_ = false;
 
     std::mutex mtx_render_;
     std::condition_variable cv_render_;
@@ -124,6 +134,12 @@ class Viewer {
     fastgltf::Camera::Perspective cam_params_;
 
     std::atomic<bool> camera_updated_in_last_frame_ = true;
+
+    bool animation_playing_ = false;
+    bool animation_looping = true;
+    int current_animation_index_ = 0;
+    std::chrono::high_resolution_clock::time_point start_timestamp_;
+    std::chrono::duration<double> animation_time_ = std::chrono::duration<float>(0.0);
 
     void set_up_default_camera_transforms();
 };

@@ -731,6 +731,57 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
     ImGui::Separator();
 }
 
+static void AnimationsUI(Viewer& viewer) {
+    // Display animation list and controls
+    const auto& model = viewer.get_model();
+    if (model.animations.empty()) {
+        ImGui::Text("No animations in model");
+    } else {
+        // Show animation name and duration
+        const auto& animation = model.animations[model.animations.size() > 0 ? 0 : 0];
+        ImGui::Text("Animation: %s", animation.name.c_str());
+        ImGui::Text("Duration: %.2f seconds", animation.duration);
+
+        // Animation playback controls
+        if (ImGui::Button("Play")) {
+            viewer.start_animation_playback();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Stop")) {
+            viewer.stop_animation_playback();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Rewind")) {
+            viewer.rewind_animation();
+        }
+        ImGui::SameLine();
+        bool looping = viewer.get_animation_looping();
+        if (ImGui::Checkbox("Looping", &looping)) {
+            viewer.set_animation_looping(looping);
+        }
+
+        // Animation selection dropdown
+        static int selected_animation = 0;
+        if (ImGui::BeginCombo("##animation_select", model.animations[selected_animation].name.c_str())) {
+            for (int i = 0; i < static_cast<int>(model.animations.size()); ++i) {
+                bool is_selected = (selected_animation == i);
+                if (ImGui::Selectable(model.animations[i].name.c_str(), is_selected)) {
+                    selected_animation = i;
+                    viewer.choose_animation(i);
+                }
+                if (is_selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+    }
+    ImGui::Separator();
+    if (!viewer.get_animation_playing() && ImGui::Button("Apply rest pose")) {
+        viewer.apply_rest_pose();
+    }
+}
+
 void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector<PendingDelete>& deferredDeletes,
     const bool hardware_ray_tracing_support) {
     ImGui::Begin("Options", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
@@ -743,9 +794,17 @@ void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector
 
     ImGui::Separator();
     static bool show_material_settings = false;
+    static bool show_animations = false;
     if (ImGui::TreeNode("Materials")) {
         if (ImGui::Button("Edit Materials")) {
             show_material_settings = true;
+        }
+        ImGui::TreePop();
+    }
+    ImGui::Separator();
+    if (ImGui::TreeNode("Animations")) {
+        if (ImGui::Button("Show Animations")) {
+            show_animations = true;
         }
         ImGui::TreePop();
     }
@@ -761,6 +820,12 @@ void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector
     if (show_material_settings) {
         ImGui::Begin("Materials Options", &show_material_settings, ImGuiWindowFlags_AlwaysAutoResize);
         MaterialsSettingsUI(viewer);
+        ImGui::End();
+    }
+    // Show animation options window
+    if (show_animations) {
+        ImGui::Begin("Animation Options", &show_animations, ImGuiWindowFlags_AlwaysAutoResize);
+        AnimationsUI(viewer);
         ImGui::End();
     }
 }

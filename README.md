@@ -91,4 +91,5 @@ This project uses the following libraries:
  - Dear IMGUI
  - Microsoft DirectX-Headers
  - Google Test
+ - akuukka/quickhull
 

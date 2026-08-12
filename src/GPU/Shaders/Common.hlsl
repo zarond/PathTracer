@@ -27,6 +27,7 @@ struct RayGenConstantBuffer {
 struct RasterConstantBuffer {
     float4x4 projectionToWorld;  // without translation component
     float4x4 viewProjection;
+	float4x4 viewProjection_prev;
     float4x4 viewMatrix;
     float4x4 Projection;
     float4x4 invProjection;
@@ -50,6 +51,7 @@ struct RasterConstantBuffer {
 
 struct RasterPerDrawData {
     float4x4 modelMatrix;
+	float4x4 modelMatrix_prev;
     float4x4 normalMatrix;
     int meshID;
     float modelScale;

@@ -12,6 +12,7 @@ enum Value : int {
     NewTexture,
     NewDepth,
     SSR_buffer,
+    VelocityBuffer,
     RootConstants,
 
     Count
@@ -55,7 +56,7 @@ bool Reprojection_helper::DebugMode = false;
 Reprojection_helper::~Reprojection_helper() { release_gpu_resources(); }
 
 void Reprojection_helper::Reproject(GPU_texture& old_texture, GPU_texture& old_depth_texture, GPU_texture& new_texture,
-    GPU_texture& new_depth_texture, const fmat4x4& Projection, const fmat4x4& invViewProjection,
+    GPU_texture& new_depth_texture, GPU_texture& VelocityBuffer, const fmat4x4& Projection, const fmat4x4& invViewProjection,
     const fmat4x4& ViewProjection_previous, const fmat4x4& Projection_previous, 
     float new_value_mix_factor, float depth_threshold, bool weak_depth_condition,
     GPU_texture* SSR_buffer) 
@@ -81,6 +82,7 @@ void Reprojection_helper::Reproject(GPU_texture& old_texture, GPU_texture& old_d
             GlobalRootSignatureParams::SSR_buffer, SSR_buffer->GetSRVHandle());
         use_reflection_distance = true;
     }
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::VelocityBuffer, VelocityBuffer.GetSRVHandle());
 
     fvec2 texel{1.0f / width, 1.0f / height};
     fmat4x4 Reprojection = ViewProjection_previous * invViewProjection;
@@ -115,7 +117,8 @@ void Reprojection_helper::CreateRootSignature() {
     ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 NewTexture uav
     ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 1 NewDepth srv
     ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 1 SSR_buffer srv
-    ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);  // 1 constant buffer.
+    ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);  // 1 VelocityBuffer srv
+    ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);  // 1 constant buffer.
 
     CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
     rootParameters[GlobalRootSignatureParams::OldTexture].InitAsDescriptorTable(1, &ranges[0]);
@@ -123,6 +126,7 @@ void Reprojection_helper::CreateRootSignature() {
     rootParameters[GlobalRootSignatureParams::NewTexture].InitAsDescriptorTable(1, &ranges[2]);
     rootParameters[GlobalRootSignatureParams::NewDepth].InitAsDescriptorTable(1, &ranges[3]);
     rootParameters[GlobalRootSignatureParams::SSR_buffer].InitAsDescriptorTable(1, &ranges[4]);
+    rootParameters[GlobalRootSignatureParams::VelocityBuffer].InitAsDescriptorTable(1, &ranges[5]);
     rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(ReprojectionCSInput) / 4, 0);
 
     D3D12_STATIC_SAMPLER_DESC point_sampler = {};

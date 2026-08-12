@@ -55,6 +55,8 @@ class GPURenderer : public IRenderer {
     RenderingState get_rendering_state() const;
     void set_render_starting_state();
 
+    void update_transforms();
+
     RenderPipelineMode get_active_pipeline_mode() const;
     void set_active_pipeline_mode(RenderPipelineMode mode);
 

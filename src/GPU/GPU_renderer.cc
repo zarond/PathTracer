@@ -181,6 +181,13 @@ void GPURenderer::set_render_starting_state() {
     }
 }
 
+void GPURenderer::update_transforms() {
+    if (model_ref_ && gpu_model_) {
+        bool updateTLAS = (active_pipeline_mode_ == RenderPipelineMode::DXRPipeline);
+        gpu_model_->update_transforms(*model_ref_, updateTLAS);
+    }
+}
+
 RenderPipelineMode GPURenderer::get_active_pipeline_mode() const { return active_pipeline_mode_; }
 
 void GPURenderer::set_active_pipeline_mode(RenderPipelineMode mode) {

@@ -91,6 +91,19 @@ void Viewer::render() {
         renderer_->reload_materials();
         need_materials_update_ = false;
     }
+    if (animation_playing_) {
+        need_transforms_update_ = true;
+        animation_time_ = std::chrono::high_resolution_clock::now() - start_timestamp_;
+        model_.apply_animation(current_animation_index_, animation_time_.count(), animation_looping);
+    }
+    if (need_transforms_update_) {
+        renderer_->update_transforms();
+        need_transforms_update_ = false;
+
+        if (active_camera_index_.has_value()) {
+            snap_to_camera();
+        }
+    }
     bool camera_moved = camera_updated_in_last_frame_.load();
     bool use_iterative_rendering = !camera_moved && iterative_rendering;
     renderer_->render_frame(framebuffer_, continuous_rendering, use_iterative_rendering, iterations_counter_);
@@ -265,6 +278,67 @@ void Viewer::switch_gpu_pipeline_mode(RenderPipelineMode mode) {
 void Viewer::wait_for_render_start(std::stop_token stop) {
     std::unique_lock<std::mutex> lock(mtx_render_);
     cv_render_.wait(lock, [&]() { return stop.stop_requested() || (get_rendering_state() == RenderingState::ReadyToStart); });
+}
+
+void Viewer::start_animation_playback() {
+    if (model_.animations.empty()) {
+        return;
+    }
+
+    // Ensure current_animation_index_ is within valid range
+    if (current_animation_index_ < 0 || current_animation_index_ >= static_cast<int>(model_.animations.size())) {
+        current_animation_index_ = 0;
+    }
+
+    animation_playing_ = true;
+    start_timestamp_ = std::chrono::high_resolution_clock::now() -
+                       std::chrono::duration_cast<std::chrono::high_resolution_clock::duration>(animation_time_);
+}
+
+void Viewer::stop_animation_playback() {
+    animation_playing_ = false;
+    animation_time_ = std::chrono::high_resolution_clock::now() - start_timestamp_;
+}
+
+void Viewer::choose_animation(uint32_t animationIndex) {
+    if (animationIndex >= model_.animations.size()) {
+        return;
+    }
+
+    current_animation_index_ = static_cast<int>(animationIndex);
+
+    // Reset animation time if playback is running
+    if (animation_playing_) {
+        animation_time_ = std::chrono::duration<double>(0.0);
+        start_timestamp_ = std::chrono::high_resolution_clock::now();
+    }
+}
+
+void Viewer::rewind_animation() {
+    animation_time_ = std::chrono::duration<double>(0.0);
+
+    // If animation is playing, reset the start timestamp
+    if (animation_playing_) {
+        start_timestamp_ = std::chrono::high_resolution_clock::now();
+    }
+}
+
+void Viewer::set_animation_looping(bool loop) {
+    animation_looping = loop;
+}
+
+bool Viewer::get_animation_looping() const {
+    return animation_looping;
+}
+
+bool Viewer::get_animation_playing() const {
+    return animation_playing_;
+}
+
+void Viewer::apply_rest_pose() {
+    model_.nodes_transforms.assign(model_.nodes_original_transforms.begin(), model_.nodes_original_transforms.end());
+    model_.update_objects();
+    need_transforms_update_ = true;
 }
 
 void save_render_image_timed_action(const Viewer& viewer, const std::filesystem::path& image_path) {

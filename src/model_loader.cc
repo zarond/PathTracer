@@ -6,7 +6,9 @@
 #include <fastgltf/types.hpp>
 #include <filesystem>
 #include <iostream>
+#include <unordered_map>
 #include <utility>
+#include <glm/gtc/quaternion.hpp>
 
 #include "brdf.h"
 #include "compute_tangents.h"
@@ -217,6 +219,7 @@ Model ModelLoader::construct_model() const {
     size_t sceneIndex = asset_.defaultScene.value_or(0);
     fastgltf::iterateSceneNodes(asset_, sceneIndex, fastgltf::math::fmat4x4(),
         [&model, &mesh_ids, this](const fastgltf::Node& node, const fastgltf::math::fmat4x4& matrix) {
+            uint32_t node_index = &node - asset_.nodes.data();
             if (node.meshIndex.has_value()) {
                 auto normalMatrix = transpose(inverse(matrix));
                 size_t mesh_index = *node.meshIndex;
@@ -224,15 +227,347 @@ Model ModelLoader::construct_model() const {
                     model.objects.emplace_back(
                         std::bit_cast<fmat4>(matrix), 
                         std::bit_cast<fmat4>(normalMatrix),
-                        mesh_ids[mesh_index].first + i);
+                        mesh_ids[mesh_index].first + i, 
+                        node_index);
                 }
             }
             if (node.cameraIndex.has_value()) {
-                model.cameras.emplace_back(std::bit_cast<fmat4>(matrix), asset_.cameras[*node.cameraIndex].camera);
+                model.cameras.emplace_back(std::bit_cast<fmat4>(matrix), asset_.cameras[*node.cameraIndex].camera, node_index);
             }
         });
 
+    model.nodes_transforms.reserve(asset_.nodes.size());
+    // collect local transforms
+    for (const fastgltf::Node& node : asset_.nodes) {
+        fastgltf::math::fmat4x4 localMatrix = fastgltf::getLocalTransformMatrix(node);
+        model.nodes_transforms.emplace_back(std::bit_cast<fmat4>(localMatrix), -1u);
+    }
+    // collect parenting data
+    for (size_t i = 0; i < asset_.nodes.size(); ++i) {
+        const auto& node = asset_.nodes[i];
+        for (auto& child : node.children) {
+            model.nodes_transforms[child].parent = i;
+        }
+    }
+    model.nodes_original_transforms.assign(model.nodes_transforms.begin(), model.nodes_transforms.end());
+
+    model.animations.reserve(asset_.animations.size());
+    for (const auto& animation : asset_.animations) {
+        model.animations.emplace_back(animation, asset_);
+    }
+
     return model;
+}
+
+void Model::update_objects() {
+    const auto travel_upstream = [this](uint32_t node_id) -> fmat4x4 {
+        fmat4x4 final_matrix{1.0f};
+        for (auto current_node = node_id; current_node != -1u && current_node < nodes_transforms.size();) {
+            const auto& node = nodes_transforms[current_node];
+            const auto& ls_transform = node.lsTransformMatrix;
+            final_matrix = ls_transform * final_matrix;
+            current_node = node.parent;
+        }
+        return final_matrix;
+    };
+    for (auto& object : objects) {
+        auto node_id = object.nodeIndex;
+        object.ModelMatrix = travel_upstream(node_id);
+        object.NormalMatrix = transpose(inverse(object.ModelMatrix));
+    }
+    for (auto& camera : cameras) {
+        auto node_id = camera.nodeIndex;
+        camera.ModelMatrix = travel_upstream(node_id);
+    }
+}
+
+Animation::Animation(const fastgltf::Animation& gltf_animation, const fastgltf::Asset& asset) {
+    // Copy channels from fastgltf::Animation
+    channels.reserve(gltf_animation.channels.size());
+    for (const auto& gltf_channel : gltf_animation.channels) {
+        AnimationChannel channel{
+            .samplerIndex = static_cast<uint32_t>(gltf_channel.samplerIndex),
+            .nodeIndex = gltf_channel.nodeIndex.has_value() ? static_cast<uint32_t>(*gltf_channel.nodeIndex) : -1u,
+            .path = gltf_channel.path
+        };
+        channels.push_back(std::move(channel));
+    }
+
+    // Extract duration from animation time data
+    duration = 0.0f;
+
+    // Build a mapping from accessor indices to raw_data indices to handle deduplication
+    std::unordered_map<std::size_t, uint32_t> accessor_to_raw_data_index;
+    uint32_t raw_index = 0;
+
+    // First pass: extract all unique input accessors (time data)
+    for (const auto& gltf_sampler : gltf_animation.samplers) {
+        if (accessor_to_raw_data_index.find(gltf_sampler.inputAccessor) == accessor_to_raw_data_index.end()) {
+            accessor_to_raw_data_index[gltf_sampler.inputAccessor] = raw_index++;
+
+            const auto& inputAccessor = asset.accessors[gltf_sampler.inputAccessor];
+            // Time data should always be scalar float values
+            if (inputAccessor.type == fastgltf::AccessorType::Scalar) {
+                ScalarData times(inputAccessor.count);
+                fastgltf::copyFromAccessor<float>(asset, inputAccessor, times.data());
+                duration = glm::max(duration, times.back());
+                raw_data.emplace_back(std::move(times));
+            }
+        }
+    }
+
+    // Second pass: extract all output accessors (animation value data)
+    for (const auto& gltf_sampler : gltf_animation.samplers) {
+        if (accessor_to_raw_data_index.find(gltf_sampler.outputAccessor) == accessor_to_raw_data_index.end()) {
+            accessor_to_raw_data_index[gltf_sampler.outputAccessor] = raw_index++;
+
+            const auto& outputAccessor = asset.accessors[gltf_sampler.outputAccessor];
+            // Determine the data type based on accessor type
+            if (outputAccessor.type == fastgltf::AccessorType::Scalar) {
+                ScalarData scalars(outputAccessor.count);
+                fastgltf::copyFromAccessor<float>(asset, outputAccessor, scalars.data());
+                raw_data.emplace_back(std::move(scalars));
+            } else if (outputAccessor.type == fastgltf::AccessorType::Vec2) {
+                Vec2Data vec2s(outputAccessor.count);
+                fastgltf::copyFromAccessor<fvec2>(asset, outputAccessor, vec2s.data());
+                raw_data.emplace_back(std::move(vec2s));
+            } else if (outputAccessor.type == fastgltf::AccessorType::Vec3) {
+                Vec3Data vec3s(outputAccessor.count);
+                fastgltf::copyFromAccessor<fvec3>(asset, outputAccessor, vec3s.data());
+                raw_data.emplace_back(std::move(vec3s));
+            } else if (outputAccessor.type == fastgltf::AccessorType::Vec4) {
+                Vec4Data vec4s(outputAccessor.count);
+                fastgltf::copyFromAccessor<fvec4>(asset, outputAccessor, vec4s.data());
+                raw_data.emplace_back(std::move(vec4s));
+            }
+        }
+    }
+
+    // Third pass: create samplers with correct indices pointing into raw_data
+    samplers.reserve(gltf_animation.samplers.size());
+    for (const auto& gltf_sampler : gltf_animation.samplers) {
+        AnimationSampler sampler{
+            .timeIndex = accessor_to_raw_data_index[gltf_sampler.inputAccessor],
+            .valueIndex = accessor_to_raw_data_index[gltf_sampler.outputAccessor],
+            .interpolation = gltf_sampler.interpolation
+        };
+        samplers.push_back(std::move(sampler));
+    }
+
+    name = gltf_animation.name;
+}
+
+namespace {
+    // Helper function to find the keyframe indices for a given time
+    // Uses cached index for optimization - assumes sequential animation playback
+    // Returns pair of indices (t0, t1) where times[t0] <= time < times[t1]
+    // If time is before first keyframe, returns (0, 0)
+    // If time is after last keyframe, returns (last, last)
+    // cached_index: reference to cached keyframe index for this sampler (updated in-place)
+    std::pair<std::size_t, std::size_t> find_keyframe_indices(const std::vector<float>& times, float time, uint32_t& cached_index) {
+        if (times.empty()) return {0, 0};
+        if (time <= times.front()) {
+            cached_index = 0;
+            return {0, 0};
+        }
+        if (time >= times.back()) {
+            cached_index = times.size() - 1;
+            return {times.size() - 1, times.size() - 1};
+        }
+
+        // Start searching from cached index
+        std::size_t start_idx = std::min(static_cast<std::size_t>(cached_index), times.size() - 2);
+
+        if (times[start_idx] <= time) {
+            // First try forward from cached position (common case: animation playing forward)
+            for (std::size_t i = start_idx; i < times.size() - 1; ++i) {
+                if (times[i] <= time && time < times[i + 1]) {
+                    cached_index = i;
+                    return {i, i + 1};
+                }
+            }
+        } else {
+            // Else try backward from cached position (animation rewound)
+            for (std::size_t i = start_idx; i > 0; --i) {
+                if (times[i - 1] <= time && time < times[i]) {
+                    cached_index = i - 1;
+                    return {i - 1, i};
+                }
+            }        
+        }
+
+        // Fallback
+        cached_index = 0;
+        return {0, 0};
+    }
+
+    template <typename T>
+    T CubicInterpolation(float t0, float t1, float interpolation_factor, const T& v0, const T& v1, const T& a1, const T& b0) {
+        float t2 = interpolation_factor * interpolation_factor;
+        float t3 = t2 * interpolation_factor;
+
+        T result =  (2.0f * t3 - 3.0f * t2 + 1.0f) * v0 +
+                    (t3 - 2.0f * t2 + interpolation_factor) * (t1 - t0) * a1 +
+                    (-2.0f * t3 + 3.0f * t2) * v1 +
+                    (t3 - t2) * (t1 - t0) * b0;
+        return result;
+    }
+}
+
+void Model::apply_animation(int animation_index, double time_d, bool looping) {
+    if (animation_index < 0 || animation_index >= static_cast<int>(animations.size())) {
+        return;
+    }
+
+    const Animation& animation = animations[animation_index];
+
+    if (looping) {
+        time_d = std::fmod(time_d, static_cast<double>(animation.duration));
+    }
+
+    float time = time_d;
+
+    // Process each animation channel
+    for (const auto& channel : animation.channels) {
+        if (channel.nodeIndex == -1u || channel.nodeIndex >= nodes_transforms.size()) {
+            continue;
+        }
+
+        const auto& sampler = animation.samplers[channel.samplerIndex];
+
+        // Get time data
+        if (sampler.timeIndex >= animation.raw_data.size()) {
+            continue;
+        }
+
+        const auto& time_variant = animation.raw_data[sampler.timeIndex];
+        const auto* times = std::get_if<Animation::ScalarData>(&time_variant);
+        if (!times || times->empty()) {
+            continue;
+        }
+
+        // Get value data
+        if (sampler.valueIndex >= animation.raw_data.size()) {
+            continue;
+        }
+
+        const auto& value_variant = animation.raw_data[sampler.valueIndex];
+
+        // Find keyframe indices using cached index for optimization
+        auto [t0_idx, t1_idx] = find_keyframe_indices(*times, time, sampler.cached_keyframe_index);
+        float t0 = (*times)[t0_idx];
+        float t1 = (*times)[t1_idx];
+
+        // Calculate interpolation factor
+        float interpolation_factor = 0.0f;
+        if (t1 > t0) {
+            interpolation_factor = (time - t0) / (t1 - t0);
+            interpolation_factor = glm::clamp(interpolation_factor, 0.0f, 1.0f);
+        }
+
+        // Apply interpolation based on sampler type
+        Node& node = nodes_transforms[channel.nodeIndex];
+
+        if (channel.path == fastgltf::AnimationPath::Translation) {
+            if (const auto* values = std::get_if<Animation::Vec3Data>(&value_variant)) {
+                fvec3 result{};
+                if (sampler.interpolation == fastgltf::AnimationInterpolation::Step) {
+                    result = (*values)[t0_idx];
+                } else if (sampler.interpolation == fastgltf::AnimationInterpolation::Linear) {
+                    result = glm::mix((*values)[t0_idx], (*values)[t1_idx], interpolation_factor);
+                } else if (sampler.interpolation == fastgltf::AnimationInterpolation::CubicSpline) {
+                    // CubicSpline: each output has 3 values per keyframe (in-tangent, value, out-tangent)
+                    const fvec3& v0 = (*values)[t0_idx * 3 + 1];
+                    const fvec3& a1 = (*values)[t0_idx * 3 + 2];
+                    const fvec3& b0 = (*values)[t1_idx * 3 + 0];
+                    const fvec3& v1 = (*values)[t1_idx * 3 + 1];
+
+                    result = CubicInterpolation(t0, t1, interpolation_factor, v0, v1, a1, b0);
+                }
+
+                // Update node translation
+                node.lsTransformMatrix[3] = fvec4(result, 1.0f);
+            }
+        } else if (channel.path == fastgltf::AnimationPath::Rotation) {
+            if (const auto* values = std::get_if<Animation::Vec4Data>(&value_variant)) {
+                glm::quat result{};
+                if (sampler.interpolation == fastgltf::AnimationInterpolation::Step) {
+                    const fvec4& q = (*values)[t0_idx];
+                    result = glm::quat(q.w, q.x, q.y, q.z);
+                } else if (sampler.interpolation == fastgltf::AnimationInterpolation::Linear) {
+                    // For rotations, use SLERP instead of linear interpolation
+                    const fvec4& q0 = (*values)[t0_idx];
+                    const fvec4& q1 = (*values)[t1_idx];
+                    glm::quat quat0(q0.w, q0.x, q0.y, q0.z);
+                    glm::quat quat1(q1.w, q1.x, q1.y, q1.z);
+                    result = glm::slerp(quat0, quat1, interpolation_factor);
+                } else if (sampler.interpolation == fastgltf::AnimationInterpolation::CubicSpline) {
+                    // CubicSpline with quaternions
+                    const fvec4& v0 = (*values)[t0_idx * 3 + 1];
+                    const fvec4& a1 = (*values)[t0_idx * 3 + 2];
+                    const fvec4& b0 = (*values)[t1_idx * 3 + 0];
+                    const fvec4& v1 = (*values)[t1_idx * 3 + 1];
+
+                    fvec4 cubic_result = CubicInterpolation(t0, t1, interpolation_factor, v0, v1, a1, b0);
+                    cubic_result = normalize(cubic_result);
+                    result = glm::quat(cubic_result.w, cubic_result.x, cubic_result.y, cubic_result.z);
+                }
+
+                auto column1 = xyz(node.lsTransformMatrix[0]);
+                auto column2 = xyz(node.lsTransformMatrix[1]);
+                auto column3 = xyz(node.lsTransformMatrix[2]);
+                fvec3 scale = {length(column1), length(column2), length(column3)};
+
+                // Update node rotation (convert quaternion to rotation matrix)
+                fmat4x4 rotation_matrix = mat4_cast(result);
+                node.lsTransformMatrix[0] = rotation_matrix[0] * scale.x;
+                node.lsTransformMatrix[1] = rotation_matrix[1] * scale.y;
+                node.lsTransformMatrix[2] = rotation_matrix[2] * scale.z;
+            }
+        } else if (channel.path == fastgltf::AnimationPath::Scale) {
+            if (const auto* values = std::get_if<Animation::Vec3Data>(&value_variant)) {
+                fvec3 result{};
+                if (sampler.interpolation == fastgltf::AnimationInterpolation::Step) {
+                    result = (*values)[t0_idx];
+                } else if (sampler.interpolation == fastgltf::AnimationInterpolation::Linear) {
+                    result = glm::mix((*values)[t0_idx], (*values)[t1_idx], interpolation_factor);
+                } else if (sampler.interpolation == fastgltf::AnimationInterpolation::CubicSpline) {
+                    const fvec3& v0 = (*values)[t0_idx * 3 + 1];
+                    const fvec3& a1 = (*values)[t0_idx * 3 + 2];
+                    const fvec3& b0 = (*values)[t1_idx * 3 + 0];
+                    const fvec3& v1 = (*values)[t1_idx * 3 + 1];
+
+                    result = CubicInterpolation(t0, t1, interpolation_factor, v0, v1, a1, b0);
+                }
+
+                auto column1 = xyz(node.lsTransformMatrix[0]);
+                auto column2 = xyz(node.lsTransformMatrix[1]);
+                auto column3 = xyz(node.lsTransformMatrix[2]);
+
+                column1 = glm::normalize(column1);
+                column2 = glm::normalize(column2);
+                column3 = glm::normalize(column3);
+
+                if (any(glm::isnan(column1))) {
+                    column1 = fvec3(1.0f, 0.0f, 0.0f);
+                }
+                if (any(glm::isnan(column2))) {
+                    column2 = fvec3(0.0f, 1.0f, 0.0f);
+                }
+                if (any(glm::isnan(column3))) {
+                    column3 = fvec3(0.0f, 0.0f, 1.0f);
+                }
+
+                // Apply scale to the transformation matrix
+                node.lsTransformMatrix[0] = fvec4(column1 * result.x, 0.0f);
+                node.lsTransformMatrix[1] = fvec4(column2 * result.y, 0.0f);
+                node.lsTransformMatrix[2] = fvec4(column3 * result.z, 0.0f);
+            }
+        }
+    }
+
+    // Update objects after applying animation
+    update_objects();
 }
 
 }  // namespace app
