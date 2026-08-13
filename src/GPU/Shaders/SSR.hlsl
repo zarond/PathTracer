@@ -195,17 +195,11 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
 
     uint3 seed = uint3(DTid.xy * uint2(5, 1), g_CB.frameID);
 
-    float3 h;
-    float3 jitter;
     float3 v_in_TBN_space = mul(TBN, v);
-    for (int i = 0; i < 5; ++i) { // regenerate h if LoN < 0
-        jitter = pcg3d(seed + uint3(i, 0, 0));
-        float2 rand = jitter.xy;
-        rand.x *= g_CB.GGXBias; // Cut tails of distribution to reduce noise (introduces bias)
-        h = importanceSampleGGX(rand, linear_roughness);
-        float3 TBN_l = reflect(-v_in_TBN_space, h);
-        if (TBN_l.z > 0) break;
-    }
+    float3 jitter = pcg3d(seed);
+    float2 rand = jitter.xy;
+    rand.x *= g_CB.GGXBias; // Cut tails of distribution to reduce noise (introduces bias)
+    float3 h = sampleGGXVNDF(v_in_TBN_space, linear_roughness, rand.x, rand.y);
     h = Tangent2World(h, TBN);
 
     const float3 l = reflect(-v, h);
