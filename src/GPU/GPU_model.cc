@@ -379,6 +379,7 @@ GPU_model::GPU_model(const Model& cpu_model, bool raytracing_support) {
     for (const auto& mesh : cpu_model.meshes) {
         meshes_.emplace_back(mesh);
     }
+    objects.assign(cpu_model.objects.begin(), cpu_model.objects.end());
     for (auto& mesh : meshes_) {
         mesh.transition_from_copy_to_usage();
     }
@@ -391,7 +392,6 @@ GPU_model::GPU_model(const Model& cpu_model, bool raytracing_support) {
     prepare_combined_vertex_index_buffers(cpu_model);
     prepare_textures_array_buffer(cpu_model);
     prepare_materials_array_buffer(cpu_model);
-    objects.assign(cpu_model.objects.begin(), cpu_model.objects.end());
     isEmpty_ = false;
 }
 
