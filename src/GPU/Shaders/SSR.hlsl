@@ -9,8 +9,8 @@ struct SSRCSInput {
     float2 texel_size;
     float DepthThreshold;
     float MaxRoughness;
+    float2 temporal_jitter;
     float GGXBias;  // 1.0 is no bias, < 1.0 reduces tail of distribution
-    int frameID;
     int MaxDepthMipLevel;
     float MaxFrameMipLevel;
     float PrefilterDistanceMult;
@@ -193,11 +193,11 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
     bool found_hit = false;
     float hit_confidence = 1.0f;
 
-    uint3 seed = uint3(DTid.xy * uint2(5, 1), g_CB.frameID);
+    uint3 seed = uint3(DTid.xy, 0);
 
     float3 v_in_TBN_space = mul(TBN, v);
     float3 jitter = pcg3d(seed);
-    float2 rand = jitter.xy;
+    float2 rand = frac(g_CB.temporal_jitter + jitter.xy);
     rand.x *= g_CB.GGXBias; // Cut tails of distribution to reduce noise (introduces bias)
     float3 h = sampleGGXVNDF(v_in_TBN_space, linear_roughness, rand.x, rand.y);
     h = Tangent2World(h, TBN);
@@ -219,7 +219,7 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
     const float3 rayUVDirNorm = rayScreenDirNorm * float3(texel, 1.0f);
     const float3 inv_rayUVDirNorm = 1.0f / rayUVDirNorm;
 
-    float3 sampleUV = float3(uv, centerDepth) + rayUVDirNorm * (1.0f + jitter.z);
+    float3 sampleUV = float3(uv, centerDepth) + rayUVDirNorm * (1.0f + rand.x);
     float sampleDepth = centerDepth;
     int mip = 0;
     for (int i = 0; i < STEPS; ++i) {

@@ -18,6 +18,43 @@ enum Value : int {
 
     Count
 };
+
+}
+
+namespace {
+using namespace glm;
+
+// Fast Base-2 Radical Inverse via bit reversal
+float RadicalInverse_Base2(unsigned int bits) {
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+    return float(bits) * 2.3283064365386963e-10;  // Divide by 2^32
+}
+
+// Generalized Radical Inverse for base 'b'
+float RadicalInverse(unsigned int base, unsigned int index) {
+    float result = 0.0;
+    float invBase = 1.0 / float(base);
+    float f = invBase;
+
+    while (index > 0u) {
+        unsigned int next = index / base;
+        unsigned int digit = index - (next * base);
+        result += float(digit) * f;
+        f *= invBase;
+        index = next;
+    }
+    return result;
+}
+
+// Generate 2D Halton Sample for sample index 'i'
+fvec2 GetHalton2D(unsigned int sampleIndex) { 
+    return fvec2(RadicalInverse_Base2(sampleIndex), RadicalInverse(3u, sampleIndex)); 
+}
+
 }
 
 namespace app {
@@ -32,8 +69,8 @@ struct SSRCSInput {
     fvec2 texel_size;
     float DepthThreshold;
     float MaxRoughness;
+    fvec2 temporal_jitter;
     float GGXBias;  // 1.0 is no bias, < 1.0 reduces tail of distribution
-    int frameID;
     int MaxDepthMipLevel;
     float MaxFrameMipLevel;
     float PrefilterDistanceMult;
@@ -114,10 +151,12 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
     int MaxDepthMipLevel = GPU_texture::CalculateMipCount(width, height) - 1;
     float MaxFrameMipLevel = UsePrefiltering? RenderFrameMips - 1.0f : 0.0f;
     float PrefilterDistanceMult = 1.0f / max(PrefilteringDistance, 0.001f);
+    fvec2 temporal_jitter = GetHalton2D(FrameID);
 
     fvec2 texel{1.0f / width, 1.0f / height};
     SSRCSInput input{Projection, invProjection[0][0], invProjection[1][1], {width, height}, texel, 
-        DepthThreshold, MaxRoughness, 1.0f - SSR_GGXClamp, FrameID, 
+        DepthThreshold, MaxRoughness,
+        temporal_jitter, 1.0f - SSR_GGXClamp, 
         MaxDepthMipLevel, MaxFrameMipLevel, PrefilterDistanceMult};
     constexpr int inputSizeInInt = sizeof(SSRCSInput) / 4;
     commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
