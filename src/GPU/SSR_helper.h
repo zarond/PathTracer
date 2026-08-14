@@ -43,8 +43,7 @@ class SSR_helper {
     static ComPtr<ID3D12PipelineState> m_ResolvePipelineState;
 
     GPU_texture m_SSR_texture_previous;
-    GPU_texture m_SSR_buff; 
-    GPU_texture m_Frame_reprojected;
+    GPU_texture m_SSR_buff;
     UINT64 currentWidth = 0;
     UINT currentHeight = 0;
 

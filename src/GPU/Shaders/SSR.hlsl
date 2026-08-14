@@ -21,12 +21,15 @@ Texture2D<float4> Gbuffer : register(t0, space0);
 
 // Depth
 Texture2D<float> Depth : register(t1, space0);
+    
+// Velocity Buffer
+Texture2D<float4> Velocity : register(t2, space0);
 
 // Frame
-Texture2D<float4> Frame : register(t2, space0);
+Texture2D<float4> Frame : register(t3, space0);
 
 // SSR buffeer
-Texture2D<float4> SSR_buffer : register(t3, space0);
+Texture2D<float4> SSR_buffer : register(t4, space0);
 
 // Output
 RWTexture2D<float4> Output : register(u0, space0);
@@ -257,9 +260,12 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
         float3 reflection_ray = ReconstructViewPosition(sampleUV.xy, sampleUV.z) - pos;
         float dist = length(reflection_ray);
         dist *= abs(v.z); // linear depth in view space instead of distance
-        Output[DTid.xy] = float4(sampleUV.xy, dist, hit_confidence);
+        float2 ndcXY = sampleUV.xy * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
+        float2 prev_ndc = ndcXY - Velocity.SampleLevel(PointSampler, sampleUV.xy, 0).rg;
+        float2 prev_UV = prev_ndc * float2(0.5f, -0.5f) + 0.5f;
+        Output[DTid.xy] = float4(prev_UV, dist, hit_confidence);
     } else {
-        Output[DTid.xy] = float4(0.0f, 0.0f, 0.0f, 0.0f);
+        Output[DTid.xy] = float4(-1.0f, -1.0f, 0.0f, 0.0f);
     }
 }
 
@@ -275,7 +281,7 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
     const float2 sampleUV = SSR_sample.xy;
     float reflection_dist = SSR_sample.z;
     const float hit_confidence = SSR_sample.w;
-
+        
     if (hit_confidence == 0.0f) {
         Output[DTid.xy].w = hit_confidence;
         return;
