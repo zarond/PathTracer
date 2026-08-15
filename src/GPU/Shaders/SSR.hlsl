@@ -283,7 +283,7 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
     const float hit_confidence = SSR_sample.w;
         
     if (hit_confidence == 0.0f) {
-        Output[DTid.xy].w = hit_confidence;
+        Output[DTid.xy] = float4(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
 
@@ -295,5 +295,5 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
     float lod = min(reflection_dist * g_CB.PrefilterDistanceMult, 1.0f) * roughness * g_CB.MaxFrameMipLevel;
     float3 frame_sample = Frame.SampleLevel(LinearSampler, sampleUV, lod).rgb;
 
-    Output[DTid.xy] = float4(frame_sample, hit_confidence);
+    Output[DTid.xy] = float4(frame_sample * hit_confidence, hit_confidence);
 }
