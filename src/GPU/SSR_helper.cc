@@ -15,6 +15,7 @@ enum Value : int {
     Frame,
     SSR_buffer,
     OutputUAV,
+    OutputDistanceUAV,
     RootConstants,
 
     Count
@@ -159,6 +160,7 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
     commandList->SetPipelineState(m_ResolvePipelineState.Get());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::SSR_buffer, m_SSR_buff.GetSRVHandle());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputUAV, SSR_uav_texture.GetUAVHandle());
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputDistanceUAV, m_distance_texture.GetUAVHandle());
 
     commandList->Dispatch(GroupsX, GroupsY, 1);
 
@@ -168,7 +170,7 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
         commandList->ResourceBarrier(1, &barrier_ssr_uav);
         reprojection_helper.Reproject(m_SSR_texture_previous, DepthUAVTexture_previous, SSR_uav_texture, DepthUAVTexture,
             VelocityBuffer, Projection, glm::inverse(ViewProjection), ViewProjection_prev, Projection_previous, 
-            1.0f / 16.0f, DepthThreshold, false, ParallaxReprojection ? &m_SSR_buff : nullptr);
+            1.0f / 16.0f, DepthThreshold, false, ParallaxReprojection ? &m_distance_texture : nullptr);
     }
 
     barrier_ssr_buff = CD3DX12_RESOURCE_BARRIER::Transition(m_SSR_buff.get_gpu_resource().Get(),
@@ -201,6 +203,9 @@ void SSR_helper::ResizeInnerResource(int new_width, int new_height) {
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
     m_SSR_buff.release_gpu_resource();
     m_SSR_buff = GPU_texture{currentWidth, currentHeight, flags};
+
+    m_distance_texture.release_gpu_resource();
+    m_distance_texture = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R32_FLOAT};
 }
 
 void SSR_helper::CreateRootSignature() {
@@ -213,7 +218,8 @@ void SSR_helper::CreateRootSignature() {
     ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 1 Frame srv
     ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);  // 1 SSR_buffer srv
     ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output uav
-    ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);  // 1 constant buffer.
+    ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);  // 1 output distance uav
+    ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);  // 1 constant buffer.
 
     CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
     rootParameters[GlobalRootSignatureParams::Gbuffer].InitAsDescriptorTable(1, &ranges[0]);
@@ -222,6 +228,7 @@ void SSR_helper::CreateRootSignature() {
     rootParameters[GlobalRootSignatureParams::Frame].InitAsDescriptorTable(1, &ranges[3]);
     rootParameters[GlobalRootSignatureParams::SSR_buffer].InitAsDescriptorTable(1, &ranges[4]);
     rootParameters[GlobalRootSignatureParams::OutputUAV].InitAsDescriptorTable(1, &ranges[5]);
+    rootParameters[GlobalRootSignatureParams::OutputDistanceUAV].InitAsDescriptorTable(1, &ranges[6]);
     rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(SSRCSInput) / 4, 0);
 
     D3D12_STATIC_SAMPLER_DESC point_sampler = {};

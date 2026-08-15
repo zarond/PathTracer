@@ -34,6 +34,9 @@ Texture2D<float4> SSR_buffer : register(t4, space0);
 // Output
 RWTexture2D<float4> Output : register(u0, space0);
 
+// Output Average Distance
+RWTexture2D<float> OutputDistance : register(u1, space0);
+    
 // Constant Buffer
 ConstantBuffer<SSRCSInput> g_CB : register(b0);
 
@@ -256,44 +259,154 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
         //    return;
         //}
     }
-    if (found_hit) {
-        float3 reflection_ray = ReconstructViewPosition(sampleUV.xy, sampleUV.z) - pos;
-        float dist = length(reflection_ray);
-        dist *= abs(v.z); // linear depth in view space instead of distance
-        float2 ndcXY = sampleUV.xy * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
-        float2 prev_ndc = ndcXY - Velocity.SampleLevel(PointSampler, sampleUV.xy, 0).rg;
-        float2 prev_UV = prev_ndc * float2(0.5f, -0.5f) + 0.5f;
-        Output[DTid.xy] = float4(prev_UV, dist, hit_confidence);
-    } else {
-        Output[DTid.xy] = float4(-1.0f, -1.0f, 0.0f, 0.0f);
-    }
+    float2 ndcXY = sampleUV.xy * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
+    Output[DTid.xy] = float4(ndcXY, sampleUV.z, found_hit? hit_confidence : 0.0f); // save NDC coords of hit or miss
+}
+    
+// GGX Geometry Term (Smith height-correlated or simplified)
+float GeometrySchlickGGX(float NdotV, float roughness)
+{
+    float k = (roughness * roughness) * 0.5f;
+    return NdotV / (NdotV * (1.0f - k) + k + 1e-5f);
+}
+
+float GeometrySmith(float NdotV, float NdotL, float roughness)
+{
+    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+    return ggx1 * ggx2;
+}
+    
+struct ssr_hit_info {
+    float3 pos;         // View-space position of the hit point
+    float confidence;   // Confidence level of the hit, 0 - no hit
+    float2 uv;          // UV coordinates of the hit point in the previous frame
+};
+    
+ssr_hit_info decode_SSR_hit_info(float4 SSR_sample, float3 p0) 
+{
+    ssr_hit_info hit;
+    
+    float3 ndc = SSR_sample.xyz;
+    float2 current_uv = ndc.xy * float2(0.5f, -0.5f) + 0.5f;
+    float2 prev_ndc = ndc.xy - Velocity.SampleLevel(PointSampler, current_uv, 0).rg;
+    float2 prev_uv = prev_ndc * float2(0.5f, -0.5f) + 0.5f;
+    float3 hit_pos = ReconstructViewPosition(current_uv, ndc.z);
+        
+    hit.pos = hit_pos;
+    hit.confidence = SSR_sample.w;
+    hit.uv = prev_uv;
+        
+    return hit;
 }
 
 [numthreads(16, 16, 1)] 
 void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
     if (DTid.x >= g_CB.FrameSize.x || DTid.y >= g_CB.FrameSize.y) return;
 
-    const float4 GbufferData = Gbuffer.Load(DTid);
-    const float roughness = GbufferData.w;
+    const float4 centerGbuffer = Gbuffer.Load(int3(DTid.xy, 0));
+    const float3 N = normalize(centerGbuffer.rgb); 
+    const float centerRoughness = clamp(centerGbuffer.w, 0.002f, g_CB.MaxRoughness);
+    const float linearRoughness = centerRoughness * centerRoughness;
 
-    const float4 SSR_sample = SSR_buffer.Load(DTid);
-    const float sampleDepth = Depth.Load(DTid);
-    const float2 sampleUV = SSR_sample.xy;
-    float reflection_dist = SSR_sample.z;
-    const float hit_confidence = SSR_sample.w;
-        
-    if (hit_confidence == 0.0f) {
+    const float centerDepth = Depth.Load(int3(DTid.xy, 0));
+    if (centerDepth >= 1.0f) { // Background/Skybox check
         Output[DTid.xy] = float4(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
 
-    const float2 texel = g_CB.texel_size;
-    const float2 uv = (DTid.xy + 0.5f) * texel;
-    const float3 v = normalize(-ReconstructViewPosition(uv, 0.0f));
-    reflection_dist /= abs(v.z);
+    const float2 centerUV = (float2(DTid.xy) + 0.5f) * g_CB.texel_size;
+    const float3 centerPosVS = ReconstructViewPosition(centerUV, centerDepth);
+    //const float centerLinearDepth = centerPosVS.z;
+    
+    const float3 V = normalize(-centerPosVS);        
+    
+    float3 colorAccum = float3(0.0f, 0.0f, 0.0f);
+    float totalWeight = 0.0f;
+    float hitConfidenceAccum = 0.0f;
+    float distAccum = 0.0f;
+    uint valid_points = 0;
+        
+    // 5x5 Spatial Neighborhood Kernel
+    //[unroll]
+    for (int i = -2; i <= 2; ++i) {
+        //[unroll]
+        for (int j = -2; j <= 2; ++j) {
+            int2 neighborCoord = int2(DTid.xy) + int2(i, j);
 
-    float lod = min(reflection_dist * g_CB.PrefilterDistanceMult, 1.0f) * roughness * g_CB.MaxFrameMipLevel;
-    float3 frame_sample = Frame.SampleLevel(LinearSampler, sampleUV, lod).rgb;
+            // Boundary check
+            if (any(neighborCoord < 0) || any(neighborCoord >= g_CB.FrameSize)) 
+                continue;
 
-    Output[DTid.xy] = float4(frame_sample * hit_confidence, hit_confidence);
+            // Load neighbor ray hit UVs
+            float4 SSR_sample = SSR_buffer.Load(int3(neighborCoord, 0));
+            ssr_hit_info hit_info = decode_SSR_hit_info(SSR_sample, centerPosVS);
+               
+            float3 ray = hit_info.pos - centerPosVS;
+            float ray_distance = length(ray);
+            /*    
+            // 1. Bilateral Depth Weighting (reject neighbor rays if depth discontinuity exists)
+            float neighborDepth = Depth.Load(int3(neighborCoord, 0));
+            float neighborLinearDepth = linear_depth(neighborDepth);
+            float depthDiff = abs(centerLinearDepth - neighborLinearDepth);
+            float depthWeight = exp(-depthDiff * g_CB.DepthThreshold);
+            */
+                
+            // Light vector L and Half-vector H
+            float3 L = normalize(ray);
+            float3 H = normalize(V + L);
+
+            float NdotL = saturate(dot(N, L));
+            float NdotV = saturate(dot(N, V));
+
+            if (NdotL <= 0.0f || NdotV <= 0.0f) continue;
+
+            float NdotH = saturate(dot(N, H));
+            float VdotH = saturate(dot(V, H));
+
+            // 3. Analytic BRDF / PDF Weighting
+            // PDF_GGX = (D * NdotH) / (4 * VdotH)
+            // BRDF_GGX = (D * F * G) / (4 * NdotV * NdotL)
+            // Weight = (BRDF * NdotL) / PDF = F * G * VdotH / (NdotV * NdotH)
+            float G = GeometrySmith(NdotV, NdotL, linearRoughness);
+            float brdfOverPdfWeight = (G * VdotH) / max(NdotV * NdotH, 0.0001f);
+
+            // Gaussian spatial kernel weight
+            //float spatialWeight = exp(-0.5f * float(i * i + j * j));
+                
+            // Combined sample weight
+            //float weight = spatialWeight * depthWeight * brdfOverPdfWeight;
+            float weight = brdfOverPdfWeight;
+
+            // 4. Mipmap LOD calculation (Roughness prefiltering)
+            // Footprint expands based on roughness and distance traveled by ray
+            // float rayDistance = length(hitPosVS - centerPosVS);
+            // float coneRadius = rayDistance * centerRoughness * g_CB.PrefilterDistanceMult;
+            //float lod = clamp(log2(coneRadius / (g_CB.texel_size.x * 100.0f) + 1.0f), 0.0f, g_CB.MaxFrameMipLevel);
+            float lod = 0;
+
+            // Sample Frame texture with roughness LOD blur
+            float3 frameSample = Frame.SampleLevel(LinearSampler, hit_info.uv, lod).rgb;
+            bool hit_valid = hit_info.confidence > 0.0f;
+
+            colorAccum += frameSample * weight * hit_info.confidence;
+            totalWeight += weight;
+            hitConfidenceAccum += hit_info.confidence * weight;
+            distAccum += hit_valid ? ray_distance : 0.0f;
+            valid_points += hit_valid;
+        }
+    }
+
+    if (totalWeight > 0.0001f) {
+        float3 finalColor = colorAccum.rgb / totalWeight;
+        float confidence = saturate(hitConfidenceAccum / totalWeight);
+        float averageDist = valid_points > 0 ? distAccum / valid_points : 0.0f;
+        averageDist *= abs(V.z);
+
+        Output[DTid.xy] = float4(finalColor, confidence);
+        OutputDistance[DTid.xy] = averageDist;
+    } else {
+        Output[DTid.xy] = float4(0.0f, 0.0f, 0.0f, 0.0f);
+        OutputDistance[DTid.xy] = 0.0f;
+    }
 }

@@ -24,8 +24,8 @@ RWTexture2D<float4> NewTexture : register(u0, space0);
 // New Depth
 Texture2D<float> NewDepth : register(t2, space0);
 
-// SSR buffer with Distance on B channel for SSR parallax
-Texture2D<float4> SSR_buffer : register(t3, space0);
+// Distance Texture
+Texture2D<float> DistanceTexture : register(t3, space0);
 
 // Velocity Buffer
 Texture2D<float4> Velocity : register(t4, space0);
@@ -84,7 +84,7 @@ void CS_Reprojection(uint3 DTid : SV_DispatchThreadID) {
 
     float reflection_distance = 0.0f;
     if (g_CB.use_reflection_distance) {
-        reflection_distance = SSR_buffer.Load(DTid).b;
+        reflection_distance = DistanceTexture.Load(DTid);
         if (reflection_distance > 0) {
             float pos_z = new_linear_depth(ndc.z);
             pos_z -= reflection_distance;

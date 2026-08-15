@@ -44,6 +44,7 @@ class SSR_helper {
 
     GPU_texture m_SSR_texture_previous;
     GPU_texture m_SSR_buff;
+    GPU_texture m_distance_texture;
     UINT64 currentWidth = 0;
     UINT currentHeight = 0;
 
