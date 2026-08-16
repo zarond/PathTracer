@@ -13,7 +13,9 @@ struct SSRCSInput {
     float GGXBias;  // 1.0 is no bias, < 1.0 reduces tail of distribution
     int MaxDepthMipLevel;
     float MaxFrameMipLevel;
-    float PrefilterDistanceMult;
+    float PrefilterDistance;
+    float FocalPoint;
+    int simpleResolve;
 };
 
 // Gbuff
@@ -210,12 +212,6 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
 
     const float3 l = reflect(-v, h);
 
-    //const float LoN = saturate(dot(l, normal));
-    //if (LoN == 0.0f) {
-    //    Output[DTid.xy] = float4(1.0f, 0.0f, 0.0f, 1.0f); // Debug
-    //    return;
-    //}
-
     const float3 rayUVDir = ViewPositionToUV(pos + l * 0.01f) - float3(uv, centerDepth);
     const float3 rayScreenDir = rayUVDir * float3(g_CB.FrameSize, 1.0f);
 
@@ -254,27 +250,9 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
         } else {
             AdvanceToNextCell(sampleUV, rayUVDirNorm, inv_rayUVDirNorm, sampleDepth, texel, mip);
         }
-        //if (i == STEPS - 1) { // Debug
-        //    Output[DTid.xy] = float4(1.0f, 0.0f, 0.0f, 1.0f); // This means infinite loop somewhere
-        //    return;
-        //}
     }
     float2 ndcXY = sampleUV.xy * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
     Output[DTid.xy] = float4(ndcXY, sampleUV.z, found_hit? hit_confidence : 0.0f); // save NDC coords of hit or miss
-}
-    
-// GGX Geometry Term (Smith height-correlated or simplified)
-float GeometrySchlickGGX(float NdotV, float roughness)
-{
-    float k = (roughness * roughness) * 0.5f;
-    return NdotV / (NdotV * (1.0f - k) + k + 1e-5f);
-}
-
-float GeometrySmith(float NdotV, float NdotL, float roughness)
-{
-    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
-    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
-    return ggx1 * ggx2;
 }
     
 struct ssr_hit_info {
@@ -283,7 +261,7 @@ struct ssr_hit_info {
     float2 uv;          // UV coordinates of the hit point in the previous frame
 };
     
-ssr_hit_info decode_SSR_hit_info(float4 SSR_sample, float3 p0) 
+ssr_hit_info decode_SSR_hit_info(float4 SSR_sample) 
 {
     ssr_hit_info hit;
     
@@ -314,12 +292,24 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
         Output[DTid.xy] = float4(0.0f, 0.0f, 0.0f, 0.0f);
         return;
     }
-
+        
     const float2 centerUV = (float2(DTid.xy) + 0.5f) * g_CB.texel_size;
     const float3 centerPosVS = ReconstructViewPosition(centerUV, centerDepth);
-    //const float centerLinearDepth = centerPosVS.z;
     
-    const float3 V = normalize(-centerPosVS);        
+    const float3 V = normalize(-centerPosVS);
+        
+    if (g_CB.simpleResolve)
+    {
+        float4 SSR_sample = SSR_buffer.Load(int3(DTid.xy, 0));
+        ssr_hit_info hit_info = decode_SSR_hit_info(SSR_sample);
+        float3 ray = hit_info.pos - centerPosVS;
+        float ray_distance = length(ray);
+        ray_distance *= abs(V.z);
+        float3 frameSample = Frame.SampleLevel(LinearSampler, hit_info.uv, 0).rgb;
+        Output[DTid.xy] = float4(frameSample * hit_info.confidence, hit_info.confidence);
+        OutputDistance[DTid.xy] = ray_distance;
+        return;
+    }
     
     float3 colorAccum = float3(0.0f, 0.0f, 0.0f);
     float totalWeight = 0.0f;
@@ -328,9 +318,7 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
     uint valid_points = 0;
         
     // 5x5 Spatial Neighborhood Kernel
-    //[unroll]
     for (int i = -2; i <= 2; ++i) {
-        //[unroll]
         for (int j = -2; j <= 2; ++j) {
             int2 neighborCoord = int2(DTid.xy) + int2(i, j);
 
@@ -340,17 +328,11 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
 
             // Load neighbor ray hit UVs
             float4 SSR_sample = SSR_buffer.Load(int3(neighborCoord, 0));
-            ssr_hit_info hit_info = decode_SSR_hit_info(SSR_sample, centerPosVS);
+            ssr_hit_info hit_info = decode_SSR_hit_info(SSR_sample);
+            bool hit_valid = hit_info.confidence > 0.0f;
                
             float3 ray = hit_info.pos - centerPosVS;
             float ray_distance = length(ray);
-            /*    
-            // 1. Bilateral Depth Weighting (reject neighbor rays if depth discontinuity exists)
-            float neighborDepth = Depth.Load(int3(neighborCoord, 0));
-            float neighborLinearDepth = linear_depth(neighborDepth);
-            float depthDiff = abs(centerLinearDepth - neighborLinearDepth);
-            float depthWeight = exp(-depthDiff * g_CB.DepthThreshold);
-            */
                 
             // Light vector L and Half-vector H
             float3 L = normalize(ray);
@@ -364,32 +346,21 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
             float NdotH = saturate(dot(N, H));
             float VdotH = saturate(dot(V, H));
 
-            // 3. Analytic BRDF / PDF Weighting
-            // PDF_GGX = (D * NdotH) / (4 * VdotH)
+            // BRDF * Cos Weighting
             // BRDF_GGX = (D * F * G) / (4 * NdotV * NdotL)
-            // Weight = (BRDF * NdotL) / PDF = F * G * VdotH / (NdotV * NdotH)
-            float G = GeometrySmith(NdotV, NdotL, linearRoughness);
-            float brdfOverPdfWeight = (G * VdotH) / max(NdotV * NdotH, 0.0001f);
+            float weight = D_GGX(NdotH, centerRoughness) * V_Schlick(NdotL, NdotV, centerRoughness) * NdotL;
 
-            // Gaussian spatial kernel weight
-            //float spatialWeight = exp(-0.5f * float(i * i + j * j));
-                
-            // Combined sample weight
-            //float weight = spatialWeight * depthWeight * brdfOverPdfWeight;
-            float weight = brdfOverPdfWeight;
+            if (hit_valid) {
+                // Mipmap LOD calculation (Roughness prefiltering)
+                // Footprint expands based on roughness and distance traveled by ray
+                float coneRadius = ray_distance * centerRoughness * g_CB.PrefilterDistance;
+                coneRadius *= g_CB.FocalPoint / (-centerPosVS.z);
+                float lod = clamp(log2(coneRadius), 0.0f, g_CB.MaxFrameMipLevel);
+                // Sample Frame texture with roughness LOD blur
+                float3 frameSample = Frame.SampleLevel(LinearSampler, hit_info.uv, lod).rgb;
+                colorAccum += frameSample * weight * hit_info.confidence;   
+            }
 
-            // 4. Mipmap LOD calculation (Roughness prefiltering)
-            // Footprint expands based on roughness and distance traveled by ray
-            // float rayDistance = length(hitPosVS - centerPosVS);
-            // float coneRadius = rayDistance * centerRoughness * g_CB.PrefilterDistanceMult;
-            //float lod = clamp(log2(coneRadius / (g_CB.texel_size.x * 100.0f) + 1.0f), 0.0f, g_CB.MaxFrameMipLevel);
-            float lod = 0;
-
-            // Sample Frame texture with roughness LOD blur
-            float3 frameSample = Frame.SampleLevel(LinearSampler, hit_info.uv, lod).rgb;
-            bool hit_valid = hit_info.confidence > 0.0f;
-
-            colorAccum += frameSample * weight * hit_info.confidence;
             totalWeight += weight;
             hitConfidenceAccum += hit_info.confidence * weight;
             distAccum += hit_valid ? ray_distance : 0.0f;

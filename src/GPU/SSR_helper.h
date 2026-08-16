@@ -24,6 +24,7 @@ class SSR_helper {
     void ResetFrameCounter();
 
     bool DenoiseEnabled = true;
+    bool RayReuseEnabled = true;
     float DepthThreshold = 0.01f;
     float MaxRoughness = 0.8f;
     float SSR_GGXClamp = 0.0f;

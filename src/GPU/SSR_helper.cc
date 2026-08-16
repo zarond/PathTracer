@@ -76,6 +76,8 @@ struct SSRCSInput {
     int MaxDepthMipLevel;
     float MaxFrameMipLevel;
     float PrefilterDistanceMult;
+    float FocalPoint;
+    int simpleResolve;
 };
 
 ComPtr<ID3D12RootSignature> SSR_helper::m_rootSignature{};
@@ -136,15 +138,16 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputUAV, m_SSR_buff.GetUAVHandle());
 
     int MaxDepthMipLevel = GPU_texture::CalculateMipCount(width, height) - 1;
-    float MaxFrameMipLevel = UsePrefiltering? RenderFrameMips - 1.0f : 0.0f;
-    float PrefilterDistanceMult = 1.0f / max(PrefilteringDistance, 0.001f);
+    float MaxFrameMipLevel = UsePrefiltering? max(RenderFrameMips - 2.0f, 0.0f) : 0.0f;
+    float FocalPoint = (height / 2) * Projection[1][1];
+    int simpleResolve = RayReuseEnabled ? 0 : 1;
     fvec2 temporal_jitter = GetHalton2D(FrameID);
 
     fvec2 texel{1.0f / width, 1.0f / height};
     SSRCSInput input{Projection, invProjection[0][0], invProjection[1][1], {width, height}, texel, 
         DepthThreshold, MaxRoughness,
         temporal_jitter, 1.0f - SSR_GGXClamp, 
-        MaxDepthMipLevel, MaxFrameMipLevel, PrefilterDistanceMult};
+        MaxDepthMipLevel, MaxFrameMipLevel, PrefilteringDistance, FocalPoint, simpleResolve};
     constexpr int inputSizeInInt = sizeof(SSRCSInput) / 4;
     commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
 
