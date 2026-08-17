@@ -118,7 +118,7 @@ float ThresholdFade(float value, float threshold, float mult_range, float lin_ra
 
 bool IsPotentialHit(float3 sampleUV, float sampleDepth) { return sampleUV.z >= sampleDepth; }
 
-bool CheckPotentialHit(inout float3 sampleUV, float sampleDepth, float3 rayUVDirNorm, float3 l, inout float hit_confidence)
+bool CheckPotentialHit(float3 sampleUV, float sampleDepth, float3 rayUVDirNorm, float3 l, inout float hit_confidence)
 {
     const float3 hit_normals = Gbuffer.SampleLevel(PointSampler, sampleUV.xy, 0).xyz;
     const float LoN = dot(l, hit_normals);
@@ -251,8 +251,11 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
             AdvanceToNextCell(sampleUV, rayUVDirNorm, inv_rayUVDirNorm, sampleDepth, texel, mip);
         }
     }
-    float2 ndcXY = sampleUV.xy * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
-    Output[DTid.xy] = float4(ndcXY, sampleUV.z, found_hit? hit_confidence : 0.0f); // save NDC coords of hit or miss
+    if (!found_hit) {
+        sampleUV = l; // save ray direction in VS in case of miss
+        hit_confidence = 0.0f;
+    }
+    Output[DTid.xy] = float4(sampleUV, hit_confidence); // save UV + NDC Z coords in case of hit
 }
     
 struct ssr_hit_info {
@@ -265,11 +268,19 @@ ssr_hit_info decode_SSR_hit_info(float4 SSR_sample)
 {
     ssr_hit_info hit;
     
-    float3 ndc = SSR_sample.xyz;
-    float2 current_uv = ndc.xy * float2(0.5f, -0.5f) + 0.5f;
-    float2 prev_ndc = ndc.xy - Velocity.SampleLevel(PointSampler, current_uv, 0).rg;
-    float2 prev_uv = prev_ndc * float2(0.5f, -0.5f) + 0.5f;
-    float3 hit_pos = ReconstructViewPosition(current_uv, ndc.z);
+    bool hit_valid = SSR_sample.w > 0.0f;
+    float2 prev_uv = float2(0.0f, 0.0f);
+    float3 hit_pos;
+    if (hit_valid) {
+        float2 current_uv = SSR_sample.xy;
+        float depth = SSR_sample.z;
+        float2 ndc_xy = current_uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
+        float2 prev_ndc = ndc_xy - Velocity.SampleLevel(PointSampler, current_uv, 0).rg;
+        prev_uv = prev_ndc * float2(0.5f, -0.5f) + 0.5f;
+        hit_pos = ReconstructViewPosition(current_uv, depth);    
+    } else {
+        hit_pos = SSR_sample.xyz; // Use the ray direction in view space for misses
+    }
         
     hit.pos = hit_pos;
     hit.confidence = SSR_sample.w;
@@ -284,12 +295,13 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
 
     const float4 centerGbuffer = Gbuffer.Load(int3(DTid.xy, 0));
     const float3 N = normalize(centerGbuffer.rgb); 
-    const float centerRoughness = clamp(centerGbuffer.w, 0.002f, g_CB.MaxRoughness);
+    const float centerRoughness = clamp(centerGbuffer.w, 0.002f, max(g_CB.MaxRoughness, 0.002f));
     const float linearRoughness = centerRoughness * centerRoughness;
 
     const float centerDepth = Depth.Load(int3(DTid.xy, 0));
     if (centerDepth >= 1.0f) { // Background/Skybox check
         Output[DTid.xy] = float4(0.0f, 0.0f, 0.0f, 0.0f);
+        OutputDistance[DTid.xy] = 0.0f;
         return;
     }
         
@@ -307,7 +319,7 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
         ray_distance *= abs(V.z);
         float3 frameSample = Frame.SampleLevel(LinearSampler, hit_info.uv, 0).rgb;
         Output[DTid.xy] = float4(frameSample * hit_info.confidence, hit_info.confidence);
-        OutputDistance[DTid.xy] = ray_distance;
+        OutputDistance[DTid.xy] = hit_info.confidence > 0 ? ray_distance : 0.0f;
         return;
     }
     
@@ -331,13 +343,13 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
             ssr_hit_info hit_info = decode_SSR_hit_info(SSR_sample);
             bool hit_valid = hit_info.confidence > 0.0f;
                
-            float3 ray = hit_info.pos - centerPosVS;
+            float3 ray = hit_info.pos - hit_valid * centerPosVS;
             float ray_distance = length(ray);
-                
+               
             // Light vector L and Half-vector H
             float3 L = normalize(ray);
             float3 H = normalize(V + L);
-
+            
             float NdotL = saturate(dot(N, L));
             float NdotV = saturate(dot(N, V));
 
@@ -348,7 +360,7 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
 
             // BRDF * Cos Weighting
             // BRDF_GGX = (D * F * G) / (4 * NdotV * NdotL)
-            float weight = D_GGX(NdotH, centerRoughness) * V_Schlick(NdotL, NdotV, centerRoughness) * NdotL;
+            float weight = D_GGX(NdotH, linearRoughness) * V_Schlick(NdotL, NdotV, centerRoughness) * NdotL;
 
             if (hit_valid) {
                 // Mipmap LOD calculation (Roughness prefiltering)
@@ -370,7 +382,7 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
 
     if (totalWeight > 0.0001f) {
         float3 finalColor = colorAccum.rgb / totalWeight;
-        float confidence = saturate(hitConfidenceAccum / totalWeight);
+        float confidence = hitConfidenceAccum / totalWeight;
         float averageDist = valid_points > 0 ? distAccum / valid_points : 0.0f;
         averageDist *= abs(V.z);
 
