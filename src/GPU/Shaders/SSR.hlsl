@@ -118,20 +118,17 @@ float ThresholdFade(float value, float threshold, float mult_range, float lin_ra
 
 bool IsPotentialHit(float3 sampleUV, float sampleDepth) { return sampleUV.z >= sampleDepth; }
 
-bool CheckPotentialHit(float3 sampleUV, float sampleDepth, float3 rayUVDirNorm, float3 l, inout float hit_confidence)
+bool CheckPotentialHit(float3 sampleUV, float sampleDepth, float3 rayUVDirNorm, float3 l)
 {
     const float3 hit_normals = Gbuffer.SampleLevel(PointSampler, sampleUV.xy, 0).xyz;
     const float LoN = dot(l, hit_normals);
-    hit_confidence = min(hit_confidence, ThresholdFade(LoN, 0.0f, 0, 0.005f));
-    if (hit_confidence == 0.0f) {
+    if (LoN > 0.0f) {
         return false;
     }
     float d2 = precise_ray_depth(sampleUV, sampleDepth); // x > 0 means under surface for linear depth
-    hit_confidence = min(hit_confidence, ThresholdFade(d2, g_CB.DepthThreshold, 0.5f, 0));
-    if (hit_confidence == 0.0f) {
+    if (d2 > g_CB.DepthThreshold) {
         return false;
     }
-
     return true;
 }
 
@@ -199,7 +196,6 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
 
     //-------------------------------------------------------
     bool found_hit = false;
-    float hit_confidence = 1.0f;
 
     uint3 seed = uint3(DTid.xy, 0);
 
@@ -208,6 +204,7 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
     float2 rand = frac(g_CB.temporal_jitter + jitter.xy);
     rand.x *= g_CB.GGXBias; // Cut tails of distribution to reduce noise (introduces bias)
     float3 h = sampleGGXVNDF(v_in_TBN_space, linear_roughness, rand.x, rand.y);
+    float inv_pdf = 1.0f / clamp(PDF_of_importanceSampleGGX(h.z, dot(v_in_TBN_space, h), linear_roughness), 0.0001f, 10000.0f);
     h = Tangent2World(h, TBN);
 
     const float3 l = reflect(-v, h);
@@ -225,16 +222,14 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
     float sampleDepth = centerDepth;
     int mip = 0;
     for (int i = 0; i < STEPS; ++i) {
-        hit_confidence = UVEdgeFade(sampleUV.xy);
-        if (hit_confidence == 0.0f) break;
+        if (any(sampleUV <= 0.0f) || any(sampleUV >= 1.0f)) break;
         sampleDepth = Depth.SampleLevel(PointSampler, sampleUV.xy, mip);
         if (IsPotentialHit(sampleUV, sampleDepth)) {
             if (mip == 0) {
-                found_hit = CheckPotentialHit(sampleUV, sampleDepth, rayUVDirNorm, l, hit_confidence);
+                found_hit = CheckPotentialHit(sampleUV, sampleDepth, rayUVDirNorm, l);
                 if (found_hit) {
                     break;
                 }
-
                 // False positive thickness rejection: safely skip past this pixel's boundary
                 float2 cell_boundary = floor(sampleUV.xy * g_CB.FrameSize) * texel + select(rayUVDirNorm.xy > 0.0f, texel, 0.0f);
                 float2 t_xy = (cell_boundary - sampleUV.xy) * inv_rayUVDirNorm.xy;
@@ -253,15 +248,16 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
     }
     if (!found_hit) {
         sampleUV = l; // save ray direction in VS in case of miss
-        hit_confidence = 0.0f;
+        inv_pdf = -inv_pdf; // negative inv_pdf indicates miss
     }
-    Output[DTid.xy] = float4(sampleUV, hit_confidence); // save UV + NDC Z coords in case of hit
+    Output[DTid.xy] = float4(sampleUV, inv_pdf); // save UV + NDC Z coords in case of hit
 }
     
 struct ssr_hit_info {
     float3 pos;         // View-space position of the hit point
     float confidence;   // Confidence level of the hit, 0 - no hit
     float2 uv;          // UV coordinates of the hit point in the previous frame
+    float inv_pdf;
 };
     
 ssr_hit_info decode_SSR_hit_info(float4 SSR_sample) 
@@ -283,10 +279,21 @@ ssr_hit_info decode_SSR_hit_info(float4 SSR_sample)
     }
         
     hit.pos = hit_pos;
-    hit.confidence = SSR_sample.w;
     hit.uv = prev_uv;
+    hit.confidence = hit_valid ? UVEdgeFade(prev_uv) : 0.0f;
+    hit.inv_pdf = abs(SSR_sample.w);
         
     return hit;
+}
+    
+float3 prefilteredSample(float ray_distance, float linearRoughness, float depth, float2 uv) {
+    // Mipmap LOD calculation (Roughness prefiltering)
+    // Footprint expands based on roughness and distance traveled by ray
+    float coneRadius = ray_distance * linearRoughness * g_CB.PrefilterDistance;
+    coneRadius *= g_CB.FocalPoint / depth;
+    float lod = clamp(log2(2.0f * coneRadius + kEpsilon5), 0.0f, g_CB.MaxFrameMipLevel);
+    // Sample Frame texture with roughness LOD blur
+    return Frame.SampleLevel(LinearSampler, uv, lod).rgb;
 }
 
 [numthreads(16, 16, 1)] 
@@ -315,11 +322,11 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
         float4 SSR_sample = SSR_buffer.Load(int3(DTid.xy, 0));
         ssr_hit_info hit_info = decode_SSR_hit_info(SSR_sample);
         float3 ray = hit_info.pos - centerPosVS;
-        float ray_distance = length(ray);
-        ray_distance *= abs(V.z);
-        float3 frameSample = Frame.SampleLevel(LinearSampler, hit_info.uv, 0).rgb;
+        bool valid_hit = hit_info.confidence > 0;
+        float ray_distance = valid_hit ? length(ray) : 0.0f;
+        float3 frameSample = prefilteredSample(ray_distance, linearRoughness, -centerPosVS.z, hit_info.uv);;
         Output[DTid.xy] = float4(frameSample * hit_info.confidence, hit_info.confidence);
-        OutputDistance[DTid.xy] = hit_info.confidence > 0 ? ray_distance : 0.0f;
+        OutputDistance[DTid.xy] = valid_hit ? ray_distance * abs(V.z) : 0.0f;
         return;
     }
     
@@ -358,18 +365,12 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
             float NdotH = saturate(dot(N, H));
             float VdotH = saturate(dot(V, H));
 
-            // BRDF * Cos Weighting
+            // (BRDF / pdf) * Cos Weighting
             // BRDF_GGX = (D * F * G) / (4 * NdotV * NdotL)
-            float weight = D_GGX(NdotH, linearRoughness) * V_Schlick(NdotL, NdotV, centerRoughness) * NdotL;
+            float weight = D_GGX(NdotH, linearRoughness) * V_Schlick(NdotL, NdotV, centerRoughness) * NdotL * hit_info.inv_pdf;
 
             if (hit_valid) {
-                // Mipmap LOD calculation (Roughness prefiltering)
-                // Footprint expands based on roughness and distance traveled by ray
-                float coneRadius = ray_distance * centerRoughness * g_CB.PrefilterDistance;
-                coneRadius *= g_CB.FocalPoint / (-centerPosVS.z);
-                float lod = clamp(log2(coneRadius), 0.0f, g_CB.MaxFrameMipLevel);
-                // Sample Frame texture with roughness LOD blur
-                float3 frameSample = Frame.SampleLevel(LinearSampler, hit_info.uv, lod).rgb;
+                float3 frameSample = prefilteredSample(ray_distance, linearRoughness, -centerPosVS.z, hit_info.uv);
                 colorAccum += frameSample * weight * hit_info.confidence;   
             }
 
@@ -383,8 +384,7 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
     if (totalWeight > 0.0001f) {
         float3 finalColor = colorAccum.rgb / totalWeight;
         float confidence = hitConfidenceAccum / totalWeight;
-        float averageDist = valid_points > 0 ? distAccum / valid_points : 0.0f;
-        averageDist *= abs(V.z);
+        float averageDist = valid_points > 0 ? distAccum * abs(V.z) / valid_points : 0;
 
         Output[DTid.xy] = float4(finalColor, confidence);
         OutputDistance[DTid.xy] = averageDist;

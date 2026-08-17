@@ -18,7 +18,8 @@ class Reprojection_helper {
     void Reproject(GPU_texture& old_texture, GPU_texture& old_depth_texture, GPU_texture& new_texture,
         GPU_texture& new_depth_texture, GPU_texture& VelocityBuffer, const fmat4x4& Projection, 
         const fmat4x4& invViewProjection, const fmat4x4& ViewProjection_previous, const fmat4x4& Projection_previous, 
-        float new_value_mix_factor, float depth_threshold, bool weak_depth_condition, GPU_texture* DistanceTexture);
+        float new_value_mix_factor, float depth_threshold, bool weak_depth_condition, GPU_texture* DistanceTexture = nullptr, 
+        bool zeroAlphaReject = false);
 
     static bool DebugMode;
 

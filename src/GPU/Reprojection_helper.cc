@@ -34,6 +34,7 @@ struct ReprojectionCSInput {
     float new_mix_factor;
     int weak_depth_condition;
     int use_reflection_distance;
+    int zeroAlphaReject;
     int DebugMode;
 };
 
@@ -59,7 +60,7 @@ void Reprojection_helper::Reproject(GPU_texture& old_texture, GPU_texture& old_d
     GPU_texture& new_depth_texture, GPU_texture& VelocityBuffer, const fmat4x4& Projection, const fmat4x4& invViewProjection,
     const fmat4x4& ViewProjection_previous, const fmat4x4& Projection_previous, 
     float new_value_mix_factor, float depth_threshold, bool weak_depth_condition,
-    GPU_texture* DistanceTexture) 
+    GPU_texture* DistanceTexture, bool zeroAlphaReject) 
 {
     const auto& resource = new_texture.get_gpu_resource();
     const auto description = resource->GetDesc();
@@ -97,6 +98,7 @@ void Reprojection_helper::Reproject(GPU_texture& old_texture, GPU_texture& old_d
         new_value_mix_factor,
         weak_depth_condition, 
         use_reflection_distance,
+        zeroAlphaReject,
         DebugMode
     };
     constexpr int inputSizeInInt = sizeof(ReprojectionCSInput) / 4;

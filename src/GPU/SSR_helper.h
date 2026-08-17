@@ -29,7 +29,7 @@ class SSR_helper {
     float MaxRoughness = 0.8f;
     float SSR_GGXClamp = 0.0f;
     bool UsePrefiltering = true;
-    float PrefilteringDistance = 0.1f;
+    float PrefilteringDistance = 0.3f;
     bool ParallaxReprojection = true;
 
     static void Reload();

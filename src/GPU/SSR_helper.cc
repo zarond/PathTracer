@@ -173,7 +173,8 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
         commandList->ResourceBarrier(1, &barrier_ssr_uav);
         reprojection_helper.Reproject(m_SSR_texture_previous, DepthUAVTexture_previous, SSR_uav_texture, DepthUAVTexture,
             VelocityBuffer, Projection, glm::inverse(ViewProjection), ViewProjection_prev, Projection_previous, 
-            1.0f / 16.0f, DepthThreshold, false, ParallaxReprojection ? &m_distance_texture : nullptr);
+            1.0f / 16.0f,
+            DepthThreshold, true, ParallaxReprojection ? &m_distance_texture : nullptr, RayReuseEnabled);
     }
 
     barrier_ssr_buff = CD3DX12_RESOURCE_BARRIER::Transition(m_SSR_buff.get_gpu_resource().Get(),

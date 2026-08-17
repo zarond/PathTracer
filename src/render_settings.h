@@ -28,7 +28,7 @@ struct RenderSettings {
     float SSRDepthThreshold = 0.01f;
     float SSRMaxRoughness = 0.8f;
     bool SSRUsePrefiltering = true;
-    float SSRPrefilteringDistance = 0.1f;
+    float SSRPrefilteringDistance = 0.3f;
     bool SSRParallaxReprojection = true;
     bool ReprojectionDebugMode = false;
     bool specular_aa_enabled = true;

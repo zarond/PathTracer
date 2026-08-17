@@ -9,6 +9,7 @@ struct ReprojectionCSInput {
     float new_mix_factor;
     int weak_depth_condition;
     int use_reflection_distance;
+    int zeroAlphaReject;
     int DebugMode;  // 0 - normal, 1 - show reprojection failure in red
 };
 
@@ -61,7 +62,7 @@ float linear_depth(float non_linear_depth) {
     return -proj_23 / (proj_22 + non_linear_depth);
 }
 
-float linear_depth(float4 non_linear_depth) {
+float4 linear_depth(float4 non_linear_depth) {
     const float proj_22 = g_CB.Projection_prev[2][2];
     const float proj_23 = g_CB.Projection_prev[2][3];
     return -proj_23 / (proj_22 + non_linear_depth);
@@ -76,7 +77,7 @@ void CS_Reprojection(uint3 DTid : SV_DispatchThreadID) {
     const float2 texel = g_CB.texel_size;
     const float2 uv = (DTid.xy + 0.5f) * texel;
 
-    const float centerDepth = NewDepth.Load(DTid);
+    const float centerDepth = NewDepth.Load(DTid).r;
     const float4 NewColor = NewTexture.Load(DTid);
 
     float4 ndc = float4(uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), centerDepth, 1.0f);
@@ -95,7 +96,6 @@ void CS_Reprojection(uint3 DTid : SV_DispatchThreadID) {
 	} else {
 		prevNDC = ndc.xyz - Velocity.Load(DTid).xyz;
 	}
-
 	float prevDepth = linear_depth(prevNDC.z);
 
     prevDepth += max(reflection_distance, 0);
@@ -125,6 +125,9 @@ void CS_Reprojection(uint3 DTid : SV_DispatchThreadID) {
     if (allValid) {
         prevColor = OldTexture.SampleLevel(LinearSampler, prevUV, 0);
     } else {  // Depth mismatch
+        UsePrevSample = false;
+    }
+    if (g_CB.zeroAlphaReject && NewColor.a <= 0) {
         UsePrevSample = false;
     }
 

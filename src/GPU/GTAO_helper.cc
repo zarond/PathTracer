@@ -111,7 +111,7 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
             reprojection_helper.Reproject(m_SpatialDenoised_previous, DepthUAVTexture_previous, AO_uav_texture,
                 DepthUAVTexture, VelocityBuffer, Projection, glm::inverse(ViewProjection), ViewProjection_prev,
                 Projection_previous, 1.0f / 6.0f,
-                DepthThreshold, false, nullptr);
+                DepthThreshold, false);
         }
         Projection_previous = Projection;
         ++consecutive_frame_count;
