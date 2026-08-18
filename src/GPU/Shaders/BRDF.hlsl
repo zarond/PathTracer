@@ -36,8 +36,14 @@ float D_GGX(float NoH, float linear_roughness) {
     float k = linear_roughness / (1.0f - NoH * NoH + a * a);
     return k * k * (1.0f / PI);
 }
+float G1(float NdW, float k) { return 1.0f / (NdW * (1.0f - k) + k); }
+
 float PDF_of_importanceSampleGGX(float NoH, float LoH, float a) { 
     return D_GGX(NoH, a) * NoH / (4.0f * LoH); 
+}
+float PDF_of_importanceSampleGGXVNDF(float NoH, float VoN, float a) { 
+    float k = max(a * 0.5f, kEpsilon5);
+    return D_GGX(NoH, a) * G1(VoN, k) / (4.0f * VoN); 
 }
 float3 fresnel_schlick(float3 f0, float3 f90, float cos_nv) {
     float x = 1.0f - cos_nv;
@@ -57,7 +63,6 @@ float V_SmithGGXCorrelated(float NoV, float NoL, float a) {  // a is alpha_linea
     float GGXL = NoV * sqrt((-NoL * a2 + NoL) * NoL + a2);
     return 2.0f / (GGXV + GGXL);  // should be 0.5f / (GGXV + GGXL);
 }
-float G1(float NdW, float k) { return 1.0f / (NdW * (1.0f - k) + k); }
 // Schlick - Smith visibility term
 // [ http://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf ]
 float V_Schlick(float NoL, float NoV, float Roughness)  // Roughness is perceptual roughness

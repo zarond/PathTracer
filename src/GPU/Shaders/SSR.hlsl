@@ -199,7 +199,7 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
     float2 rand = frac(g_CB.temporal_jitter + jitter.xy);
     rand.x *= g_CB.GGXBias; // Cut tails of distribution to reduce noise (introduces bias)
     float3 h = sampleGGXVNDF(v_in_TBN_space, linear_roughness, rand.x, rand.y);
-    float inv_pdf = 1.0f / clamp(PDF_of_importanceSampleGGX(h.z, dot(v_in_TBN_space, h), linear_roughness), 0.0001f, 10000.0f);
+    float inv_pdf = 1.0f / clamp(PDF_of_importanceSampleGGXVNDF(h.z, v_in_TBN_space.z, linear_roughness), 0.0001f, 10000.0f);
     h = Tangent2World(h, TBN);
 
     const float3 l = reflect(-v, h);
