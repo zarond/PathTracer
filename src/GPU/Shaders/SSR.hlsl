@@ -5,6 +5,8 @@ struct SSRCSInput {
     float4x4 Projection;
     float inv_proj_00;
     float inv_proj_11;
+    float proj_23_reciprocal;
+    float padding;
     uint2 FrameSize;
     float2 texel_size;
     float DepthThreshold;
@@ -87,25 +89,6 @@ float3 ViewPositionToUV(float3 pos) {
     return float3(ndc.xy * float2(0.5f, -0.5f) + 0.5f, ndc.z);
 }
 
-float ndc_depth(float linear_depth) {
-    const float proj_22 = g_CB.Projection[2][2];
-    const float proj_23 = g_CB.Projection[2][3];
-    float inv_z = 1.0f / linear_depth;
-    float z_ndc = -proj_22 - proj_23 * inv_z;
-    return z_ndc;
-}
-
-float linear_depth(float non_linear_depth) {
-    // Assuming standard perspective projection matrix, reconstruct linear depth from non-linear depth
-    const float proj_22 = g_CB.Projection[2][2];
-    const float proj_23 = g_CB.Projection[2][3];
-    return -proj_23 / (proj_22 + non_linear_depth);
-}
-
-float precise_ray_depth(float3 sampleUV, float sampleDepth) { 
-    return (linear_depth(sampleDepth) - linear_depth(sampleUV.z));
-}
-
 float UVEdgeFade(float2 uv) {
     float2 edge_dist = min(uv, 1.0f - uv);
     float edge_fade = smoothstep(0.0f, 0.05f, min(edge_dist.x, edge_dist.y));
@@ -118,6 +101,18 @@ float ThresholdFade(float value, float threshold, float mult_range, float lin_ra
 
 bool IsPotentialHit(float3 sampleUV, float sampleDepth) { return sampleUV.z >= sampleDepth; }
 
+// Algebraic Projection Scaling (Non-Linear Derivative)
+float calculate_depth_threshold(float depth)
+{
+    const float proj_22 = g_CB.Projection[2][2];
+    const float proj_23_rec = g_CB.proj_23_reciprocal;
+    // Non-linear rate of change (dz_raw / dz_view)
+    float tmp = (proj_22 + depth);
+    float dz_raw = tmp * tmp * (-proj_23_rec);
+    // Scaled non-linear threshold
+    return g_CB.DepthThreshold * dz_raw;
+}
+    
 bool CheckPotentialHit(float3 sampleUV, float sampleDepth, float3 rayUVDirNorm, float3 l)
 {
     const float3 hit_normals = Gbuffer.SampleLevel(PointSampler, sampleUV.xy, 0).xyz;
@@ -125,9 +120,9 @@ bool CheckPotentialHit(float3 sampleUV, float sampleDepth, float3 rayUVDirNorm, 
     if (LoN > 0.0f) {
         return false;
     }
-    float d2 = precise_ray_depth(sampleUV, sampleDepth); // x > 0 means under surface for linear depth
-    if (d2 > g_CB.DepthThreshold) {
-        return false;
+    float threshold = calculate_depth_threshold(sampleDepth);
+    if (sampleUV.z - sampleDepth > threshold) {
+        return false; 
     }
     return true;
 }
@@ -217,6 +212,8 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
 
     const float3 rayUVDirNorm = rayScreenDirNorm * float3(texel, 1.0f);
     const float3 inv_rayUVDirNorm = 1.0f / rayUVDirNorm;
+        
+    float one_pixel_step_size = min(texel.x * abs(inv_rayUVDirNorm.x), texel.y * abs(inv_rayUVDirNorm.y));
 
     float3 sampleUV = float3(uv, centerDepth) + rayUVDirNorm * (1.0f + rand.x);
     float sampleDepth = centerDepth;
@@ -230,15 +227,8 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
                 if (found_hit) {
                     break;
                 }
-                // False positive thickness rejection: safely skip past this pixel's boundary
-                float2 cell_boundary = floor(sampleUV.xy * g_CB.FrameSize) * texel + select(rayUVDirNorm.xy > 0.0f, texel, 0.0f);
-                float2 t_xy = (cell_boundary - sampleUV.xy) * inv_rayUVDirNorm.xy;
-                if (rayUVDirNorm.x == 0.0f) t_xy.x = 1e32f;
-                if (rayUVDirNorm.y == 0.0f) t_xy.y = 1e32f;
-
-                sampleUV += (min(t_xy.x, t_xy.y) + 0.1) * rayUVDirNorm;
-
-                mip = min(mip + 1, g_CB.MaxDepthMipLevel);
+                // False positive thickness rejection: linear search if ray is begind geometry
+                sampleUV += one_pixel_step_size * rayUVDirNorm;
             } else {
                 mip -= 1;
             }

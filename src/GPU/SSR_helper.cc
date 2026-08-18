@@ -67,6 +67,8 @@ struct SSRCSInput {
     fmat4x4 Projection;
     float inv_proj_00;
     float inv_proj_11;
+    float proj_23_reciprocal;
+    float padding;
     uvec2 FrameSize;
     fvec2 texel_size;
     float DepthThreshold;
@@ -144,7 +146,7 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
     fvec2 temporal_jitter = GetHalton2D(FrameID);
 
     fvec2 texel{1.0f / width, 1.0f / height};
-    SSRCSInput input{Projection, invProjection[0][0], invProjection[1][1], {width, height}, texel, 
+    SSRCSInput input{Projection, invProjection[0][0], invProjection[1][1], 1.0f / Projection[3][2], 0, {width, height}, texel, 
         DepthThreshold, MaxRoughness,
         temporal_jitter, 1.0f - SSR_GGXClamp, 
         MaxDepthMipLevel, MaxFrameMipLevel, PrefilteringDistance, FocalPoint, simpleResolve};
