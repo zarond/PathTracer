@@ -142,7 +142,8 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
     int MaxDepthMipLevel = GPU_texture::CalculateMipCount(width, height) - 1;
     float MaxFrameMipLevel = UsePrefiltering? max(RenderFrameMips - 2.0f, 0.0f) : 0.0f;
     float FocalPoint = (height / 2) * Projection[1][1];
-    int simpleResolve = RayReuseEnabled ? 0 : 1;
+    bool simpleResolve = !RayReuseEnabled;
+    bool zeroAlphaReject = RayReuseEnabled && zeroAlphaMotionCleanup;
     fvec2 temporal_jitter = GetHalton2D(FrameID);
 
     fvec2 texel{1.0f / width, 1.0f / height};
@@ -176,7 +177,7 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
         reprojection_helper.Reproject(m_SSR_texture_previous, DepthUAVTexture_previous, SSR_uav_texture, DepthUAVTexture,
             VelocityBuffer, Projection, glm::inverse(ViewProjection), ViewProjection_prev, Projection_previous, 
             1.0f / 16.0f,
-            DepthThreshold, true, ParallaxReprojection ? &m_distance_texture : nullptr, RayReuseEnabled);
+            DepthThreshold, true, ParallaxReprojection ? &m_distance_texture : nullptr, zeroAlphaReject);
     }
 
     barrier_ssr_buff = CD3DX12_RESOURCE_BARRIER::Transition(m_SSR_buff.get_gpu_resource().Get(),

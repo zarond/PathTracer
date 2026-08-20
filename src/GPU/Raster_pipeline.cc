@@ -130,6 +130,7 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     DrawSSROnly = render_settings.DrawSSROnly;
     m_SSR_helper.DenoiseEnabled = render_settings.SSRDenoiseEnabled;
     m_SSR_helper.RayReuseEnabled = render_settings.SSRRayReuseEnabled;
+    m_SSR_helper.zeroAlphaMotionCleanup = render_settings.SSRZeroAlphaMotionCleanup;
     m_SSR_helper.DepthThreshold = render_settings.SSRDepthThreshold;
     m_SSR_helper.MaxRoughness = render_settings.SSRMaxRoughness;
     m_SSR_helper.SSR_GGXClamp = render_settings.SSR_GGXClamp;

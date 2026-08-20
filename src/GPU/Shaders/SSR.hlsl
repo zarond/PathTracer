@@ -285,6 +285,21 @@ float3 prefilteredSample(float ray_distance, float linearRoughness, float depth,
     // Sample Frame texture with roughness LOD blur
     return Frame.SampleLevel(LinearSampler, uv, lod).rgb;
 }
+    
+float ndc_depth(float linear_depth) {
+    const float proj_22 = g_CB.Projection[2][2];
+    const float proj_23 = g_CB.Projection[2][3];
+    float inv_z = 1.0f / linear_depth;
+    float z_ndc = -proj_22 - proj_23 * inv_z;
+    return z_ndc;
+}
+
+float linear_depth(float non_linear_depth) {
+    // Assuming standard perspective projection matrix, reconstruct linear depth from non-linear depth
+    const float proj_22 = g_CB.Projection[2][2];
+    const float proj_23 = g_CB.Projection[2][3];
+    return -proj_23 / (proj_22 + non_linear_depth);
+}
 
 [numthreads(16, 16, 1)] 
 void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
@@ -298,7 +313,7 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
     const float centerDepth = Depth.Load(int3(DTid.xy, 0));
     if (centerDepth >= 1.0f) { // Background/Skybox check
         Output[DTid.xy] = float4(0.0f, 0.0f, 0.0f, 0.0f);
-        OutputDistance[DTid.xy] = 0.0f;
+        OutputDistance[DTid.xy] = 1.0f;
         return;
     }
         
@@ -316,7 +331,7 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
         float ray_distance = valid_hit ? length(ray) : 0.0f;
         float3 frameSample = prefilteredSample(ray_distance, linearRoughness, -centerPosVS.z, hit_info.uv);;
         Output[DTid.xy] = float4(frameSample * hit_info.confidence, hit_info.confidence);
-        OutputDistance[DTid.xy] = valid_hit ? ray_distance * abs(V.z) : 0.0f;
+        OutputDistance[DTid.xy] = valid_hit ? saturate(ndc_depth(linear_depth(centerDepth) - ray_distance)) : centerDepth;
         return;
     }
     
@@ -377,9 +392,9 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
         float averageDist = valid_points > 0 ? distAccum * abs(V.z) / valid_points : 0;
 
         Output[DTid.xy] = float4(finalColor, confidence);
-        OutputDistance[DTid.xy] = averageDist;
+        OutputDistance[DTid.xy] = valid_points > 0 ? saturate(ndc_depth(linear_depth(centerDepth) - averageDist)) : centerDepth;
     } else {
         Output[DTid.xy] = float4(0.0f, 0.0f, 0.0f, 0.0f);
-        OutputDistance[DTid.xy] = 0.0f;
+        OutputDistance[DTid.xy] = centerDepth;
     }
 }

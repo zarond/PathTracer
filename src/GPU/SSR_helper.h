@@ -25,6 +25,7 @@ class SSR_helper {
 
     bool DenoiseEnabled = true;
     bool RayReuseEnabled = true;
+    bool zeroAlphaMotionCleanup = true;
     float DepthThreshold = 0.01f;
     float MaxRoughness = 0.8f;
     float SSR_GGXClamp = 0.0f;
