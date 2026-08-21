@@ -178,11 +178,14 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
     }
 
     const float4 GbufferData = Gbuffer.Load(DTid);
-    const float3 normal = GbufferData.xyz;
-    const float roughness = clamp(GbufferData.w, 0.002f, g_CB.MaxRoughness);
+    float3 normal = GbufferData.xyz;
+    const float roughness = clamp(GbufferData.w, 0.002f, max(g_CB.MaxRoughness, 0.002f));
     const float linear_roughness = roughness * roughness;
     const float3 pos = ReconstructViewPosition(uv, centerDepth);
     const float3 v = normalize(-pos);
+    if (dot(normal, v) < 0) {
+        normal = normalize(normal - v * dot(normal, v));
+    }
 
     float3 tangent = normal.x < 0.9f ? float3(1, 0, 0) : float3(0, 1, 0);
     tangent = normalize(tangent - normal * dot(normal, tangent));
@@ -215,7 +218,7 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
         
     float one_pixel_step_size = min(texel.x * abs(inv_rayUVDirNorm.x), texel.y * abs(inv_rayUVDirNorm.y));
 
-    float3 sampleUV = float3(uv, centerDepth) + rayUVDirNorm * (1.0f + rand.x);
+    float3 sampleUV = float3(uv + one_pixel_step_size * rayUVDirNorm.xy, centerDepth);
     float sampleDepth = centerDepth;
     int mip = 0;
     for (int i = 0; i < STEPS; ++i) {
@@ -306,7 +309,7 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
     if (DTid.x >= g_CB.FrameSize.x || DTid.y >= g_CB.FrameSize.y) return;
 
     const float4 centerGbuffer = Gbuffer.Load(int3(DTid.xy, 0));
-    const float3 N = normalize(centerGbuffer.rgb); 
+    float3 N = centerGbuffer.rgb; 
     const float centerRoughness = clamp(centerGbuffer.w, 0.002f, max(g_CB.MaxRoughness, 0.002f));
     const float linearRoughness = centerRoughness * centerRoughness;
 
@@ -316,11 +319,17 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
         OutputDistance[DTid.xy] = 1.0f;
         return;
     }
-        
+
     const float2 centerUV = (float2(DTid.xy) + 0.5f) * g_CB.texel_size;
     const float3 centerPosVS = ReconstructViewPosition(centerUV, centerDepth);
     
     const float3 V = normalize(-centerPosVS);
+    float NdotV = dot(N, V);
+        
+    if (NdotV < 0) {
+        N = normalize(N - V * NdotV);
+        NdotV = 0;
+    }
         
     if (g_CB.simpleResolve)
     {
@@ -361,11 +370,9 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
             // Light vector L and Half-vector H
             float3 L = normalize(ray);
             float3 H = normalize(V + L);
-            
             float NdotL = saturate(dot(N, L));
-            float NdotV = saturate(dot(N, V));
 
-            if (NdotL <= 0.0f || NdotV <= 0.0f) continue;
+            if (NdotL <= 0.0f) continue;
 
             float NdotH = saturate(dot(N, H));
             float VdotH = saturate(dot(V, H));
@@ -386,7 +393,7 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
         }
     }
 
-    if (totalWeight > 0.0001f) {
+    if (totalWeight > 0) {
         float3 finalColor = colorAccum.rgb / totalWeight;
         float confidence = hitConfidenceAccum / totalWeight;
         float averageDist = valid_points > 0 ? distAccum * abs(V.z) / valid_points : 0;
