@@ -57,14 +57,14 @@ float new_linear_depth(float non_linear_depth) {
 
 float linear_depth(float non_linear_depth) {
     // Assuming standard perspective projection matrix, reconstruct linear depth from non-linear depth
-    const float proj_22 = g_CB.Projection_prev[2][2];
-    const float proj_23 = g_CB.Projection_prev[2][3];
+    const float proj_22 = g_CB.Projection_prev._33;
+    const float proj_23 = g_CB.Projection_prev._34;
     return -proj_23 / (proj_22 + non_linear_depth);
 }
 
 float4 linear_depth(float4 non_linear_depth) {
-    const float proj_22 = g_CB.Projection_prev[2][2];
-    const float proj_23 = g_CB.Projection_prev[2][3];
+    const float proj_22 = g_CB.Projection_prev._33;
+    const float proj_23 = g_CB.Projection_prev._34;
     return -proj_23 / (proj_22 + non_linear_depth);
 }
 
@@ -92,7 +92,7 @@ float MagnitudeSquare(float2 a) {
 }
 
 float GetDissoclusion(float2 prevUV, float depth, bool use_reflection_hit, float reflection_distance) {
-    if (any(prevUV < 0.0f) || any(prevUV > 1.0f)) return 0.0f;  // UV out of bounds
+    if (any(prevUV < 0.0f | prevUV > 1.0f)) return 0.0f;  // UV out of bounds
     
     float DepthThreshold = g_CB.depth_threshold;  // Threshold for depth comparison
     float prevDepth = linear_depth(depth);

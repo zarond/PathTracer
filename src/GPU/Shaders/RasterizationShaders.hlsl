@@ -9,7 +9,7 @@ ConstantBuffer<RasterConstantBuffer> g_rasterCB : register(b0);
 StructuredBuffer<Material> Materials : register(t1, space0);
 
 // DFG LUT
-Texture2D<float4> DFGLut : register(t0, space1);
+Texture2D<float2> DFGLut : register(t0, space1);
 
 // Diffuse LUT
 TextureCube<float4> DiffuseLut : register(t1, space1);

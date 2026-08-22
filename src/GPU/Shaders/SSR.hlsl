@@ -61,8 +61,8 @@ float3 ReconstructViewPosition(float2 uv, float depth) {
     // Same as above, but optimized for standard perspective projection matrix
     const float inv_proj_00 = g_CB.inv_proj_00;
     const float inv_proj_11 = g_CB.inv_proj_11;
-    const float proj_22 = g_CB.Projection[2][2];
-    const float proj_23 = g_CB.Projection[2][3];
+    const float proj_22 = g_CB.Projection._33;
+    const float proj_23 = g_CB.Projection._34;
 
     const float z_vs = -proj_23 / (proj_22 + depth);
     const float x_vs = -z_vs * ndcXY.x * inv_proj_00;
@@ -77,10 +77,10 @@ float3 ViewPositionToUV(float3 pos) {
     //return float3(clip.xy * float2(0.5f, -0.5f) + 0.5f, clip.z);
 
     // Same as above, but optimized for standard perspective projection matrix
-    const float proj_00 = g_CB.Projection[0][0];
-    const float proj_11 = g_CB.Projection[1][1];
-    const float proj_22 = g_CB.Projection[2][2];
-    const float proj_23 = g_CB.Projection[2][3];
+    const float proj_00 = g_CB.Projection._11;
+    const float proj_11 = g_CB.Projection._22;
+    const float proj_22 = g_CB.Projection._33;
+    const float proj_23 = g_CB.Projection._34;
     float inv_z = 1.0f / pos.z;
     float x_ndc = -pos.x * proj_00 * inv_z;
     float y_ndc = -pos.y * proj_11 * inv_z;
@@ -104,7 +104,7 @@ bool IsPotentialHit(float3 sampleUV, float sampleDepth) { return sampleUV.z >= s
 // Algebraic Projection Scaling (Non-Linear Derivative)
 float calculate_depth_threshold(float depth)
 {
-    const float proj_22 = g_CB.Projection[2][2];
+    const float proj_22 = g_CB.Projection._33;
     const float proj_23_rec = g_CB.proj_23_reciprocal;
     // Non-linear rate of change (dz_raw / dz_view)
     float tmp = (proj_22 + depth);
@@ -222,7 +222,7 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
     float sampleDepth = centerDepth;
     int mip = 0;
     for (int i = 0; i < STEPS; ++i) {
-        if (any(sampleUV <= 0.0f) || any(sampleUV >= 1.0f)) break;
+        if (any(sampleUV < 0.0f | sampleUV > 1.0f)) break;
         sampleDepth = Depth.SampleLevel(PointSampler, sampleUV.xy, mip);
         if (IsPotentialHit(sampleUV, sampleDepth)) {
             if (mip == 0) {
@@ -290,8 +290,8 @@ float3 prefilteredSample(float ray_distance, float linearRoughness, float depth,
 }
     
 float ndc_depth(float linear_depth) {
-    const float proj_22 = g_CB.Projection[2][2];
-    const float proj_23 = g_CB.Projection[2][3];
+    const float proj_22 = g_CB.Projection._33;
+    const float proj_23 = g_CB.Projection._34;
     float inv_z = 1.0f / linear_depth;
     float z_ndc = -proj_22 - proj_23 * inv_z;
     return z_ndc;
@@ -299,8 +299,8 @@ float ndc_depth(float linear_depth) {
 
 float linear_depth(float non_linear_depth) {
     // Assuming standard perspective projection matrix, reconstruct linear depth from non-linear depth
-    const float proj_22 = g_CB.Projection[2][2];
-    const float proj_23 = g_CB.Projection[2][3];
+    const float proj_22 = g_CB.Projection._33;
+    const float proj_23 = g_CB.Projection._34;
     return -proj_23 / (proj_22 + non_linear_depth);
 }
 
@@ -356,7 +356,7 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
             int2 neighborCoord = int2(DTid.xy) + int2(i, j);
 
             // Boundary check
-            if (any(neighborCoord < 0) || any(neighborCoord >= g_CB.FrameSize)) 
+            if (any(neighborCoord < 0 | neighborCoord >= g_CB.FrameSize)) 
                 continue;
 
             // Load neighbor ray hit UVs

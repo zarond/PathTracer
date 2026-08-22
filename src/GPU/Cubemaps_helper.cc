@@ -44,7 +44,7 @@ EnvCube_helper::~EnvCube_helper() {
 void EnvCube_helper::CreateDiffuseEnvmapCube(const GPU_texture& envmap) {
     Diffuse_lut.release_gpu_resource();
     TEXTURE_TRAITS flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::Cubemap;
-    Diffuse_lut = GPU_texture{Diffuse_size, Diffuse_size, flags};
+    Diffuse_lut = GPU_texture{Diffuse_size, Diffuse_size, flags, DXGI_FORMAT_R16G16B16A16_FLOAT};
 
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
@@ -68,17 +68,17 @@ void EnvCube_helper::CreateDiffuseEnvmapCube(const GPU_texture& envmap) {
 GPU_texture&& EnvCube_helper::GetDiffuseEnvmapCube() { return std::move(Diffuse_lut); }
 
 GPU_texture EnvCube_helper::GetBlankSRVDiffuseTexture() {
-    return GPU_texture{Diffuse_size, Diffuse_size, TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::Cubemap};
+    return GPU_texture{Diffuse_size, Diffuse_size, TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::Cubemap, DXGI_FORMAT_R16G16B16A16_FLOAT};
 }
 GPU_texture EnvCube_helper::GetBlankSRVSpecularTexture() {
-    return
-        GPU_texture{Specular_size, Specular_size, TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::Cubemap | TEXTURE_TRAITS::AllocateMips};
+    return GPU_texture{Specular_size, Specular_size, TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::Cubemap | TEXTURE_TRAITS::AllocateMips,
+        DXGI_FORMAT_R16G16B16A16_FLOAT};
 }
 
 void EnvCube_helper::CreateSpecularEnvmapCube(const GPU_texture& envmap) {
     Specular_lut.release_gpu_resource();
     TEXTURE_TRAITS flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::Cubemap | TEXTURE_TRAITS::AllocateMips;
-    Specular_lut = GPU_texture{Specular_size, Specular_size, flags};
+    Specular_lut = GPU_texture{Specular_size, Specular_size, flags, DXGI_FORMAT_R16G16B16A16_FLOAT};
 
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;

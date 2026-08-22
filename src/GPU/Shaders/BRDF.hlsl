@@ -11,8 +11,9 @@ float3 ImportanceSampleCosDir(float2 xi) {
     float sin_theta = sqrt(xi.x);
     float phi = 2.0f * xi.y * PI;
 
-    float cos_phi = cos(phi);
-    float sin_phi = sin(phi);
+    float sin_phi;
+    float cos_phi;
+    sincos(phi, sin_phi, cos_phi); 
 
     return float3(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta);
 }
@@ -27,8 +28,9 @@ float3 importanceSampleGGX(float2 xi, float a) {
     float sin_theta = sqrt(1.0f - cos_theta2);
     float phi = 2.0f * xi.y * PI;
 
-    float cos_phi = cos(phi);
-    float sin_phi = sin(phi);
+    float sin_phi;
+    float cos_phi;
+    sincos(phi, sin_phi, cos_phi); 
     return float3(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta);
 }
 float D_GGX(float NoH, float linear_roughness) {
@@ -176,8 +178,10 @@ float3 sampleGGXVNDF(float3 Ve, float alpha, float U1, float U2)
     // Section 4.2: parameterization of the projected area
     float r = sqrt(U1);
     float phi = 2.0 * PI * U2;
-    float t1 = r * cos(phi);
-    float t2 = r * sin(phi);
+    float sin_phi; float cos_phi;
+    sincos(phi, sin_phi, cos_phi); 
+    float t1 = r * cos_phi;
+    float t2 = r * sin_phi;
     float s = 0.5 * (1.0 + Vh.z);
     t2 = (1.0 - s) * sqrt(1.0 - t1 * t1) + s * t2;
     // Section 4.3: reprojection onto hemisphere
