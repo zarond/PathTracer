@@ -11,7 +11,7 @@ enum Value : int {
     OldDepth,
     NewTexture,
     NewDepth,
-    SSR_buffer,
+    DistanceTexture,
     VelocityBuffer,
     RootConstants,
 
@@ -34,6 +34,7 @@ struct ReprojectionCSInput {
     float new_mix_factor;
     int weak_depth_condition;
     int use_reflection_distance;
+    int zeroAlphaReject;
     int DebugMode;
 };
 
@@ -59,7 +60,7 @@ void Reprojection_helper::Reproject(GPU_texture& old_texture, GPU_texture& old_d
     GPU_texture& new_depth_texture, GPU_texture& VelocityBuffer, const fmat4x4& Projection, const fmat4x4& invViewProjection,
     const fmat4x4& ViewProjection_previous, const fmat4x4& Projection_previous, 
     float new_value_mix_factor, float depth_threshold, bool weak_depth_condition,
-    GPU_texture* SSR_buffer) 
+    GPU_texture* DistanceTexture, bool zeroAlphaReject) 
 {
     const auto& resource = new_texture.get_gpu_resource();
     const auto description = resource->GetDesc();
@@ -77,9 +78,9 @@ void Reprojection_helper::Reproject(GPU_texture& old_texture, GPU_texture& old_d
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::NewTexture, new_texture.GetUAVHandle());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::NewDepth, new_depth_texture.GetSRVHandle());
     bool use_reflection_distance = false;
-    if (SSR_buffer) {
+    if (DistanceTexture) {
         commandList->SetComputeRootDescriptorTable(
-            GlobalRootSignatureParams::SSR_buffer, SSR_buffer->GetSRVHandle());
+            GlobalRootSignatureParams::DistanceTexture, DistanceTexture->GetSRVHandle());
         use_reflection_distance = true;
     }
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::VelocityBuffer, VelocityBuffer.GetSRVHandle());
@@ -97,6 +98,7 @@ void Reprojection_helper::Reproject(GPU_texture& old_texture, GPU_texture& old_d
         new_value_mix_factor,
         weak_depth_condition, 
         use_reflection_distance,
+        zeroAlphaReject,
         DebugMode
     };
     constexpr int inputSizeInInt = sizeof(ReprojectionCSInput) / 4;
@@ -116,7 +118,7 @@ void Reprojection_helper::CreateRootSignature() {
     ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 1 OldDepth srv
     ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 NewTexture uav
     ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 1 NewDepth srv
-    ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 1 SSR_buffer srv
+    ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 1 DistanceTexture srv
     ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);  // 1 VelocityBuffer srv
     ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);  // 1 constant buffer.
 
@@ -125,7 +127,7 @@ void Reprojection_helper::CreateRootSignature() {
     rootParameters[GlobalRootSignatureParams::OldDepth].InitAsDescriptorTable(1, &ranges[1]);
     rootParameters[GlobalRootSignatureParams::NewTexture].InitAsDescriptorTable(1, &ranges[2]);
     rootParameters[GlobalRootSignatureParams::NewDepth].InitAsDescriptorTable(1, &ranges[3]);
-    rootParameters[GlobalRootSignatureParams::SSR_buffer].InitAsDescriptorTable(1, &ranges[4]);
+    rootParameters[GlobalRootSignatureParams::DistanceTexture].InitAsDescriptorTable(1, &ranges[4]);
     rootParameters[GlobalRootSignatureParams::VelocityBuffer].InitAsDescriptorTable(1, &ranges[5]);
     rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(ReprojectionCSInput) / 4, 0);
 

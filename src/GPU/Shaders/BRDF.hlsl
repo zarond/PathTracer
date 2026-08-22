@@ -36,8 +36,14 @@ float D_GGX(float NoH, float linear_roughness) {
     float k = linear_roughness / (1.0f - NoH * NoH + a * a);
     return k * k * (1.0f / PI);
 }
+float G1(float NdW, float k) { return 1.0f / (NdW * (1.0f - k) + k); }
+
 float PDF_of_importanceSampleGGX(float NoH, float LoH, float a) { 
     return D_GGX(NoH, a) * NoH / (4.0f * LoH); 
+}
+float PDF_of_importanceSampleGGXVNDF(float NoH, float VoN, float a) { 
+    float k = max(a * 0.5f, kEpsilon5);
+    return D_GGX(NoH, a) * G1(VoN, k) / (4.0f * VoN); 
 }
 float3 fresnel_schlick(float3 f0, float3 f90, float cos_nv) {
     float x = 1.0f - cos_nv;
@@ -57,7 +63,6 @@ float V_SmithGGXCorrelated(float NoV, float NoL, float a) {  // a is alpha_linea
     float GGXL = NoV * sqrt((-NoL * a2 + NoL) * NoL + a2);
     return 2.0f / (GGXV + GGXL);  // should be 0.5f / (GGXV + GGXL);
 }
-float G1(float NdW, float k) { return 1.0f / (NdW * (1.0f - k) + k); }
 // Schlick - Smith visibility term
 // [ http://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf ]
 float V_Schlick(float NoL, float NoV, float Roughness)  // Roughness is perceptual roughness
@@ -153,4 +158,31 @@ float GGX_brdf(float NoH, float LoH, float VoN, float LoN, float a) {
     float V = V_SmithGGXCorrelated(VoN, LoN, a);
     float D = D_GGX(NoH, a);
     return D * V;
+}
+
+// [ Sampling the GGX Distribution of Visible Normals - Eric Heitz]
+// Input Ve: view direction
+// Input alpha: roughness parameters
+// Input U1, U2: uniform random numbers
+// Output Ne: normal sampled with PDF D_Ve(Ne) = G1(Ve) * max(0, dot(Ve, Ne)) * D(Ne) / Ve.z
+float3 sampleGGXVNDF(float3 Ve, float alpha, float U1, float U2)
+{
+    // Section 3.2: transforming the view direction to the hemisphere configuration
+    float3 Vh = normalize(float3(alpha * Ve.x, alpha * Ve.y, Ve.z));
+    // Section 4.1: orthonormal basis (with special case if cross product is zero)
+    float lensq = Vh.x * Vh.x + Vh.y * Vh.y;
+    float3 T1 = lensq > 0 ? float3(-Vh.y, Vh.x, 0) * (1.0 / sqrt(lensq)) : float3(1, 0, 0);
+    float3 T2 = cross(Vh, T1);
+    // Section 4.2: parameterization of the projected area
+    float r = sqrt(U1);
+    float phi = 2.0 * PI * U2;
+    float t1 = r * cos(phi);
+    float t2 = r * sin(phi);
+    float s = 0.5 * (1.0 + Vh.z);
+    t2 = (1.0 - s) * sqrt(1.0 - t1 * t1) + s * t2;
+    // Section 4.3: reprojection onto hemisphere
+    float3 Nh = t1 * T1 + t2 * T2 + sqrt(max(0.0, 1.0 - t1 * t1 - t2 * t2)) * Vh;
+    // Section 3.4: transforming the normal back to the ellipsoid configuration
+    float3 Ne = normalize(float3(alpha * Nh.x, alpha * Nh.y, max(0.0, Nh.z)));
+    return Ne;
 }

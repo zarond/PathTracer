@@ -226,7 +226,7 @@ float4 PS_Main(PSInput input) : SV_TARGET {
 
     if (g_rasterCB.SSREnabled && !AO_SSR_Holdout_mask) {
         float4 SSR_sample = SSRTexture.Load(int3(input.ndc_position.xy, 0));
-        specularIBL = lerp(specularIBL, SSR_sample.rgb, SSR_sample.a);
+        specularIBL = specularIBL * (1.0 - SSR_sample.a) + SSR_sample.rgb;
     }
 
     float3 diffuse_light = diffuse_color * lerp(AO * diffuseIBL, transmissionIBL, transmission);

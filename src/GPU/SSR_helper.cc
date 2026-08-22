@@ -11,13 +11,52 @@ namespace GlobalRootSignatureParams {
 enum Value : int {
     Gbuffer = 0,
     Depth,
+    Velocity,
     Frame,
     SSR_buffer,
     OutputUAV,
+    OutputDistanceUAV,
     RootConstants,
 
     Count
 };
+
+}
+
+namespace {
+using namespace glm;
+
+// Fast Base-2 Radical Inverse via bit reversal
+float RadicalInverse_Base2(unsigned int bits) {
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+    return float(bits) * 2.3283064365386963e-10;  // Divide by 2^32
+}
+
+// Generalized Radical Inverse for base 'b'
+float RadicalInverse(unsigned int base, unsigned int index) {
+    float result = 0.0;
+    float invBase = 1.0 / float(base);
+    float f = invBase;
+
+    while (index > 0u) {
+        unsigned int next = index / base;
+        unsigned int digit = index - (next * base);
+        result += float(digit) * f;
+        f *= invBase;
+        index = next;
+    }
+    return result;
+}
+
+// Generate 2D Halton Sample for sample index 'i'
+fvec2 GetHalton2D(unsigned int sampleIndex) { 
+    return fvec2(RadicalInverse_Base2(sampleIndex), RadicalInverse(3u, sampleIndex)); 
+}
+
 }
 
 namespace app {
@@ -28,15 +67,19 @@ struct SSRCSInput {
     fmat4x4 Projection;
     float inv_proj_00;
     float inv_proj_11;
+    float proj_23_reciprocal;
+    float padding;
     uvec2 FrameSize;
     fvec2 texel_size;
     float DepthThreshold;
     float MaxRoughness;
+    fvec2 temporal_jitter;
     float GGXBias;  // 1.0 is no bias, < 1.0 reduces tail of distribution
-    int frameID;
     int MaxDepthMipLevel;
     float MaxFrameMipLevel;
     float PrefilterDistanceMult;
+    float FocalPoint;
+    int simpleResolve;
 };
 
 ComPtr<ID3D12RootSignature> SSR_helper::m_rootSignature{};
@@ -78,22 +121,6 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
 
     std::swap(m_SSR_texture_previous, SSR_uav_texture); // at the top because SSR_uav_texture is used after outside of this call to function
 
-    // Reproject previous Frame before doing SSR
-    {
-        reprojection_helper.Reproject(Frame_texture, DepthUAVTexture_previous, m_Frame_reprojected, DepthUAVTexture, 
-            VelocityBuffer, Projection, glm::inverse(ViewProjection), ViewProjection_prev, 
-            Projection_previous, 0.0f, 10000.0f, true, nullptr);
-        const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(m_Frame_reprojected.get_gpu_resource().Get());
-        commandList->ResourceBarrier(1, &barrier);
-
-        if (UsePrefiltering) {
-            m_blur_helper.CreateBlurMips(m_Frame_reprojected);
-
-            ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};  // todo: don't replace heap during blur pass?
-            commandList->SetDescriptorHeaps(1, desc_heap);
-        }
-    }
-
     auto barrier_depth_uav = CD3DX12_RESOURCE_BARRIER::Transition(DepthUAVTexture.get_gpu_resource().Get(),
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     auto barrier_depth_uav_previous = CD3DX12_RESOURCE_BARRIER::Transition(DepthUAVTexture_previous.get_gpu_resource().Get(),
@@ -108,17 +135,22 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
 
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::Gbuffer, G_buff_texture.GetSRVHandle());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::Depth, DepthUAVTexture.GetSRVHandle());
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::Frame, m_Frame_reprojected.GetSRVHandle());
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::Velocity, VelocityBuffer.GetSRVHandle());
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::Frame, Frame_texture.GetSRVHandle());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputUAV, m_SSR_buff.GetUAVHandle());
 
     int MaxDepthMipLevel = GPU_texture::CalculateMipCount(width, height) - 1;
-    float MaxFrameMipLevel = UsePrefiltering? RenderFrameMips - 1.0f : 0.0f;
-    float PrefilterDistanceMult = 1.0f / max(PrefilteringDistance, 0.001f);
+    float MaxFrameMipLevel = UsePrefiltering? max(RenderFrameMips - 2.0f, 0.0f) : 0.0f;
+    float FocalPoint = (height / 2) * Projection[1][1];
+    bool simpleResolve = !RayReuseEnabled;
+    bool zeroAlphaReject = RayReuseEnabled && zeroAlphaMotionCleanup;
+    fvec2 temporal_jitter = GetHalton2D(FrameID);
 
     fvec2 texel{1.0f / width, 1.0f / height};
-    SSRCSInput input{Projection, invProjection[0][0], invProjection[1][1], {width, height}, texel, 
-        DepthThreshold, MaxRoughness, 1.0f - SSR_GGXClamp, FrameID, 
-        MaxDepthMipLevel, MaxFrameMipLevel, PrefilterDistanceMult};
+    SSRCSInput input{Projection, invProjection[0][0], invProjection[1][1], 1.0f / Projection[3][2], 0, {width, height}, texel, 
+        DepthThreshold, MaxRoughness,
+        temporal_jitter, 1.0f - SSR_GGXClamp, 
+        MaxDepthMipLevel, MaxFrameMipLevel, PrefilteringDistance, FocalPoint, simpleResolve};
     constexpr int inputSizeInInt = sizeof(SSRCSInput) / 4;
     commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
 
@@ -134,6 +166,7 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
     commandList->SetPipelineState(m_ResolvePipelineState.Get());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::SSR_buffer, m_SSR_buff.GetSRVHandle());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputUAV, SSR_uav_texture.GetUAVHandle());
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputDistanceUAV, m_distance_texture.GetUAVHandle());
 
     commandList->Dispatch(GroupsX, GroupsY, 1);
 
@@ -143,7 +176,8 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
         commandList->ResourceBarrier(1, &barrier_ssr_uav);
         reprojection_helper.Reproject(m_SSR_texture_previous, DepthUAVTexture_previous, SSR_uav_texture, DepthUAVTexture,
             VelocityBuffer, Projection, glm::inverse(ViewProjection), ViewProjection_prev, Projection_previous, 
-            1.0f / 16.0f, DepthThreshold, false, ParallaxReprojection ? &m_SSR_buff : nullptr);
+            1.0f / 16.0f,
+            DepthThreshold, true, ParallaxReprojection ? &m_distance_texture : nullptr, zeroAlphaReject);
     }
 
     barrier_ssr_buff = CD3DX12_RESOURCE_BARRIER::Transition(m_SSR_buff.get_gpu_resource().Get(),
@@ -173,13 +207,12 @@ void SSR_helper::ResizeInnerResource(int new_width, int new_height) {
     m_SSR_texture_previous.release_gpu_resource();
     m_SSR_texture_previous = GPU_texture{currentWidth, currentHeight, flags};
 
-    flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;
-    m_Frame_reprojected.release_gpu_resource();
-    m_Frame_reprojected = GPU_texture{currentWidth, currentHeight, flags};
-
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
     m_SSR_buff.release_gpu_resource();
     m_SSR_buff = GPU_texture{currentWidth, currentHeight, flags};
+
+    m_distance_texture.release_gpu_resource();
+    m_distance_texture = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R32_FLOAT};
 }
 
 void SSR_helper::CreateRootSignature() {
@@ -188,17 +221,21 @@ void SSR_helper::CreateRootSignature() {
     CD3DX12_DESCRIPTOR_RANGE ranges[GlobalRootSignatureParams::Count];
     ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 Gbuffer srv
     ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 1 Depth srv
-    ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 1 Frame srv
-    ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 1 SSR_buffer srv
-    ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output uav
-    ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);  // 1 constant buffer.
+    ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);  // 1 Velocity srv
+    ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);  // 1 Frame srv
+    ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);  // 1 SSR_buffer srv
+    ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output uav
+    ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 1);  // 1 output distance uav
+    ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);  // 1 constant buffer.
 
     CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
     rootParameters[GlobalRootSignatureParams::Gbuffer].InitAsDescriptorTable(1, &ranges[0]);
     rootParameters[GlobalRootSignatureParams::Depth].InitAsDescriptorTable(1, &ranges[1]);
-    rootParameters[GlobalRootSignatureParams::Frame].InitAsDescriptorTable(1, &ranges[2]);
-    rootParameters[GlobalRootSignatureParams::SSR_buffer].InitAsDescriptorTable(1, &ranges[3]);
-    rootParameters[GlobalRootSignatureParams::OutputUAV].InitAsDescriptorTable(1, &ranges[4]);
+    rootParameters[GlobalRootSignatureParams::Velocity].InitAsDescriptorTable(1, &ranges[2]);
+    rootParameters[GlobalRootSignatureParams::Frame].InitAsDescriptorTable(1, &ranges[3]);
+    rootParameters[GlobalRootSignatureParams::SSR_buffer].InitAsDescriptorTable(1, &ranges[4]);
+    rootParameters[GlobalRootSignatureParams::OutputUAV].InitAsDescriptorTable(1, &ranges[5]);
+    rootParameters[GlobalRootSignatureParams::OutputDistanceUAV].InitAsDescriptorTable(1, &ranges[6]);
     rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(SSRCSInput) / 4, 0);
 
     D3D12_STATIC_SAMPLER_DESC point_sampler = {};

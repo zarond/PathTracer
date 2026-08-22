@@ -129,6 +129,8 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_rasterCB.SSREnabled = render_settings.SSREnabled;
     DrawSSROnly = render_settings.DrawSSROnly;
     m_SSR_helper.DenoiseEnabled = render_settings.SSRDenoiseEnabled;
+    m_SSR_helper.RayReuseEnabled = render_settings.SSRRayReuseEnabled;
+    m_SSR_helper.zeroAlphaMotionCleanup = render_settings.SSRZeroAlphaMotionCleanup;
     m_SSR_helper.DepthThreshold = render_settings.SSRDepthThreshold;
     m_SSR_helper.MaxRoughness = render_settings.SSRMaxRoughness;
     m_SSR_helper.SSR_GGXClamp = render_settings.SSR_GGXClamp;
@@ -385,10 +387,12 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
 
     bool DrawAOMode = (RaytracingMode == RayProgramMode::AmbientOcclusion);
     bool UseGTAO = (m_rasterCB.GTAOStrength != 0.0f) && (RaytracingMode != RayProgramMode::RayCaster) || DrawAOMode;
-
     bool UseSSR = m_rasterCB.SSREnabled;
+    bool useGBuffer = UseGTAO || UseSSR;
 
-    if (UseGTAO || UseSSR) {
+    bool CalculateRenderTargetBluredMips = (UseSSR && m_SSR_helper.UsePrefiltering);
+
+    if (useGBuffer) {
         // Draw opaque objects into Gbuffer
         commandList->SetPipelineState(m_GbufferPipelineState.Get());
         for (const auto& element : opaque_objects) {
@@ -428,7 +432,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
 
     if (UseSSR) {
         m_SSR_helper.CalculateSSR(m_SSR, m_gbuffer, m_VelocityBuffer, m_DepthUAVTexture, m_DepthUAVTexture_previous,
-            m_renderTarget_previous, m_rasterCB.Projection, m_rasterCB.invProjection, m_rasterCB.viewProjection,
+            m_renderTarget_blurred, m_rasterCB.Projection, m_rasterCB.invProjection, m_rasterCB.viewProjection,
             m_rasterCB.viewProjection_prev, m_rasterCB.frameID);
     }
 
@@ -450,7 +454,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SSRTex, m_SSR.GetSRVHandle());
     commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::MaterialIDTex, m_IDTexture.GetSRVHandle());
 
-    if ((UseGTAO || UseSSR) && !transmissive_objects.empty()) {
+    if (useGBuffer && !transmissive_objects.empty()) {
         depthHandle = m_depthTexture_opaque_only.GetDSVHandle();
     }
 
@@ -470,7 +474,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RENDER_TARGET, commandList);
     }
 
-    if ((UseGTAO || UseSSR) && !transmissive_objects.empty()) {
+    if (useGBuffer && !transmissive_objects.empty()) {
         depthHandle = m_depthTexture.GetDSVHandle();
         commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &depthHandle);
     }
@@ -479,7 +483,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     if (!transmissive_objects.empty()) {
         // set background alpha to zero (for refractions)
         static Silhouette_helper silhouette_helper{};
-        silhouette_helper.Apply(m_frame_opaque_only, m_depthTexture_opaque_only);
+        silhouette_helper.Apply(m_frame_opaque_only, useGBuffer? m_depthTexture_opaque_only : m_depthTexture);
         // Apply Kawase Blur
         m_blur_helper.CreateBlurMips(m_frame_opaque_only);
 
@@ -507,6 +511,17 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
         draw_object(element);
     }
 
+    // Copy the current render target to the previous render target for next frame
+    // and calculate mips for the blurred render target if needed
+    GPU_texture::copy_texture_mip0_only(m_renderTarget_blurred, m_renderTarget, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_RENDER_TARGET, commandList);
+    if (CalculateRenderTargetBluredMips) {
+        m_bloom_helper.CreateBlurMips(m_renderTarget_blurred);
+
+        ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};  // todo: don't replace heap during blur pass?
+        commandList->SetDescriptorHeaps(1, desc_heap);
+    }
+
     if (DrawSSROnly) {
         copy_ssr_to_framebuffer(framebuffer);
     } else {
@@ -514,8 +529,6 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     }
     // set the previous frame VP matrix for next frame
     m_rasterCB.viewProjection_prev = m_rasterCB.viewProjection;
-
-    std::swap(m_renderTarget, m_renderTarget_previous);
 }
 
 void Raster_pipeline::copy_render_target_to_framebuffer(const CPUFrameBuffer& framebuffer) {
@@ -561,9 +574,9 @@ void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::RenderTarget;
     m_renderTarget = GPU_texture{currentWidth, currentHeight, flags};
 
-    m_renderTarget_previous.release_gpu_resource();
-    flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::RenderTarget;
-    m_renderTarget_previous = GPU_texture{currentWidth, currentHeight, flags};
+    m_renderTarget_blurred.release_gpu_resource();
+    flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;
+    m_renderTarget_blurred = GPU_texture{currentWidth, currentHeight, flags};
 
     m_frame_opaque_only.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;

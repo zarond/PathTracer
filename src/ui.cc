@@ -706,6 +706,10 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
         "AO from textures strength", &render_settings.TexturesAOStrength, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
     raster_settings_changed |= ImGui::Checkbox("Enable SSR", &render_settings.SSREnabled);
     raster_settings_changed |= ImGui::Checkbox("SSR denoise", &render_settings.SSRDenoiseEnabled);
+    raster_settings_changed |= ImGui::Checkbox("SSR ray reuse", &render_settings.SSRRayReuseEnabled);
+    if (render_settings.SSRRayReuseEnabled) {
+        raster_settings_changed |= ImGui::Checkbox("SSR edges cleanup in motion", &render_settings.SSRZeroAlphaMotionCleanup);
+    }
     raster_settings_changed |= ImGui::Checkbox("SSR Debug", &render_settings.DrawSSROnly);
     raster_settings_changed |= ImGui::SliderFloat(
         "SSR Thickness", &render_settings.SSRDepthThreshold, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_Logarithmic);
@@ -716,7 +720,7 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
     HelpTooltip("Clamp ray's max angle of GGX distribution. Value of 0.0 is no bias. Higher values - less noise, but less accurate");
     raster_settings_changed |= ImGui::Checkbox("Use SSR prefiltering", &render_settings.SSRUsePrefiltering);
     raster_settings_changed |= ImGui::SliderFloat(
-        "SSR Prefiltering Distance", &render_settings.SSRPrefilteringDistance, 0.0f, 10.0f, nullptr);
+        "SSR Prefiltering Distance", &render_settings.SSRPrefilteringDistance, 0.0f, 1.0f, nullptr);
     raster_settings_changed |=
         ImGui::Checkbox("SSR Use parallax for reprojection", &render_settings.SSRParallaxReprojection);
     raster_settings_changed |= ImGui::Checkbox("Reprojection Debug", &render_settings.ReprojectionDebugMode);

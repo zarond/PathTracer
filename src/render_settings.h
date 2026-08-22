@@ -22,12 +22,14 @@ struct RenderSettings {
     float TexturesAOStrength = 1.0f;
     bool SSREnabled = true;
     bool SSRDenoiseEnabled = true;
+    bool SSRRayReuseEnabled = true;
+    bool SSRZeroAlphaMotionCleanup = true;
     bool DrawSSROnly = false;
     float SSR_GGXClamp = 0.1f;  // 0.0 means no clamp, > 0.0 reduces tail of distribution
     float SSRDepthThreshold = 0.01f;
     float SSRMaxRoughness = 0.8f;
     bool SSRUsePrefiltering = true;
-    float SSRPrefilteringDistance = 0.1f;
+    float SSRPrefilteringDistance = 0.3f;
     bool SSRParallaxReprojection = true;
     bool ReprojectionDebugMode = false;
     bool specular_aa_enabled = true;

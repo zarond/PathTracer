@@ -24,11 +24,13 @@ class SSR_helper {
     void ResetFrameCounter();
 
     bool DenoiseEnabled = true;
+    bool RayReuseEnabled = true;
+    bool zeroAlphaMotionCleanup = true;
     float DepthThreshold = 0.01f;
     float MaxRoughness = 0.8f;
     float SSR_GGXClamp = 0.0f;
     bool UsePrefiltering = true;
-    float PrefilteringDistance = 0.1f;
+    float PrefilteringDistance = 0.3f;
     bool ParallaxReprojection = true;
 
     static void Reload();
@@ -43,8 +45,8 @@ class SSR_helper {
     static ComPtr<ID3D12PipelineState> m_ResolvePipelineState;
 
     GPU_texture m_SSR_texture_previous;
-    GPU_texture m_SSR_buff; 
-    GPU_texture m_Frame_reprojected;
+    GPU_texture m_SSR_buff;
+    GPU_texture m_distance_texture;
     UINT64 currentWidth = 0;
     UINT currentHeight = 0;
 

@@ -127,12 +127,13 @@ class Raster_pipeline : public IRender_pipeline {
     static ComPtr<ID3D12PipelineState> m_GbufferPipelineState;
     
     Kawase_blur_helper m_blur_helper{};
+    Kawase_blur_helper m_bloom_helper{};
     GTAO_helper m_GTAO_helper{};
     SSR_helper m_SSR_helper{};
 
     // additional render targets
     GPU_texture m_renderTarget;
-    GPU_texture m_renderTarget_previous;
+    GPU_texture m_renderTarget_blurred;  // for future Bloom effect, also doubling as previous frame render target for SSR
     GPU_texture m_depthTexture;
     GPU_texture m_depthTexture_opaque_only;
     GPU_texture m_DepthUAVTexture;  // Hierarchical depth buffer for use as UAV in compute shaders (e.g. for GTAO and SSR)

@@ -66,6 +66,8 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
     static Bilateral_filter bilateral_filter{};
     static Reprojection_helper reprojection_helper{};
 
+    std::swap(m_SpatialDenoised_previous, AO_uav_texture);
+
     auto barrier_g_buff = CD3DX12_RESOURCE_BARRIER::Transition(G_buff_texture.get_gpu_resource().Get(),
         D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     auto barrier_velocity = CD3DX12_RESOURCE_BARRIER::Transition(VelocityBuffer.get_gpu_resource().Get(),
@@ -98,31 +100,19 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
     commandList->Dispatch(GroupsX, GroupsY, 1);
 
     if (DenoiseEnabled) {
-        auto barrier_AO_tex = CD3DX12_RESOURCE_BARRIER::Transition(AO_uav_texture.get_gpu_resource().Get(),
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        commandList->ResourceBarrier(1, &barrier_AO_tex);
         // Spatial denoiser
         bilateral_filter.ApplyBlur(
             m_SpatialDenoised, AO_uav_texture, G_buff_texture, DepthUAVTexture, AOSpatialSigma, AODepthSigma, AONormalSigma);
+        std::swap(m_SpatialDenoised, AO_uav_texture);
         // Temporal reprojection + denoiser
         if (consecutive_frame_count > 1) {
-            auto barrier_uav = CD3DX12_RESOURCE_BARRIER::UAV(m_SpatialDenoised.get_gpu_resource().Get());
+            auto barrier_uav = CD3DX12_RESOURCE_BARRIER::UAV(AO_uav_texture.get_gpu_resource().Get());
             commandList->ResourceBarrier(1, &barrier_uav);
-            reprojection_helper.Reproject(m_SpatialDenoised_previous, DepthUAVTexture_previous, m_SpatialDenoised,
+            reprojection_helper.Reproject(m_SpatialDenoised_previous, DepthUAVTexture_previous, AO_uav_texture,
                 DepthUAVTexture, VelocityBuffer, Projection, glm::inverse(ViewProjection), ViewProjection_prev,
                 Projection_previous, 1.0f / 6.0f,
-                DepthThreshold, false, nullptr);
+                DepthThreshold, false);
         }
-
-        // Copy back to AO texture for output
-        GPU_texture::copy_texture_mip0_only(AO_uav_texture, m_SpatialDenoised, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, commandList);
-        barrier_AO_tex = CD3DX12_RESOURCE_BARRIER::Transition(AO_uav_texture.get_gpu_resource().Get(),
-            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        commandList->ResourceBarrier(1, &barrier_AO_tex);
-
-        std::swap(m_SpatialDenoised, m_SpatialDenoised_previous);
-
         Projection_previous = Projection;
         ++consecutive_frame_count;
     }
