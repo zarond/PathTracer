@@ -111,7 +111,7 @@ void CS_GTAO(uint3 DTid : SV_DispatchThreadID)
         return;
     }
 
-    const float3 normal = Gbuffer.Load(DTid).xyz;
+    const float3 normal = normalize(Gbuffer.Load(DTid).xyz);
     const float3 viewPos = ReconstructViewPosition(uv, centerDepth);
     const float3 viewDir = normalize(-viewPos);
 

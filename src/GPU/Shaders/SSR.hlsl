@@ -178,7 +178,7 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
     }
 
     const float4 GbufferData = Gbuffer.Load(DTid);
-    float3 normal = GbufferData.xyz;
+    float3 normal = normalize(GbufferData.xyz);
     const float roughness = clamp(GbufferData.w, 0.002f, max(g_CB.MaxRoughness, 0.002f));
     const float linear_roughness = roughness * roughness;
     const float3 pos = ReconstructViewPosition(uv, centerDepth);
@@ -338,7 +338,7 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID, uint3 Gid : SV_GroupID, ui
     if (DTid.x >= g_CB.FrameSize.x || DTid.y >= g_CB.FrameSize.y) return;
 
     const float4 centerGbuffer = Gbuffer.Load(int3(DTid.xy, 0));
-    float3 N = centerGbuffer.rgb; 
+    float3 N = normalize(centerGbuffer.rgb); 
     const float centerRoughness = clamp(centerGbuffer.w, 0.002f, max(g_CB.MaxRoughness, 0.002f));
     const float linearRoughness = centerRoughness * centerRoughness;
 
