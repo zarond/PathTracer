@@ -13,6 +13,7 @@
 #include "Mipmaps_helper.h"
 #include "Silhouette_helper.h"
 #include "Reprojection_helper.h"
+#include "Copy_helper.h"
 
 namespace GlobalRootSignatureParams {
 enum Value : int {
@@ -238,7 +239,7 @@ void Raster_pipeline::CreatePipelineStateObjects() {
     psoDesc.SampleMask = UINT_MAX;
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     psoDesc.NumRenderTargets = 1;
-    psoDesc.RTVFormats[0] = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
     psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
     psoDesc.SampleDesc.Count = 1;
     ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState)));
@@ -333,12 +334,12 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     UINT vertex_count = combined_mesh.get_vertex_count();
     UINT index_count = combined_mesh.get_index_count();
 
-    D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
+    D3D12_VERTEX_BUFFER_VIEW vertexBufferView{};
     vertexBufferView.BufferLocation = combined_mesh.vertexBuffer->GetGPUVirtualAddress();
     vertexBufferView.StrideInBytes = sizeof(vertex);
     vertexBufferView.SizeInBytes = sizeof(vertex) * vertex_count;
 
-    D3D12_INDEX_BUFFER_VIEW indexBufferView;
+    D3D12_INDEX_BUFFER_VIEW indexBufferView{};
     indexBufferView.BufferLocation = combined_mesh.indexBuffer->GetGPUVirtualAddress();
     indexBufferView.Format = DXGI_FORMAT_R32_UINT;
     indexBufferView.SizeInBytes = sizeof(uint32_t) * index_count;
@@ -532,23 +533,13 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
 }
 
 void Raster_pipeline::copy_render_target_to_framebuffer(const CPUFrameBuffer& framebuffer) {
-    D3DContext& d3d_ctx = D3DContext::Get();
-    const auto& commandList = d3d_ctx.m_DXRCommandList;
-    const auto& gpuDestTarget = framebuffer.get_gpu_resource();
-    const auto& gpuRenderTarget = m_renderTarget.get_gpu_resource();
-
-    GPU_texture::copy_texture(gpuDestTarget, gpuRenderTarget, 
-        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET, commandList);
+    static Copy_helper copy_helper{};
+    copy_helper.Copy(framebuffer.uav_gpu_handle, m_renderTarget.GetSRVHandle(), currentWidth, currentHeight);
 }
 
 void Raster_pipeline::copy_ssr_to_framebuffer(const CPUFrameBuffer& framebuffer) {
-    D3DContext& d3d_ctx = D3DContext::Get();
-    const auto& commandList = d3d_ctx.m_DXRCommandList;
-    const auto& gpuDestTarget = framebuffer.get_gpu_resource();
-    const auto& gpuSrcTarget = m_SSR.get_gpu_resource();
-
-    GPU_texture::copy_texture(gpuDestTarget, gpuSrcTarget, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-        D3D12_RESOURCE_STATE_UNORDERED_ACCESS, commandList);
+    static Copy_helper copy_helper{};
+    copy_helper.Copy(framebuffer.uav_gpu_handle, m_SSR.GetSRVHandle(), currentWidth, currentHeight);
 }
 
 void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
@@ -572,19 +563,19 @@ void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
 
     m_renderTarget.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::RenderTarget;
-    m_renderTarget = GPU_texture{currentWidth, currentHeight, flags};
+    m_renderTarget = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R16G16B16A16_FLOAT};
 
     m_renderTarget_blurred.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;
-    m_renderTarget_blurred = GPU_texture{currentWidth, currentHeight, flags};
+    m_renderTarget_blurred = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R16G16B16A16_FLOAT};
 
     m_frame_opaque_only.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;
-    m_frame_opaque_only = GPU_texture{currentWidth, currentHeight, flags};
+    m_frame_opaque_only = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R16G16B16A16_FLOAT};
 
     m_gbuffer.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::RenderTarget;
-    m_gbuffer = GPU_texture{currentWidth, currentHeight, flags};
+    m_gbuffer = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R16G16B16A16_FLOAT};
 
     m_IDTexture.release_gpu_resource();
     flags = TEXTURE_TRAITS::RenderTarget;
@@ -592,11 +583,11 @@ void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
 
     m_AOTexture.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
-    m_AOTexture = GPU_texture{currentWidth, currentHeight, flags};
+    m_AOTexture = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R16G16B16A16_FLOAT};
 
     m_SSR.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
-    m_SSR = GPU_texture{currentWidth, currentHeight, flags};
+    m_SSR = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R16G16B16A16_FLOAT};
 
     m_VelocityBuffer.release_gpu_resource();
     flags = TEXTURE_TRAITS::RenderTarget;

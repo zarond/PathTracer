@@ -1,7 +1,7 @@
 #include "BRDF.hlsl"
 
 // Output texture, accessed as a UAV
-RWTexture2D<float4> gOutput : register(u0);
+RWTexture2D<float2> gOutput : register(u0);
 
 [numthreads(16, 16, 1)] 
 void CS_DFG_Lut(uint3 DTid : SV_DispatchThreadID) {
@@ -40,5 +40,5 @@ void CS_DFG_Lut(uint3 DTid : SV_DispatchThreadID) {
     }
     result *= inv_N_samples;
 
-    gOutput[DTid.xy] = float4(result.xy, 0.0, 1.0);
+    gOutput[DTid.xy] = result;
 }

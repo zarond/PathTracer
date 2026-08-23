@@ -32,7 +32,7 @@ DFG_Lut_helper::~DFG_Lut_helper() { release_gpu_resources(); }
 void DFG_Lut_helper::CreateDFG_Lut() {
     DFG_lut.release_gpu_resource();
     TEXTURE_TRAITS flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
-    DFG_lut = GPU_texture{DFG_size, DFG_size, flags};
+    DFG_lut = GPU_texture{DFG_size, DFG_size, flags, DXGI_FORMAT_R16G16_FLOAT};
 
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
@@ -51,7 +51,7 @@ void DFG_Lut_helper::CreateDFG_Lut() {
 GPU_texture&& DFG_Lut_helper::GetDFG_Lut() { return std::move(DFG_lut); }
 
 GPU_texture DFG_Lut_helper::GetBlankSRVTexture() { 
-    return GPU_texture{DFG_size, DFG_size, TEXTURE_TRAITS::HDR}; 
+    return GPU_texture{DFG_size, DFG_size, TEXTURE_TRAITS::HDR, DXGI_FORMAT_R16G16_FLOAT};
 }
 
 void DFG_Lut_helper::CreateRootSignature() {

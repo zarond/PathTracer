@@ -205,7 +205,7 @@ void SSR_helper::ResizeInnerResource(int new_width, int new_height) {
     currentHeight = std::max(new_height, 0);
     auto flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
     m_SSR_texture_previous.release_gpu_resource();
-    m_SSR_texture_previous = GPU_texture{currentWidth, currentHeight, flags};
+    m_SSR_texture_previous = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R16G16B16A16_FLOAT};
 
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
     m_SSR_buff.release_gpu_resource();

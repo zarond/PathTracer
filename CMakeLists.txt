@@ -42,6 +42,7 @@ set(SHADER_SOURCES
     CS_Reprojection     Reprojection.hlsl           cs_6_6
     CS_SSR_trace        SSR.hlsl                    cs_6_6
     CS_SSR_resolve      SSR.hlsl                    cs_6_6
+    CS_Copy             CopyTexture.hlsl            cs_6_6
 )
 
 set(APP_SOURCES
@@ -76,6 +77,7 @@ if(ON_WINDOWS)
         src/GPU/Silhouette_helper.cc
         src/GPU/Reprojection_helper.cc
         src/GPU/SSR_helper.cc
+        src/GPU/Copy_helper.cc
         src/GPU/Reload_shader.cc
     )
 endif()

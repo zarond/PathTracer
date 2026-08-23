@@ -63,7 +63,7 @@ void Compute5Mips(int base_mip, uint3 DTid, uint3 Gid, uint3 Tid, uint Gidx, uin
     if (base_mip + 2 >= InputInfo.numMips) return;
 
     // Store in Local Data Store (LDS) for the next step
-    LDS_Color[Tid.x][Tid.y] = mip1Color;
+    LDS_Color[Tid.y][Tid.x] = mip1Color;
     GroupMemoryBarrierWithGroupSync();
 
     imageSize = max(1, imageSize / 2);
@@ -73,10 +73,10 @@ void Compute5Mips(int base_mip, uint3 DTid, uint3 Gid, uint3 Tid, uint Gidx, uin
         uint2 newTid = uint2(Gidx % 8, Gidx / 8);
         uint2 ldsSrc = newTid * 2;
 
-        float4 m0 = LDS_Color[ldsSrc.x + 0][ldsSrc.y + 0];
-        float4 m1 = LDS_Color[ldsSrc.x + 1][ldsSrc.y + 0];
-        float4 m2 = LDS_Color[ldsSrc.x + 0][ldsSrc.y + 1];
-        float4 m3 = LDS_Color[ldsSrc.x + 1][ldsSrc.y + 1];
+        float4 m0 = LDS_Color[ldsSrc.y + 0][ldsSrc.x + 0];
+        float4 m1 = LDS_Color[ldsSrc.y + 0][ldsSrc.x + 1];
+        float4 m2 = LDS_Color[ldsSrc.y + 1][ldsSrc.x + 0];
+        float4 m3 = LDS_Color[ldsSrc.y + 1][ldsSrc.x + 1];
 
         float4 mip2Color = Combine(m0, m1, m2, m3);
         uint2 outCoord = Gid.xy * 8 + newTid;
@@ -85,7 +85,7 @@ void Compute5Mips(int base_mip, uint3 DTid, uint3 Gid, uint3 Tid, uint Gidx, uin
             OutputMips[base_mip + 2][outCoord] = mip2Color;
         }
 
-        LDS_Color[ldsSrc.x + newTid.y % 2][ldsSrc.y] = mip2Color;  // stair-stepping offset on X to minimize memory bank conflicts
+        LDS_Color[ldsSrc.y][ldsSrc.x + newTid.y % 2] = mip2Color;  // stair-stepping offset on X to minimize memory bank conflicts
     }
 
     if (base_mip + 3 >= InputInfo.numMips) return;
@@ -101,10 +101,10 @@ void Compute5Mips(int base_mip, uint3 DTid, uint3 Gid, uint3 Tid, uint Gidx, uin
         //uint2 Delta = uint2((newTid.y * 2) % 2, ((newTid.y * 2) + 1) % 2);
         uint2 Delta = uint2(0, 1);  // stair-stepping offset on X to minimize memory bank conflicts
 
-        float4 m0 = LDS_Color[ldsSrc.x + Delta.x + 0][ldsSrc.y + 0];
-        float4 m1 = LDS_Color[ldsSrc.x + Delta.x + 2][ldsSrc.y + 0];
-        float4 m2 = LDS_Color[ldsSrc.x + Delta.y + 0][ldsSrc.y + 2];
-        float4 m3 = LDS_Color[ldsSrc.x + Delta.y + 2][ldsSrc.y + 2];
+        float4 m0 = LDS_Color[ldsSrc.y + 0][ldsSrc.x + Delta.x + 0];
+        float4 m1 = LDS_Color[ldsSrc.y + 0][ldsSrc.x + Delta.x + 2];
+        float4 m2 = LDS_Color[ldsSrc.y + 2][ldsSrc.x + Delta.y + 0];
+        float4 m3 = LDS_Color[ldsSrc.y + 2][ldsSrc.x + Delta.y + 2];
 
         float4 mip3Color = Combine(m0, m1, m2, m3);
         uint2 outCoord = Gid.xy * 4 + newTid;
@@ -112,7 +112,7 @@ void Compute5Mips(int base_mip, uint3 DTid, uint3 Gid, uint3 Tid, uint Gidx, uin
             OutputMips[base_mip + 3][outCoord] = mip3Color;
         }
 
-        LDS_Color[ldsSrc.x + newTid.y % 4][ldsSrc.y] = mip3Color;
+        LDS_Color[ldsSrc.y][ldsSrc.x + newTid.y % 4] = mip3Color;
     }
 
     if (base_mip + 4 >= InputInfo.numMips) return;
@@ -127,10 +127,10 @@ void Compute5Mips(int base_mip, uint3 DTid, uint3 Gid, uint3 Tid, uint Gidx, uin
         uint2 ldsSrc = newTid * 8;
         uint2 Delta = uint2((newTid.y * 2) % 4, ((newTid.y * 2) + 1) % 4);  // stair-stepping offset on X to minimize memory bank conflicts
 
-        float4 m0 = LDS_Color[ldsSrc.x + Delta.x + 0][ldsSrc.y + 0];
-        float4 m1 = LDS_Color[ldsSrc.x + Delta.x + 4][ldsSrc.y + 0];
-        float4 m2 = LDS_Color[ldsSrc.x + Delta.y + 0][ldsSrc.y + 4];
-        float4 m3 = LDS_Color[ldsSrc.x + Delta.y + 4][ldsSrc.y + 4];
+        float4 m0 = LDS_Color[ldsSrc.y + 0][ldsSrc.x + Delta.x + 0];
+        float4 m1 = LDS_Color[ldsSrc.y + 0][ldsSrc.x + Delta.x + 4];
+        float4 m2 = LDS_Color[ldsSrc.y + 4][ldsSrc.x + Delta.y + 0];
+        float4 m3 = LDS_Color[ldsSrc.y + 4][ldsSrc.x + Delta.y + 4];
 
         float4 mip4Color = Combine(m0, m1, m2, m3);
         uint2 outCoord = Gid.xy * 2 + newTid;
@@ -138,7 +138,7 @@ void Compute5Mips(int base_mip, uint3 DTid, uint3 Gid, uint3 Tid, uint Gidx, uin
             OutputMips[base_mip + 4][outCoord] = mip4Color;
         }
 
-        LDS_Color[ldsSrc.x + newTid.y % 8][ldsSrc.y] = mip4Color;
+        LDS_Color[ldsSrc.y][ldsSrc.x + newTid.y % 8] = mip4Color;
     }
 
     if (base_mip + 5 >= InputInfo.numMips) return;
@@ -151,9 +151,9 @@ void Compute5Mips(int base_mip, uint3 DTid, uint3 Gid, uint3 Tid, uint Gidx, uin
     if (Gidx == 0) {
         if (all(Gid.xy < imageSize)) {
             float4 m0 = LDS_Color[0][0];
-            float4 m1 = LDS_Color[8][0];
-            float4 m2 = LDS_Color[0 + 1][8];
-            float4 m3 = LDS_Color[8 + 1][8];
+            float4 m1 = LDS_Color[0][8];
+            float4 m2 = LDS_Color[8][0 + 1];
+            float4 m3 = LDS_Color[8][8 + 1];
 
             float4 mip5Color = Combine(m0, m1, m2, m3);
             OutputMips[base_mip + 5][Gid.xy] = mip5Color;
@@ -287,17 +287,17 @@ void CS_MinFilter(uint3 DTid : SV_DispatchThreadID, uint3 Gid : SV_GroupID, uint
     if (base_mip + 2 >= InputInfo.numMips) return;
 
     // Store in Local Data Store (LDS) for the next step
-    LDS_Zbuf[Tid.x][Tid.y] = mip1Color;
+    LDS_Zbuf[Tid.y][Tid.x] = mip1Color;
 
     if (Tid.x == 15 && NeedExtraSampleAny.x) {
         uint2 srcCoord = DTid.xy * 2 + uint2(2, 0);
         mip1Color = getFirstMip(base_mip, srcCoord, imageSize0, NeedExtraSample1);
-        LDS_Zbuf[16][Tid.y] = mip1Color;
+        LDS_Zbuf[Tid.y][16] = mip1Color;
     }
     if (Tid.y == 15 && NeedExtraSampleAny.y) {
         uint2 srcCoord = DTid.xy * 2 + uint2(0, 2);
         mip1Color = getFirstMip(base_mip, srcCoord, imageSize0, NeedExtraSample1);
-        LDS_Zbuf[Tid.x][16] = mip1Color;
+        LDS_Zbuf[16][Tid.x] = mip1Color;
     }
     if (Tid.x == 15 && Tid.y == 15 && NeedExtraSampleAny.x && NeedExtraSampleAny.y) {
         uint2 srcCoord = DTid.xy * 2 + uint2(2, 2);
@@ -312,25 +312,25 @@ void CS_MinFilter(uint3 DTid : SV_DispatchThreadID, uint3 Gid : SV_GroupID, uint
         uint2 newTid = uint2(Gidx % 8, Gidx / 8);
         uint2 ldsSrc = newTid * 2;
 
-        float m0 = LDS_Zbuf[ldsSrc.x + 0][ldsSrc.y + 0];
-        float m1 = LDS_Zbuf[ldsSrc.x + 1][ldsSrc.y + 0];
-        float m2 = LDS_Zbuf[ldsSrc.x + 0][ldsSrc.y + 1];
-        float m3 = LDS_Zbuf[ldsSrc.x + 1][ldsSrc.y + 1];
+        float m0 = LDS_Zbuf[ldsSrc.y + 0][ldsSrc.x + 0];
+        float m1 = LDS_Zbuf[ldsSrc.y + 0][ldsSrc.x + 1];
+        float m2 = LDS_Zbuf[ldsSrc.y + 1][ldsSrc.x + 0];
+        float m3 = LDS_Zbuf[ldsSrc.y + 1][ldsSrc.x + 1];
 
         float mip2Color = CombineMin(m0, m1, m2, m3);
 
         if (NeedExtraSample2.x) {
-            m0 = LDS_Zbuf[ldsSrc.x + 2][ldsSrc.y + 0];
-            m1 = LDS_Zbuf[ldsSrc.x + 2][ldsSrc.y + 1];
+            m0 = LDS_Zbuf[ldsSrc.y + 0][ldsSrc.x + 2];
+            m1 = LDS_Zbuf[ldsSrc.y + 1][ldsSrc.x + 2];
             mip2Color = CombineMin(mip2Color, m0, m1);
         }
         if (NeedExtraSample2.y) {
-            m0 = LDS_Zbuf[ldsSrc.x + 0][ldsSrc.y + 2];
-            m1 = LDS_Zbuf[ldsSrc.x + 1][ldsSrc.y + 2];
+            m0 = LDS_Zbuf[ldsSrc.y + 2][ldsSrc.x + 0];
+            m1 = LDS_Zbuf[ldsSrc.y + 2][ldsSrc.x + 1];
             mip2Color = CombineMin(mip2Color, m0, m1);
         }
         if (NeedExtraSample2.x && NeedExtraSample2.y) {
-            m0 = LDS_Zbuf[ldsSrc.x + 2][ldsSrc.y + 2];
+            m0 = LDS_Zbuf[ldsSrc.y + 2][ldsSrc.x + 2];
             mip2Color = CombineMin(mip2Color, m0);
         }
 

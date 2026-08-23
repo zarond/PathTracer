@@ -29,6 +29,7 @@ struct GTAOCSInput {
     uvec2 FrameSize;
     fvec2 texel_size;
     float AO_distance;
+    float inv_AO_distance;
     unsigned int frameID;
 };
 
@@ -89,8 +90,8 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputUAV, AO_uav_texture.GetUAVHandle());
 
     fvec2 texel{1.0f / width, 1.0f / height};
-    GTAOCSInput input{Projection, invProjection[0][0], invProjection[1][1], {width, height}, texel, AODistance,
-        FrameID};
+    GTAOCSInput input{Projection, invProjection[0][0], invProjection[1][1], {width, height}, texel, AODistance, 
+        1.0f / AODistance, FrameID};
     constexpr int inputSizeInInt = sizeof(GTAOCSInput) / 4;
     commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
 
@@ -138,8 +139,8 @@ void GTAO_helper::ResizeInnerResource(int new_width, int new_height) {
     currentWidth = std::max(new_width, 0);
     currentHeight = std::max(new_height, 0);
     auto flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
-    m_SpatialDenoised = GPU_texture{currentWidth, currentHeight, flags};
-    m_SpatialDenoised_previous = GPU_texture{currentWidth, currentHeight, flags};
+    m_SpatialDenoised = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R16G16B16A16_FLOAT};
+    m_SpatialDenoised_previous = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R16G16B16A16_FLOAT};
 }
 
 void GTAO_helper::CreateRootSignature() {
