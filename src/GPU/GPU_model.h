@@ -142,7 +142,7 @@ class GPU_texture {
 
     DXGI_FORMAT choose_format() const;
 
-    DXGI_FORMAT format_;
+    DXGI_FORMAT format_ = DXGI_FORMAT_UNKNOWN;
 
     ComPtr<ID3D12Resource> pTexture;
     D3D_Handle_Pair srv_handle{};

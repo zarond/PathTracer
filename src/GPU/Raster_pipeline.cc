@@ -334,12 +334,12 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     UINT vertex_count = combined_mesh.get_vertex_count();
     UINT index_count = combined_mesh.get_index_count();
 
-    D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
+    D3D12_VERTEX_BUFFER_VIEW vertexBufferView{};
     vertexBufferView.BufferLocation = combined_mesh.vertexBuffer->GetGPUVirtualAddress();
     vertexBufferView.StrideInBytes = sizeof(vertex);
     vertexBufferView.SizeInBytes = sizeof(vertex) * vertex_count;
 
-    D3D12_INDEX_BUFFER_VIEW indexBufferView;
+    D3D12_INDEX_BUFFER_VIEW indexBufferView{};
     indexBufferView.BufferLocation = combined_mesh.indexBuffer->GetGPUVirtualAddress();
     indexBufferView.Format = DXGI_FORMAT_R32_UINT;
     indexBufferView.SizeInBytes = sizeof(uint32_t) * index_count;
