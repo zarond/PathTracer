@@ -251,6 +251,7 @@ struct ssr_hit_info {
     float confidence;   // Confidence level of the hit, 0 - no hit
     float2 uv;          // UV coordinates of the hit point in the previous frame
     float inv_pdf;
+    float padding;
 };
     
 ssr_hit_info decode_SSR_hit_info(float4 SSR_sample) 
@@ -303,9 +304,37 @@ float linear_depth(float non_linear_depth) {
     const float proj_23 = g_CB.Projection._34;
     return -proj_23 / (proj_22 + non_linear_depth);
 }
+    
+groupshared ssr_hit_info LDS_SSR[20][20]; // 20 = 2 + 16 + 2
+    
+void PopulateSharedMemory(uint3 DTid, uint3 Gid, uint3 Tid, uint Gidx)
+{
+    int2 groupOrigin = (int2)Gid.xy * 16 - 2;
+
+    for (uint i = Gidx; i < 20 * 20; i += (16 * 16)) 
+    {
+        uint ldsY = i / 20;
+        uint ldsX = i % 20;
+
+        // Map LDS 2D coordinate to actual global screen pixel coordinate
+        int2 sampleCoord = groupOrigin + int2(ldsX, ldsY);
+
+        // Clamp to edge to prevent out-of-bounds sampling at screen borders
+        sampleCoord = max(0, min(sampleCoord, g_CB.FrameSize - 1));
+
+        // Store in shared memory
+        float4 SSR_sample = SSR_buffer[sampleCoord];
+        LDS_SSR[ldsY][ldsX] = decode_SSR_hit_info(SSR_sample);
+    }
+    GroupMemoryBarrierWithGroupSync();
+}
 
 [numthreads(16, 16, 1)] 
-void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
+void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID, uint3 Gid : SV_GroupID, uint3 Tid : SV_GroupThreadID, uint Gidx : SV_GroupIndex) {
+    if (g_CB.simpleResolve == 0) {
+        PopulateSharedMemory(DTid, Gid, Tid, Gidx);
+    }
+    
     if (DTid.x >= g_CB.FrameSize.x || DTid.y >= g_CB.FrameSize.y) return;
 
     const float4 centerGbuffer = Gbuffer.Load(int3(DTid.xy, 0));
@@ -360,8 +389,7 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID) {
                 continue;
 
             // Load neighbor ray hit UVs
-            float4 SSR_sample = SSR_buffer.Load(int3(neighborCoord, 0));
-            ssr_hit_info hit_info = decode_SSR_hit_info(SSR_sample);
+            ssr_hit_info hit_info = LDS_SSR[Tid.y + i + 2][Tid.x + j + 2];
             bool hit_valid = hit_info.confidence > 0.0f;
                
             float3 ray = hit_info.pos - hit_valid * centerPosVS;
