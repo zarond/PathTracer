@@ -103,18 +103,33 @@ void GTAO_helper::CreateAO(GPU_texture& AO_uav_texture, GPU_texture& G_buff_text
     if (DenoiseEnabled) {
         auto barrier_uav = CD3DX12_RESOURCE_BARRIER::UAV(AO_uav_texture.get_gpu_resource().Get());
         commandList->ResourceBarrier(1, &barrier_uav);
+        auto barrier_srv_1 = CD3DX12_RESOURCE_BARRIER::Transition(AO_uav_texture.get_gpu_resource().Get(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        commandList->ResourceBarrier(1, &barrier_srv_1);
         // Spatial denoiser
         bilateral_filter.ApplyBlur(
             m_SpatialDenoised, AO_uav_texture, G_buff_texture, DepthUAVTexture, AOSpatialSigma, AODepthSigma, AONormalSigma);
+        auto barrier_srv_2 = CD3DX12_RESOURCE_BARRIER::Transition(AO_uav_texture.get_gpu_resource().Get(),
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        commandList->ResourceBarrier(1, &barrier_srv_2);
         std::swap(m_SpatialDenoised, AO_uav_texture);
         // Temporal reprojection + denoiser
         if (consecutive_frame_count > 1) {
             barrier_uav = CD3DX12_RESOURCE_BARRIER::UAV(AO_uav_texture.get_gpu_resource().Get());
             commandList->ResourceBarrier(1, &barrier_uav);
+
+            auto barrier_deniosed_prev_srv = CD3DX12_RESOURCE_BARRIER::Transition(m_SpatialDenoised_previous.get_gpu_resource().Get(),
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            commandList->ResourceBarrier(1, &barrier_deniosed_prev_srv);
+
             reprojection_helper.Reproject(m_SpatialDenoised_previous, DepthUAVTexture_previous, AO_uav_texture,
                 DepthUAVTexture, VelocityBuffer, Projection, glm::inverse(ViewProjection), ViewProjection_prev,
                 Projection_previous, 1.0f / 6.0f,
                 DepthThreshold, false);
+
+            barrier_deniosed_prev_srv = CD3DX12_RESOURCE_BARRIER::Transition(m_SpatialDenoised_previous.get_gpu_resource().Get(),
+                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            commandList->ResourceBarrier(1, &barrier_deniosed_prev_srv);
         }
         Projection_previous = Projection;
         ++consecutive_frame_count;

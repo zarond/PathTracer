@@ -121,14 +121,16 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
 
     std::swap(m_SSR_texture_previous, SSR_uav_texture); // at the top because SSR_uav_texture is used after outside of this call to function
 
+    auto barrier_g_buff = CD3DX12_RESOURCE_BARRIER::Transition(G_buff_texture.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    auto barrier_velocity = CD3DX12_RESOURCE_BARRIER::Transition(VelocityBuffer.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     auto barrier_depth_uav = CD3DX12_RESOURCE_BARRIER::Transition(DepthUAVTexture.get_gpu_resource().Get(),
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     auto barrier_depth_uav_previous = CD3DX12_RESOURCE_BARRIER::Transition(DepthUAVTexture_previous.get_gpu_resource().Get(),
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    auto barrier_velocity = CD3DX12_RESOURCE_BARRIER::Transition(VelocityBuffer.get_gpu_resource().Get(),
-        D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    D3D12_RESOURCE_BARRIER bariers_in[] = {barrier_depth_uav, barrier_depth_uav_previous, barrier_velocity};
-    commandList->ResourceBarrier(3, bariers_in);
+    D3D12_RESOURCE_BARRIER bariers_in[] = {barrier_g_buff, barrier_velocity, barrier_depth_uav, barrier_depth_uav_previous};
+    commandList->ResourceBarrier(4, bariers_in);
 
     commandList->SetComputeRootSignature(m_rootSignature.Get());
     commandList->SetPipelineState(m_TracePipelineState.Get());
@@ -174,24 +176,41 @@ void SSR_helper::CalculateSSR(GPU_texture& SSR_uav_texture, GPU_texture& G_buff_
     if (DenoiseEnabled && consecutive_frame_count > 1) {
         auto barrier_ssr_uav = CD3DX12_RESOURCE_BARRIER::UAV(SSR_uav_texture.get_gpu_resource().Get());
         commandList->ResourceBarrier(1, &barrier_ssr_uav);
+
+        auto barrier_ssr_prev_srv = CD3DX12_RESOURCE_BARRIER::Transition(m_SSR_texture_previous.get_gpu_resource().Get(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        auto barrier_distance_srv = CD3DX12_RESOURCE_BARRIER::Transition(m_distance_texture.get_gpu_resource().Get(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        D3D12_RESOURCE_BARRIER barriers1[] = {barrier_ssr_prev_srv, barrier_distance_srv};
+        commandList->ResourceBarrier(2, barriers1);
+
         reprojection_helper.Reproject(m_SSR_texture_previous, DepthUAVTexture_previous, SSR_uav_texture, DepthUAVTexture,
             VelocityBuffer, Projection, glm::inverse(ViewProjection), ViewProjection_prev, Projection_previous, 
             1.0f / 16.0f,
             DepthThreshold, true, ParallaxReprojection ? &m_distance_texture : nullptr, zeroAlphaReject);
+
+        barrier_ssr_prev_srv = CD3DX12_RESOURCE_BARRIER::Transition(m_SSR_texture_previous.get_gpu_resource().Get(),
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        barrier_distance_srv = CD3DX12_RESOURCE_BARRIER::Transition(m_distance_texture.get_gpu_resource().Get(),
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        D3D12_RESOURCE_BARRIER barriers2[] = {barrier_ssr_prev_srv, barrier_distance_srv};
+        commandList->ResourceBarrier(2, barriers2);
     }
 
     barrier_ssr_buff = CD3DX12_RESOURCE_BARRIER::Transition(m_SSR_buff.get_gpu_resource().Get(),
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     commandList->ResourceBarrier(1, &barrier_ssr_buff);
 
+    barrier_g_buff = CD3DX12_RESOURCE_BARRIER::Transition(G_buff_texture.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    barrier_velocity = CD3DX12_RESOURCE_BARRIER::Transition(VelocityBuffer.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
     barrier_depth_uav = CD3DX12_RESOURCE_BARRIER::Transition(DepthUAVTexture.get_gpu_resource().Get(),
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     barrier_depth_uav_previous = CD3DX12_RESOURCE_BARRIER::Transition(DepthUAVTexture_previous.get_gpu_resource().Get(),
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-    barrier_velocity = CD3DX12_RESOURCE_BARRIER::Transition(VelocityBuffer.get_gpu_resource().Get(),
-        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
-    D3D12_RESOURCE_BARRIER bariers_out[] = {barrier_depth_uav, barrier_depth_uav_previous, barrier_velocity};
-    commandList->ResourceBarrier(3, bariers_out);
+    D3D12_RESOURCE_BARRIER bariers_out[] = {barrier_g_buff, barrier_velocity, barrier_depth_uav, barrier_depth_uav_previous};
+    commandList->ResourceBarrier(4, bariers_out);
 
     Projection_previous = Projection;
     ++consecutive_frame_count;

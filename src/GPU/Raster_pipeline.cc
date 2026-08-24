@@ -147,8 +147,8 @@ void Raster_pipeline::CreateRootSignatures() {
     CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
 
     CD3DX12_DESCRIPTOR_RANGE ranges[GlobalRootSignatureParams::Count];
-    ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);     // 1 scene constants buffer.
-    ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);     // 2 materials buffer.
+    ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);      // 1 scene constants buffer.
+    ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);     // 2 materials buffer.
     ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 1);  // 3 DFG texture.
     ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 1);  // 4 DiffuseLut texture.
     ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2, 1);  // 5 SpecularLut texture.
@@ -156,7 +156,7 @@ void Raster_pipeline::CreateRootSignatures() {
     ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4, 1);  // 7 Ambient Occlusion texture.
     ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5, 1);  // 8 SSR texture.
     ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6, 1);  // 9 MaterialID texture
-    ranges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);     // 10 per draw constants buffer.
+    ranges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1);      // 10 per draw constants buffer.
 
     D3D12_STATIC_SAMPLER_DESC default_sampler = {};  // Default static sampler.
     default_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -451,6 +451,10 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
         return;
     }
 
+    auto barrier_material_ids = CD3DX12_RESOURCE_BARRIER::Transition(
+        m_IDTexture.get_gpu_resource().Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    commandList->ResourceBarrier(1, &barrier_material_ids);
+
     commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::AmbientOcclusionTex, m_AOTexture.GetSRVHandle());
     commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SSRTex, m_SSR.GetSRVHandle());
     commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::MaterialIDTex, m_IDTexture.GetSRVHandle());
@@ -484,7 +488,18 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     if (!transmissive_objects.empty()) {
         // set background alpha to zero (for refractions)
         static Silhouette_helper silhouette_helper{};
-        silhouette_helper.Apply(m_frame_opaque_only, useGBuffer? m_depthTexture_opaque_only : m_depthTexture);
+        auto& depth_texture_used = useGBuffer ? m_depthTexture_opaque_only : m_depthTexture;
+
+        auto barrier_depth = CD3DX12_RESOURCE_BARRIER::Transition(depth_texture_used.get_gpu_resource().Get(),
+            D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        commandList->ResourceBarrier(1, &barrier_depth);
+
+        silhouette_helper.Apply(m_frame_opaque_only, depth_texture_used);
+
+        barrier_depth = CD3DX12_RESOURCE_BARRIER::Transition(depth_texture_used.get_gpu_resource().Get(),
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+        commandList->ResourceBarrier(1, &barrier_depth);
+
         // Apply Kawase Blur
         m_blur_helper.CreateBlurMips(m_frame_opaque_only);
 
@@ -512,12 +527,24 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
         draw_object(element);
     }
 
+    barrier_material_ids = CD3DX12_RESOURCE_BARRIER::Transition(
+        m_IDTexture.get_gpu_resource().Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    commandList->ResourceBarrier(1, &barrier_material_ids);
+
     // Copy the current render target to the previous render target for next frame
     // and calculate mips for the blurred render target if needed
-    GPU_texture::copy_texture_mip0_only(m_renderTarget_blurred, m_renderTarget, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+    GPU_texture::copy_texture_mip0_only(m_renderTarget_blurred, m_renderTarget, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
         D3D12_RESOURCE_STATE_RENDER_TARGET, commandList);
     if (CalculateRenderTargetBluredMips) {
+        auto barrier_frame_uav = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTarget_blurred.get_gpu_resource().Get(),
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        commandList->ResourceBarrier(1, &barrier_frame_uav);
+
         m_bloom_helper.CreateBlurMips(m_renderTarget_blurred);
+
+        barrier_frame_uav = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTarget_blurred.get_gpu_resource().Get(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        commandList->ResourceBarrier(1, &barrier_frame_uav);
 
         ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};  // todo: don't replace heap during blur pass?
         commandList->SetDescriptorHeaps(1, desc_heap);
@@ -567,7 +594,7 @@ void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
 
     m_renderTarget_blurred.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;
-    m_renderTarget_blurred = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R16G16B16A16_FLOAT};
+    m_renderTarget_blurred = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R16G16B16A16_FLOAT, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE};
 
     m_frame_opaque_only.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;
@@ -676,6 +703,11 @@ void Raster_pipeline::ComputeEnvmapLut(const GPU_texture& envmap) {
 
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
+
+    auto commandList = d3d_ctx.m_DXRCommandList;
+    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(envmap.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    commandList->ResourceBarrier(1, &barrier);
     
     static EnvCube_helper EnvCube_helper{};
     EnvCube_helper.CreateDiffuseEnvmapCube(envmap);

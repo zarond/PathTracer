@@ -6,7 +6,7 @@
 ConstantBuffer<RasterConstantBuffer> g_rasterCB : register(b0);
 
 // Materials data buffers
-StructuredBuffer<Material> Materials : register(t1, space0);
+StructuredBuffer<Material> Materials : register(t0, space0);
 
 // DFG LUT
 Texture2D<float2> DFGLut : register(t0, space1);

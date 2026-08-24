@@ -101,7 +101,7 @@ if(ON_WINDOWS)
 
     if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         # Debug: Full info, no optimizations
-        # set(DXC_FLAGS -Zi -Qembed_debug -Od) # For some reason this line causes Debug to output black pixels
+        set(DXC_FLAGS -Zi -Qembed_debug -Od)
     elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
         # RelWithDebInfo: Full info, optimizations enabled
         set(DXC_FLAGS -Zi -Qembed_debug)

@@ -7,6 +7,7 @@ bool DXDebugLayer::Init() {
     // Init D3D12 Debug layer
     if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&m_d3d12Debug)))) {
         m_d3d12Debug->EnableDebugLayer();
+        m_d3d12Debug->SetEnableGPUBasedValidation(TRUE);
         // Init DXGI Debug
         if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&m_dxgiDebug)))) {
             m_dxgiDebug->EnableLeakTrackingForThread();
@@ -21,8 +22,8 @@ void DXDebugLayer::SetBreakOnSeverity(ID3D12Device& device) {
 #ifdef DX12_ENABLE_DEBUG_LAYER
     ID3D12InfoQueue* pInfoQueue = nullptr;
     device.QueryInterface(IID_PPV_ARGS(&pInfoQueue));
-    pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
-    pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
+    // pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
+    // pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
     // pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
     pInfoQueue->Release();
 #endif

@@ -99,7 +99,8 @@ DEFINE_ENUM_FLAG_OPERATORS(TEXTURE_TRAITS)
 class GPU_texture {
   public:
     GPU_texture() = default;
-    explicit GPU_texture(UINT64 width, UINT height, TEXTURE_TRAITS texture_options, DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN);
+    explicit GPU_texture(UINT64 width, UINT height, TEXTURE_TRAITS texture_options, DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN,
+        D3D12_RESOURCE_STATES initial_state_override = D3D12_RESOURCE_STATE_COMMON);
     explicit GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture, bool allocate_mips = false, bool is_normal_map = false);
     explicit GPU_texture(
         const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_ = false, bool allocate_mips = false, bool is_normal_map = false);
@@ -116,7 +117,7 @@ class GPU_texture {
     D3D12_CPU_DESCRIPTOR_HANDLE GetRTVHandle() const;
     D3D12_CPU_DESCRIPTOR_HANDLE GetDSVHandle() const;
 
-    ComPtr<ID3D12Resource> get_gpu_resource();
+    ComPtr<ID3D12Resource> get_gpu_resource() const;
 
     TEXTURE_TRAITS texture_options = TEXTURE_TRAITS::None;
     uint8_t mipLevels = 1;
@@ -137,7 +138,8 @@ class GPU_texture {
         ComPtr<ID3D12GraphicsCommandList4>& commandList);
 
   private:
-    void create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT format);
+    void create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT format,
+        D3D12_RESOURCE_STATES initial_state_override = D3D12_RESOURCE_STATE_COMMON);
     void upload_texture_to_gpu(int width_, int height_, const auto& data_, size_t sizeofpixel, DXGI_FORMAT format);
 
     DXGI_FORMAT choose_format() const;

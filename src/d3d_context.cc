@@ -12,7 +12,9 @@ void DescriptorHeapAllocator::Create(ID3D12Device* device, ID3D12DescriptorHeap*
     HeapType = desc.Type;
     isHeapShaderVisible = (desc.Flags & D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE);
     HeapStartCpu = Heap->GetCPUDescriptorHandleForHeapStart();
-    HeapStartGpu = Heap->GetGPUDescriptorHandleForHeapStart();
+    if (isHeapShaderVisible) {
+        HeapStartGpu = Heap->GetGPUDescriptorHandleForHeapStart();
+    }
     HeapHandleIncrement = device->GetDescriptorHandleIncrementSize(HeapType);
     FreeIndices.reserve((int)desc.NumDescriptors);
     for (int n = desc.NumDescriptors; n > 0; n--) FreeIndices.push_back(n - 1);
@@ -28,7 +30,11 @@ void DescriptorHeapAllocator::Alloc(
     int idx = FreeIndices.back();
     FreeIndices.pop_back();
     out_cpu_desc_handle->ptr = HeapStartCpu.ptr + (idx * HeapHandleIncrement);
-    out_gpu_desc_handle->ptr = HeapStartGpu.ptr + (idx * HeapHandleIncrement);
+    if (isHeapShaderVisible) {
+        out_gpu_desc_handle->ptr = HeapStartGpu.ptr + (idx * HeapHandleIncrement);
+    } else {
+        out_gpu_desc_handle->ptr = 0;
+    }
 }
 void DescriptorHeapAllocator::Alloc(D3D_Handle_Pair* out_desc_handle) { 
     Alloc(&out_desc_handle->cpuHandle, &out_desc_handle->gpuHandle);
@@ -46,6 +52,7 @@ void DescriptorHeapAllocator::Free(D3D_Handle_Pair desc_handle) {
 }
 int DescriptorHeapAllocator::GetIndex(D3D12_GPU_DESCRIPTOR_HANDLE gpu_desc_handle) const {
     int gpu_idx = (int)((gpu_desc_handle.ptr - HeapStartGpu.ptr) / HeapHandleIncrement);
+    assert(isHeapShaderVisible);
     return gpu_idx;
 }
 
