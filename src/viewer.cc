@@ -297,6 +297,7 @@ void Viewer::start_animation_playback() {
 
 void Viewer::stop_animation_playback() {
     animation_playing_ = false;
+    need_transforms_update_ = true;
     animation_time_ = std::chrono::high_resolution_clock::now() - start_timestamp_;
 }
 
