@@ -345,7 +345,8 @@ void RenderedImageUI(Viewer& viewer, const bool hardware_ray_tracing_support) {
             offset = {-WorkSize.x * 0.5f, -WorkSize.y * 0.5f};
         }
     }
-    const auto texture_srv_gpu_handle = framebuffer.srv_gpu_handle;
+    const auto& gpu_texture = framebuffer.get_texture_resource();
+    const auto texture_srv_gpu_handle = gpu_texture.GetSRVHandle();
     ImGui::SetCursorPos(ImVec2(scale * offset.x + WorkSize.x * 0.5f, scale * offset.y + WorkSize.y * 0.5f));
     // todo: hardware_ray_tracing_support check is a temporary fix for problem with integrated GPU and ImGui
     if (framebuffer.nearest_filtering && hardware_ray_tracing_support) {

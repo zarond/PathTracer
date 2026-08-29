@@ -5,115 +5,17 @@
 #include <iostream>
 #include <span>
 #include <string>
-#include <type_traits>
-#include <variant>
-
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
 
 #include "stb_image.h"
 #include "stb_image_write.h"
 
 #ifdef WINDOWS_SPECIFIC
 #include "d3d_context.h"
+#include <directx/d3dx12.h>
 #endif
 
 namespace app {
-    std::array<float, 256> SRGB8_TO_LINEAR_LUT = make_srgb_lut();
-}
-
-namespace {
-using namespace app;
-
-std::vector<hdr_pixel> from_raw_data(const float* data, size_t width, size_t height) {
-    std::vector<hdr_pixel> vec(width * height);
-    std::memcpy(vec.data(), data, width * height * sizeof(hdr_pixel));
-    return vec;
-}
-
-std::vector<sdr_pixel> from_raw_data(const unsigned char* data, size_t width, size_t height) {
-    std::vector<sdr_pixel> vec(width * height);
-    std::memcpy(vec.data(), data, width * height * sizeof(sdr_pixel));
-    return vec;
-}
-}  // namespace
-
-namespace app {
 using namespace glm;
-
-// CPUTexture
-
-template <>
-CPUTexture<sdr_pixel>::CPUTexture(const fastgltf::Image& image, const fastgltf::Asset& asset_) {
-    std::visit(
-        fastgltf::visitor{
-            [](const auto& arg) {},
-            [&](const fastgltf::sources::URI& filePath) {
-                assert(filePath.fileByteOffset == 0);  // We don't support offsets with stbi.
-                assert(filePath.uri.isLocalPath());    // We're only capable of loading local files.
-
-                const std::string path(filePath.uri.path().begin(), filePath.uri.path().end());  // Thanks C++.
-                unsigned char* data = stbi_load(path.c_str(), &width_, &height_, &channels_, 4);
-                if (data == nullptr) {
-                    throw std::runtime_error("Unable to load image: " + path);
-                }
-                data_ = from_raw_data(data, width_, height_);
-                stbi_image_free(data);
-            },
-            [&](const fastgltf::sources::Array& vector) {
-                unsigned char* data = stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(vector.bytes.data()),
-                    static_cast<int>(vector.bytes.size()), &width_, &height_, &channels_, 4);
-                if (data == nullptr) {
-                    throw std::runtime_error("Unable to load image from memory");
-                }
-                data_ = from_raw_data(data, width_, height_);
-                stbi_image_free(data);
-            },
-            [&](const fastgltf::sources::BufferView& view) {
-                const auto& bufferView = asset_.bufferViews[view.bufferViewIndex];
-                const auto& buffer = asset_.buffers[bufferView.bufferIndex];
-                std::visit(fastgltf::visitor{
-                    [&](const fastgltf::sources::Array& vector) {
-                        unsigned char* data = stbi_load_from_memory(
-                            reinterpret_cast<const stbi_uc*>(vector.bytes.data() + bufferView.byteOffset),
-                            static_cast<int>(bufferView.byteLength), &width_, &height_, &channels_, 4);
-                        if (data == nullptr) {
-                            throw std::runtime_error("Unable to load image from memory");
-                        }
-                        data_ = from_raw_data(data, width_, height_);
-                        stbi_image_free(data);
-                    },
-                    [](const auto& arg) {}},
-                buffer.data);
-            },
-        },
-        image.data);
-
-    assert(width_ > 0 && height_ > 0 && channels_ > 0 && channels_ <= 4 && !data_.empty());
-}
-
-template <>
-CPUTexture<hdr_pixel>::CPUTexture(const std::filesystem::path& filePath) {
-    const std::string path(filePath.string());
-
-    float* data = stbi_loadf(path.c_str(), &width_, &height_, &channels_, 4);
-    if (data == nullptr) {
-        throw std::runtime_error("Unable to load image: " + path);
-    }
-    data_ = from_raw_data(data, width_, height_);
-    stbi_image_free(data);
-
-    assert(width_ > 0 && height_ > 0 && channels_ > 0 && channels_ <= 4 && !data_.empty());
-}
-
-template <>
-CPUTexture<sdr_pixel> CPUTexture<sdr_pixel>::create_white_texture() { return CPUTexture(sdr_pixel{255, 255, 255, 255});}
-template <>
-CPUTexture<sdr_pixel> CPUTexture<sdr_pixel>::create_black_texture() { return CPUTexture(sdr_pixel{0, 0, 0, 255});}
-template <>
-CPUTexture<hdr_pixel> CPUTexture<hdr_pixel>::create_white_texture() { return CPUTexture(hdr_pixel{1.0f});}
-template <>
-CPUTexture<hdr_pixel> CPUTexture<hdr_pixel>::create_black_texture() { return CPUTexture(hdr_pixel{0.0f});}
 
 // CPUFrameBuffer
 
@@ -129,6 +31,16 @@ CPUFrameBuffer::CPUFrameBuffer(int width, int height) {
 #ifdef WINDOWS_SPECIFIC
 CPUFrameBuffer::~CPUFrameBuffer() { release_gpu_resource(); }
 #endif
+
+void CPUFrameBuffer::resize(int width, int height) {
+    width_ = width;
+    height_ = height;
+    channels_ = 4;
+    data_.resize(width_ * height_, hdr_pixel{});
+#ifdef WINDOWS_SPECIFIC
+    release_gpu_resource();
+#endif
+}
 
 void CPUFrameBuffer::clear(const hdr_pixel clearColor) { data_.assign(width_ * height_, clearColor); }
 
@@ -180,66 +92,19 @@ void CPUFrameBuffer::save_to_file(const std::filesystem::path& filePath, bool fr
 
 #ifdef WINDOWS_SPECIFIC
 void CPUFrameBuffer::create_texture_resource() {
-    D3DContext& d3d_ctx = D3DContext::Get();
-
-    if (pTexture == nullptr) {
-        // Create texture resource
-        const D3D12_RESOURCE_DESC tex_desc{
-            .Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D,
-            .Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
-            .Width = static_cast<UINT64>(width_),
-            .Height = static_cast<UINT>(height_),
-            .DepthOrArraySize = 1,
-            .MipLevels = 1,
-            .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
-            .SampleDesc = {1, 0},
-            .Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN,
-            .Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS  // for raytracing
-        };
-        const D3D12_HEAP_PROPERTIES def_props{
-            .Type = D3D12_HEAP_TYPE_DEFAULT,
-            .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
-            .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
-        };
-
-        d3d_ctx.m_SrvDescHeapAlloc.Alloc(&srv_cpu_handle, &srv_gpu_handle);
-        d3d_ctx.m_SrvDescHeapAlloc.Alloc(&uav_cpu_handle, &uav_gpu_handle);
-
-        d3d_ctx.m_d3dDevice->CreateCommittedResource(
-            &def_props, D3D12_HEAP_FLAG_NONE, &tex_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&pTexture));
-
-        // Create a shader resource view for the texture
-        const D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{
-            .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
-            .ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D,
-            .Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
-            .Texture2D =
-                D3D12_TEX2D_SRV{
-                    .MostDetailedMip = 0,
-                    .MipLevels = 1,
-                },
-        };
-        d3d_ctx.m_d3dDevice->CreateShaderResourceView(pTexture.Get(), &srvDesc, srv_cpu_handle);
-
-        // Create a unordered access view for the texture
-        const D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{
-            .Format = DXGI_FORMAT_R32G32B32A32_FLOAT,
-            .ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D,
-            .Texture2D =
-                D3D12_TEX2D_UAV{
-                    .MipSlice = 0,
-                    .PlaneSlice = 0,
-                },
-        };
-        d3d_ctx.m_d3dDevice->CreateUnorderedAccessView(pTexture.Get(), nullptr, &uavDesc, uav_cpu_handle);
-    }
+    auto flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
+    gpuTexture.release_gpu_resource();
+    gpuTexture = GPU_texture{static_cast<UINT64>(width_), static_cast<UINT>(height_), 
+        flags, DXGI_FORMAT_UNKNOWN, D3D12_RESOURCE_STATE_COMMON, true};
 }
 
 void CPUFrameBuffer::upload_to_gpu(){
     D3DContext& d3d_ctx = D3DContext::Get();
 
-    if (pTexture == nullptr) {
+    auto pTexture = gpuTexture.get_gpu_resource();
+    if (!pTexture) {
         create_texture_resource();
+        pTexture = gpuTexture.get_gpu_resource();
     }
     
     HRESULT hr;
@@ -304,92 +169,53 @@ void CPUFrameBuffer::upload_to_gpu(){
     d3d_ctx.m_CommandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, nullptr);
 }
 
+const GPU_texture& CPUFrameBuffer::get_texture_resource() const { return gpuTexture; }
+
 void CPUFrameBuffer::transition_from_copy_to_srv() const {
+    const auto pTexture = gpuTexture.get_gpu_resource();
     if (!pTexture) return;
 
     D3DContext& d3d_ctx = D3DContext::Get();
-
-    const D3D12_RESOURCE_BARRIER barrier_to_psr = {
-        .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-        .Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE,
-        .Transition =
-            D3D12_RESOURCE_TRANSITION_BARRIER{
-                .pResource = pTexture.Get(),
-                .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                .StateBefore = D3D12_RESOURCE_STATE_COPY_DEST,
-                .StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-            },
-    };
+    const auto barrier_to_psr = CD3DX12_RESOURCE_BARRIER::Transition(
+        pTexture.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     d3d_ctx.m_CommandList->ResourceBarrier(1, &barrier_to_psr);
 }
 
 void CPUFrameBuffer::transition_from_srv_to_copy() const {
+    const auto pTexture = gpuTexture.get_gpu_resource();
     if (!pTexture) return;
 
     D3DContext& d3d_ctx = D3DContext::Get();
-
-    const D3D12_RESOURCE_BARRIER toCopyDest = {
-        .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-        .Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE,
-        .Transition =
-            D3D12_RESOURCE_TRANSITION_BARRIER{
-                .pResource = pTexture.Get(),
-                .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                .StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-                .StateAfter = D3D12_RESOURCE_STATE_COMMON,
-            },
-    };
+    const auto toCopyDest = CD3DX12_RESOURCE_BARRIER::Transition(
+        pTexture.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON);
     d3d_ctx.m_CommandList->ResourceBarrier(1, &toCopyDest);
 }
 
 void CPUFrameBuffer::transition_from_srv_to_uav() const {
+    const auto pTexture = gpuTexture.get_gpu_resource();
     if (!pTexture) return;
 
     D3DContext& d3d_ctx = D3DContext::Get();
-
-    const D3D12_RESOURCE_BARRIER toUAV = {
-        .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-        .Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE,
-        .Transition =
-            D3D12_RESOURCE_TRANSITION_BARRIER{
-                .pResource = pTexture.Get(),
-                .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                .StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-                .StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-            },
-    };
+    const auto toUAV = CD3DX12_RESOURCE_BARRIER::Transition(
+        pTexture.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     d3d_ctx.m_DXRCommandList->ResourceBarrier(1, &toUAV);
 }
 void CPUFrameBuffer::transition_from_uav_to_srv() const {
+    const auto pTexture = gpuTexture.get_gpu_resource();
     if (!pTexture) return;
 
     D3DContext& d3d_ctx = D3DContext::Get();
-
-    const D3D12_RESOURCE_BARRIER toSRV = {
-        .Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION,
-        .Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE,
-        .Transition =
-            D3D12_RESOURCE_TRANSITION_BARRIER{
-                .pResource = pTexture.Get(),
-                .Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                .StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-                .StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-            },
-    };
+    const auto toSRV = CD3DX12_RESOURCE_BARRIER::Transition(
+        pTexture.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     d3d_ctx.m_DXRCommandList->ResourceBarrier(1, &toSRV);
 }
 
-ComPtr<ID3D12Resource> CPUFrameBuffer::get_gpu_resource() const { return pTexture; }
+ComPtr<ID3D12Resource> CPUFrameBuffer::get_gpu_resource() const { return gpuTexture.get_gpu_resource(); }
 
 ComPtr<ID3D12Resource> CPUFrameBuffer::get_gpu_upload_resource() const { return uploadBuffer; }
 
 void CPUFrameBuffer::release_gpu_resource() {
-    if (pTexture) {
-        D3DContext& d3d_ctx = D3DContext::Get();
-        d3d_ctx.m_SrvDescHeapAlloc.Free(srv_cpu_handle, srv_gpu_handle);
-        d3d_ctx.m_SrvDescHeapAlloc.Free(uav_cpu_handle, uav_gpu_handle);
-        pTexture.Reset();
-    }
+    gpuTexture.release_gpu_resource();
     if (uploadBuffer) {
         if (mapped) {
             D3D12_RANGE range = {0, uploadSize};
@@ -401,6 +227,7 @@ void CPUFrameBuffer::release_gpu_resource() {
 }
 
 std::vector<hdr_pixel> CPUFrameBuffer::download_from_gpu() const { 
+    const auto pTexture = gpuTexture.get_gpu_resource();
     std::vector<hdr_pixel> readback_data;
     if (!pTexture) return readback_data;
 

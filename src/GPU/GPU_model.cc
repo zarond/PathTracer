@@ -884,14 +884,14 @@ D3D12_GPU_VIRTUAL_ADDRESS GPU_model::GetGPUVirtualAddress() const { return tlasB
 // GPU_texture
 
 GPU_texture::GPU_texture(UINT64 width, UINT height, TEXTURE_TRAITS texture_options, DXGI_FORMAT format,
-    D3D12_RESOURCE_STATES initial_state_override)
+    D3D12_RESOURCE_STATES initial_state, bool use_initial_state)
     : texture_options(texture_options) {
     assert((texture_options & TEXTURE_TRAITS::Cubemap) == TEXTURE_TRAITS::None || width == height);
     if (format == DXGI_FORMAT_UNKNOWN) {
         format = choose_format();
     }
     format_ = format;
-    create_texture_resource(width, height, format, initial_state_override);
+    create_texture_resource(width, height, format, initial_state, use_initial_state);
 }
 
 GPU_texture::GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture, bool allocate_mips, bool is_normal_map) {
@@ -923,7 +923,7 @@ DXGI_FORMAT GPU_texture::choose_format() const {
 GPU_texture::~GPU_texture() { release_gpu_resource(); }
 
 void GPU_texture::create_texture_resource(
-    UINT64 width, UINT height, DXGI_FORMAT format, D3D12_RESOURCE_STATES initial_state_override) {
+    UINT64 width, UINT height, DXGI_FORMAT format, D3D12_RESOURCE_STATES initial_state_override, bool use_initial_state_override) {
     D3DContext& d3d_ctx = D3DContext::Get();
     bool isRenderTarget = ::isRenderTarget(texture_options);
     bool mips = AllocateMips(texture_options);
@@ -957,7 +957,6 @@ void GPU_texture::create_texture_resource(
         };
 
         D3D12_RESOURCE_STATES initial_state = D3D12_RESOURCE_STATE_COMMON;
-        bool need_initial_state_override = (initial_state_override != D3D12_RESOURCE_STATE_COMMON);
 
         if (!isDepth || isDepthWithSRV) {
             d3d_ctx.m_SrvDescHeapAlloc.Alloc(&srv_handle);
@@ -974,7 +973,7 @@ void GPU_texture::create_texture_resource(
             d3d_ctx.m_SrvDescHeapAlloc.Alloc(&uav_handle);
             initial_state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         }
-        if (need_initial_state_override) {
+        if (use_initial_state_override) {
             initial_state = initial_state_override;
         }
 

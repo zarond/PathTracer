@@ -48,6 +48,7 @@ set(SHADER_SOURCES
 set(APP_SOURCES
     src/main.cc
     src/model_loader.cc
+    src/cpu_texture.cc
     src/cpu_framebuffer.cc
     src/arguments.cc
     src/compute_tangents.cc
@@ -201,9 +202,12 @@ if(ASAN)
         target_link_options(${PROJECT_NAME} PRIVATE -fsanitize=address)
         target_compile_options(fastgltf PRIVATE -fsanitize=address -fno-omit-frame-pointer)
         target_link_options(fastgltf PRIVATE -fsanitize=address)
+        target_compile_options(quickhull PRIVATE -fsanitize=address -fno-omit-frame-pointer)
+        target_link_options(quickhull PRIVATE -fsanitize=address)
     elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
         target_compile_options(${PROJECT_NAME} PRIVATE /fsanitize=address)
         target_compile_options(fastgltf PRIVATE /fsanitize=address)
+        target_compile_options(quickhull PRIVATE /fsanitize=address)
     endif()
 endif()
 

@@ -8,7 +8,7 @@
 #include <variant>
 #include <vector>
 
-#include "cpu_framebuffer.h"
+#include "cpu_texture.h"
 
 namespace app {
 

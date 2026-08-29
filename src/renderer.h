@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "acceleration_structure.h"
+#include "cpu_texture.h"
 #include "cpu_framebuffer.h"
 #include "model_loader.h"
 #include "ray_program.h"

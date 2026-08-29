@@ -18,11 +18,12 @@ namespace app {
 using namespace glm;
 
 Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture, const RenderSettings& settings)
-    : model_(std::move(model)), environment_texture_(std::move(environmentTexture)) {
+    : model_(std::move(model)),
+      environment_texture_(std::move(environmentTexture)),
+      framebuffer_(window_dimensions_.x, window_dimensions_.y) {
     if (model_.cameras.size() > 0) {
         active_camera_index_ = 0;
     }
-    framebuffer_ = CPUFrameBuffer(window_dimensions_.x, window_dimensions_.y);
 
     renderers_.resize((int)RendererMode::Count);
     renderers_[(int)RendererMode::CPURenderer] = std::make_shared<Renderer>();
@@ -73,10 +74,7 @@ RendererMode Viewer::get_renderer_mode() const { return active_renderer_mode_; }
 
 void Viewer::resize_window(const ivec2& newDimensions, bool createGPUTex) {
     window_dimensions_ = newDimensions;
-#ifdef WINDOWS_SPECIFIC
-    framebuffer_.release_gpu_resource();
-#endif
-    framebuffer_ = CPUFrameBuffer(window_dimensions_.x, window_dimensions_.y);
+    framebuffer_.resize(window_dimensions_.x, window_dimensions_.y);
 #ifdef WINDOWS_SPECIFIC
     if (createGPUTex) {
         framebuffer_.create_texture_resource();
