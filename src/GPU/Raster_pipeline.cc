@@ -562,13 +562,13 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
 void Raster_pipeline::copy_render_target_to_framebuffer(const CPUFrameBuffer& framebuffer) {
     static Copy_helper copy_helper{};
     const auto& gpu_texture = framebuffer.get_texture_resource();
-    copy_helper.Copy(gpu_texture.GetUAVHandle(), m_renderTarget.GetSRVHandle(), currentWidth, currentHeight);
+    copy_helper.Copy(gpu_texture, m_renderTarget);
 }
 
 void Raster_pipeline::copy_ssr_to_framebuffer(const CPUFrameBuffer& framebuffer) {
     static Copy_helper copy_helper{};
     const auto& gpu_texture = framebuffer.get_texture_resource();
-    copy_helper.Copy(gpu_texture.GetUAVHandle(), m_SSR.GetSRVHandle(), currentWidth, currentHeight);
+    copy_helper.Copy(gpu_texture, m_SSR);
 }
 
 void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
