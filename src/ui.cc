@@ -326,6 +326,10 @@ void RenderedImageUI(Viewer& viewer, const bool hardware_ray_tracing_support) {
         framebuffer.upload_to_gpu();
         framebuffer.transition_from_copy_to_srv();
     }
+    auto tonemapping_enabled = viewer.get_tonemap_settings().enabled;
+    if (tonemapping_enabled) {
+        viewer.apply_tonemapping();
+    }
 
     ImGui::Begin("Rendering Image", nullptr, flags);
     const float scroll_speed = 0.05f;
@@ -345,7 +349,8 @@ void RenderedImageUI(Viewer& viewer, const bool hardware_ray_tracing_support) {
             offset = {-WorkSize.x * 0.5f, -WorkSize.y * 0.5f};
         }
     }
-    const auto& gpu_texture = framebuffer.get_texture_resource();
+    const auto& gpu_texture = tonemapping_enabled ? 
+        framebuffer.get_tonemapped_texture_resource() : framebuffer.get_texture_resource();
     const auto texture_srv_gpu_handle = gpu_texture.GetSRVHandle();
     ImGui::SetCursorPos(ImVec2(scale * offset.x + WorkSize.x * 0.5f, scale * offset.y + WorkSize.y * 0.5f));
     // todo: hardware_ray_tracing_support check is a temporary fix for problem with integrated GPU and ImGui
@@ -608,6 +613,7 @@ static void GeneralRenderSettingsUI(Viewer& viewer, ConsoleArgs& console_argumen
         if (size_changed) {
             auto& framebuffer = viewer.get_framebuffer();
             deferredDeletes.emplace_back(framebuffer.get_gpu_resource());
+            deferredDeletes.emplace_back(framebuffer.get_tonemapped_texture_resource().get_gpu_resource());
             deferredDeletes.emplace_back(framebuffer.get_gpu_upload_resource());
             viewer.resize_window(ivec2(console_arguments.windowWidth, console_arguments.windowHeight), true);
             viewer.snap_to_camera(false);
@@ -819,6 +825,7 @@ void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector
     CommonRenderSettingsUI(viewer, console_arguments);
     RaytracingRenderSettingsUI(viewer, console_arguments);
     RasterRenderSettingsUI(viewer);
+    TonemappingUI(viewer);
     
     ImGui::End();
     // Show materials settings window
@@ -832,6 +839,26 @@ void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector
         ImGui::Begin("Animation Options", &show_animations, ImGuiWindowFlags_AlwaysAutoResize);
         AnimationsUI(viewer);
         ImGui::End();
+    }
+}
+
+void TonemappingUI(Viewer& viewer) {
+    ImGui::Separator();
+    if (ImGui::TreeNode("Tonemapping")) {
+        auto settings = viewer.get_tonemap_settings();
+
+        bool settings_changed = false;
+        settings_changed |= ImGui::Checkbox("Use tonemapping", &settings.enabled);
+        if (settings.enabled) {
+            settings_changed |= imgui_combo("Tonemapping type:", 
+                std::array{"Clamp", "Reinhard", "Hable", "ACES Narkowicz", "ACES Filmic", "Khronos PBR Neutral"}, 
+                settings.type);
+            settings_changed |= ImGui::SliderFloat("Exposure.", &settings.exposure, 0.0f, 5.0f, "%.3f");
+        }
+        if (settings_changed) {
+            viewer.set_tonemap_settings(settings);
+        }
+        ImGui::TreePop();
     }
 }
 

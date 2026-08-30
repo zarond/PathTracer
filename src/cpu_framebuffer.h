@@ -46,13 +46,14 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
     using CPUTexture::sample_nearest;
     using CPUTexture::width;
 
-    void save_to_file(const std::filesystem::path& filePath, bool from_GPU_texture) const;
+    void save_to_file(const std::filesystem::path& filePath, bool from_GPU_texture, bool tonemapping_enabled = false) const;
 
 #ifdef WINDOWS_SPECIFIC
     void create_texture_resource();
     void upload_to_gpu();
     void release_gpu_resource();
     const GPU_texture& get_texture_resource() const;
+    const GPU_texture& get_tonemapped_texture_resource() const;
     void transition_from_copy_to_srv() const;
     void transition_from_srv_to_copy() const;
     void transition_from_srv_to_uav() const;
@@ -64,12 +65,13 @@ class CPUFrameBuffer : private CPUTexture<hdr_pixel> {
 
   private:
     GPU_texture gpuTexture;
+    GPU_texture gpuTextureTonemapped;
     ComPtr<ID3D12Resource> uploadBuffer;
     UINT uploadPitch = 0;
     UINT uploadSize = 0;
     void* mapped = nullptr;
 
-    std::vector<hdr_pixel> download_from_gpu() const;
+    std::vector<hdr_pixel> download_from_gpu(bool tonemapping_enabled = false) const;
 #endif
 };
 

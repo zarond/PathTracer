@@ -262,7 +262,7 @@ int main(int argc, char* argv[]) {
         d3d_ctx.m_frameIndex++;
 
         // Safe delete no longer used resources
-        if (deferredDeletes.size() > 0) {
+        while (deferredDeletes.size() > 0) {
             d3d_ctx.WaitForPendingOperations();
             d3d_ctx.WaitForPendingCopy();
             auto& pendingDelete = deferredDeletes.front();

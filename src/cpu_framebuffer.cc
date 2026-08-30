@@ -48,13 +48,13 @@ hdr_pixel& CPUFrameBuffer::at(int x, int y) { return data_[y * width_ + x]; }
 
 const hdr_pixel& CPUFrameBuffer::at(int x, int y) const { return data_[y * width_ + x]; }
 
-void CPUFrameBuffer::save_to_file(const std::filesystem::path& filePath, bool from_GPU_texture) const {
+void CPUFrameBuffer::save_to_file(const std::filesystem::path& filePath, bool from_GPU_texture, bool tonemapping_enabled) const {
     std::vector<hdr_pixel> gpu_data;
     std::span<const hdr_pixel> data_source;
 
 #ifdef WINDOWS_SPECIFIC
-    if (from_GPU_texture) {
-        gpu_data = download_from_gpu();
+    if (from_GPU_texture || tonemapping_enabled) {
+        gpu_data = download_from_gpu(tonemapping_enabled);
         if (gpu_data.empty()) {
             std::cout << "Failed to download data from GPU for saving.\n";
             return;
@@ -96,6 +96,9 @@ void CPUFrameBuffer::create_texture_resource() {
     gpuTexture.release_gpu_resource();
     gpuTexture = GPU_texture{static_cast<UINT64>(width_), static_cast<UINT>(height_), 
         flags, DXGI_FORMAT_UNKNOWN, D3D12_RESOURCE_STATE_COMMON, true};
+    gpuTextureTonemapped.release_gpu_resource();
+    gpuTextureTonemapped = GPU_texture{static_cast<UINT64>(width_), static_cast<UINT>(height_), 
+        flags, DXGI_FORMAT_UNKNOWN, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, true};
 }
 
 void CPUFrameBuffer::upload_to_gpu(){
@@ -170,6 +173,7 @@ void CPUFrameBuffer::upload_to_gpu(){
 }
 
 const GPU_texture& CPUFrameBuffer::get_texture_resource() const { return gpuTexture; }
+const GPU_texture& CPUFrameBuffer::get_tonemapped_texture_resource() const { return gpuTextureTonemapped; }
 
 void CPUFrameBuffer::transition_from_copy_to_srv() const {
     const auto pTexture = gpuTexture.get_gpu_resource();
@@ -226,8 +230,8 @@ void CPUFrameBuffer::release_gpu_resource() {
     }
 }
 
-std::vector<hdr_pixel> CPUFrameBuffer::download_from_gpu() const { 
-    const auto pTexture = gpuTexture.get_gpu_resource();
+std::vector<hdr_pixel> CPUFrameBuffer::download_from_gpu(bool tonemapping_enabled) const { 
+    const auto pTexture = tonemapping_enabled ? gpuTextureTonemapped.get_gpu_resource() : gpuTexture.get_gpu_resource();
     std::vector<hdr_pixel> readback_data;
     if (!pTexture) return readback_data;
 
