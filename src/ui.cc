@@ -863,10 +863,12 @@ void TonemappingUI(Viewer& viewer) {
             TonemapSettings::TypeNames,
             settings.type);
         settings_changed |= ImGui::SliderFloat("Exposure", &settings.exposure, 0.0f, 5.0f, "%.3f");
+        if (settings.exposure < 0) { settings.exposure = 0;}
         if (settings.has_white_point_controls()) {
             settings_changed |= ImGui::Checkbox("Use White Point", &settings.useWhitePoint);
             if (settings.useWhitePoint) {
-                settings_changed |= ImGui::SliderFloat("White Point", &settings.whitePoint, 0.0f, 30.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
+                settings_changed |= ImGui::SliderFloat("White Point", &settings.whitePoint, 0.01f, 30.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
+                if (settings.whitePoint < 0.01f) { settings.whitePoint = 0.01f; }
             }
         }
     }
