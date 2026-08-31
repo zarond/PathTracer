@@ -628,7 +628,6 @@ static void RaytracingRenderSettingsUI(Viewer& viewer, ConsoleArgs& console_argu
     if (viewer.is_using_gpu_renderer() && pipeline_mode == RenderPipelineMode::RasterPipeline) {
         return;
     }
-    ImGui::Separator();
     if (!viewer.is_using_gpu_renderer() && viewer.get_rendering_state() != RenderingState::Idle) {
         ImGui::Text("Stop rendering process to access CPU rendering options");
         return;
@@ -654,10 +653,8 @@ static void RaytracingRenderSettingsUI(Viewer& viewer, ConsoleArgs& console_argu
 }
 
 static void CommonRenderSettingsUI(Viewer& viewer, ConsoleArgs& console_arguments) {
-    ImGui::Separator();
-
     if (!viewer.is_using_gpu_renderer() && viewer.get_rendering_state() != RenderingState::Idle) {
-        ImGui::Text("Stop rendering process to access CPU rendering options");
+        ImGui::Text("Stop rendering process to access environment rotation option");
         return;
     }
 
@@ -680,6 +677,7 @@ static void ReloadShadersUI(Viewer& viewer) {
         ImGui::Text("Stop rendering process to reload shaders");
         return;
     }
+    ImGui::Separator();
     if (ImGui::Button("Reload shaders")) {
         ReloadShaders();
     }
@@ -690,7 +688,6 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
     if (!viewer.is_using_gpu_renderer() || pipeline_mode != RenderPipelineMode::RasterPipeline) {
         return;
     }
-    ImGui::Separator();
     ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.5f);
     auto render_settings = viewer.get_render_settings();
     bool raster_settings_changed = false;
@@ -739,7 +736,6 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
     if (raster_settings_changed) {
         viewer.set_render_settings(render_settings);
     }
-    ImGui::Separator();
 }
 
 static void AnimationsUI(Viewer& viewer) {
@@ -820,12 +816,27 @@ void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector
         ImGui::TreePop();
     }
     ImGui::Separator();
-    GeneralRenderSettingsUI(viewer, console_arguments, deferredDeletes, hardware_ray_tracing_support);
-    ReloadShadersUI(viewer);
-    CommonRenderSettingsUI(viewer, console_arguments);
-    RaytracingRenderSettingsUI(viewer, console_arguments);
-    RasterRenderSettingsUI(viewer);
-    TonemappingUI(viewer);
+    if (ImGui::TreeNodeEx("General settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+        GeneralRenderSettingsUI(viewer, console_arguments, deferredDeletes, hardware_ray_tracing_support);
+        ReloadShadersUI(viewer);
+        ImGui::TreePop();
+    }
+    ImGui::Separator();
+    if (ImGui::TreeNodeEx("Envmap rotation", ImGuiTreeNodeFlags_DefaultOpen)) {
+        CommonRenderSettingsUI(viewer, console_arguments);
+        ImGui::TreePop();
+    }
+    ImGui::Separator();
+    if (ImGui::TreeNodeEx("Render settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+        RaytracingRenderSettingsUI(viewer, console_arguments);
+        RasterRenderSettingsUI(viewer);
+        ImGui::TreePop();
+    }
+    ImGui::Separator();
+    if (ImGui::TreeNode("Tonemapping")) {
+        TonemappingUI(viewer);
+        ImGui::TreePop();
+    }
     
     ImGui::End();
     // Show materials settings window
@@ -843,28 +854,24 @@ void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector
 }
 
 void TonemappingUI(Viewer& viewer) {
-    ImGui::Separator();
-    if (ImGui::TreeNode("Tonemapping")) {
-        auto settings = viewer.get_tonemap_settings();
+    auto settings = viewer.get_tonemap_settings();
 
-        bool settings_changed = false;
-        settings_changed |= ImGui::Checkbox("Use tonemapping", &settings.enabled);
-        if (settings.enabled) {
-            settings_changed |= imgui_combo("Tonemapping type:", 
-                TonemapSettings::TypeNames,
-                settings.type);
-            settings_changed |= ImGui::SliderFloat("Exposure", &settings.exposure, 0.0f, 5.0f, "%.3f");
-            if (settings.has_white_point_controls()) {
-                settings_changed |= ImGui::Checkbox("Use White Point", &settings.useWhitePoint);
-                if (settings.useWhitePoint) {
-                    settings_changed |= ImGui::SliderFloat("White Point", &settings.whitePoint, 0.0f, 30.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
-                }
+    bool settings_changed = false;
+    settings_changed |= ImGui::Checkbox("Use tonemapping", &settings.enabled);
+    if (settings.enabled) {
+        settings_changed |= imgui_combo("Tonemapping type:", 
+            TonemapSettings::TypeNames,
+            settings.type);
+        settings_changed |= ImGui::SliderFloat("Exposure", &settings.exposure, 0.0f, 5.0f, "%.3f");
+        if (settings.has_white_point_controls()) {
+            settings_changed |= ImGui::Checkbox("Use White Point", &settings.useWhitePoint);
+            if (settings.useWhitePoint) {
+                settings_changed |= ImGui::SliderFloat("White Point", &settings.whitePoint, 0.0f, 30.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
             }
         }
-        if (settings_changed) {
-            viewer.set_tonemap_settings(settings);
-        }
-        ImGui::TreePop();
+    }
+    if (settings_changed) {
+        viewer.set_tonemap_settings(settings);
     }
 }
 
