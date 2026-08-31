@@ -2,14 +2,16 @@ struct TonemappingCSInput {
     uint2 FrameSize;
     int TonemapType;
     float multiplier;
+    float white_point_constant_inverse;
 };
 
 static const int Clamp =                0;
 static const int Reinhard =             1;
-static const int Hable =                2;
-static const int ACES_Narkowicz =       3;
-static const int ACES_Filmic =          4;
-static const int Khronos_PBR_Neutral =  5;
+static const int Hable_original =       2;
+static const int Hable_alternative =    3;
+static const int ACES_Narkowicz =       4;
+static const int ACES_Filmic =          5;
+static const int Khronos_PBR_Neutral =  6;
 
 Texture2D<float4> SrcTexture : register(t0);
 RWTexture2D<float4> DstTexture : register(u0);
@@ -20,12 +22,12 @@ float3 reinhard(float3 x) {
     return x / (1.0 + x);
 }
 
-float hable_1d(float x) {
-    const float A = 0.15f;
-    const float B = 0.5f;
+float3 hable_original(float3 x) {
+    const float A = 0.22f;
+    const float B = 0.3f;
     const float C = 0.1f;
     const float D = 0.2f;
-    const float E = 0.02f;
+    const float E = 0.01f;
     const float F = 0.3f;
 
     return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
@@ -41,10 +43,10 @@ float3 hable(float3 x) {
     return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
 }
 float3 hable_tonemap(float3 x) {
-    static const float hW = 11.2;
-    //static const float whiteScale = 1.0f / hable_1d(hW);
-    static const float whiteScale = 1.0f / 0.72513f;
-    return hable(x) * whiteScale;
+    return saturate(hable(x) * g_CB.white_point_constant_inverse);
+}
+float3 hable_original_tonemap(float3 x) {
+    return saturate(hable_original(x) * g_CB.white_point_constant_inverse);
 }
 
 float3 tonemap_aces_narkowicz(float3 x) {
@@ -112,19 +114,22 @@ void CS_Tonemapping(uint3 DTid : SV_DispatchThreadID)
     color.rgb *= tonemap_const;
     
     switch (tonemapping_type) {
-        case 1:
+        case Reinhard:
             color.rgb = reinhard(color.rgb);
             break;
-        case 2:
+        case Hable_original:
+            color.rgb = hable_original_tonemap(color.rgb);
+            break;
+        case Hable_alternative:
             color.rgb = hable_tonemap(color.rgb);
             break;
-        case 3:
+        case ACES_Narkowicz:
             color.rgb = tonemap_aces_narkowicz(color.rgb);
             break;
-        case 4:
+        case ACES_Filmic:
             color.rgb = tonemap_aces(color.rgb);
             break;
-        case 5:
+        case Khronos_PBR_Neutral:
             color.rgb = tonemap_pbr_neutral(color.rgb);
             break;
         default:

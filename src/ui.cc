@@ -851,9 +851,15 @@ void TonemappingUI(Viewer& viewer) {
         settings_changed |= ImGui::Checkbox("Use tonemapping", &settings.enabled);
         if (settings.enabled) {
             settings_changed |= imgui_combo("Tonemapping type:", 
-                std::array{"Clamp", "Reinhard", "Hable", "ACES Narkowicz", "ACES Filmic", "Khronos PBR Neutral"}, 
+                TonemapSettings::TypeNames,
                 settings.type);
-            settings_changed |= ImGui::SliderFloat("Exposure.", &settings.exposure, 0.0f, 5.0f, "%.3f");
+            settings_changed |= ImGui::SliderFloat("Exposure", &settings.exposure, 0.0f, 5.0f, "%.3f");
+            if (settings.has_white_point_controls()) {
+                settings_changed |= ImGui::Checkbox("Use White Point", &settings.useWhitePoint);
+                if (settings.useWhitePoint) {
+                    settings_changed |= ImGui::SliderFloat("White Point", &settings.whitePoint, 0.0f, 30.0f, "%.1f");
+                }
+            }
         }
         if (settings_changed) {
             viewer.set_tonemap_settings(settings);

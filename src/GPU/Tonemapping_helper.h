@@ -4,6 +4,7 @@
 #include <directx/d3d12.h>
 #include <directx/d3dx12.h>
 #include <wrl.h>
+#include <array>
 
 #include "GPU_model.h"
 
@@ -14,7 +15,8 @@ struct TonemapSettings {
     enum TonemappingType : int {
         Clamp = 0,
         Reinhard,
-        Hable,
+        Hable_original,
+        Hable_alternative,
         ACES_Narkowicz,
         ACES_Filmic,
         Khronos_PBR_Neutral,
@@ -22,9 +24,23 @@ struct TonemapSettings {
         Count,
     };
 
+    inline static constexpr std::array<const char* const, static_cast<size_t>(TonemappingType::Count)> TypeNames = {
+        "Clamp", 
+        "Reinhard", 
+        "Hable original", 
+        "Hable alternative", 
+        "ACES Narkowicz", 
+        "ACES Filmic", 
+        "Khronos PBR Neutral"
+    };
+
+    bool has_white_point_controls();
+
     bool enabled = false;
     TonemappingType type = TonemappingType::Clamp;
     float exposure = 1.0f;
+    float whitePoint = 11.2f;
+    bool useWhitePoint = false;
 };
 
 class Tonemapping_helper {

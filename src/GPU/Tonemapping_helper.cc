@@ -14,14 +14,61 @@ enum Value : int {
 };
 }
 
+namespace {
+using namespace app;
+
+float hable_original(float x) {
+    const float A = 0.22f;
+    const float B = 0.3f;
+    const float C = 0.1f;
+    const float D = 0.2f;
+    const float E = 0.01f;
+    const float F = 0.3f;
+
+    return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
+}
+float hable(float x) {
+    const float A = 0.15f;
+    const float B = 0.5f;
+    const float C = 0.1f;
+    const float D = 0.2f;
+    const float E = 0.02f;
+    const float F = 0.3f;
+
+    return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
+}
+
+float calculateWhitePoint(float wP, TonemapSettings::TonemappingType type) { 
+    float WPConstant = 1.0f;
+    switch (type) {
+        case TonemapSettings::TonemappingType::Hable_original: 
+            WPConstant = hable_original(wP);
+            break;
+        case TonemapSettings::TonemappingType::Hable_alternative:
+            WPConstant = hable(wP);
+            break;
+        default:
+            break;
+    }
+    return WPConstant;
+}
+
+};
+
 namespace app {
 
 using namespace glm;
+
+bool TonemapSettings::has_white_point_controls() {
+    return (type == TonemapSettings::TonemappingType::Hable_original 
+        || type == TonemapSettings::TonemappingType::Hable_alternative);
+}
 
 struct TonemappingCSInput {
     uvec2 FrameSize;
     int TonemapType;
     float multiplier;
+    float white_point_constant_inverse;
 };
 
 ComPtr<ID3D12RootSignature> Tonemapping_helper::m_rootSignature{};
@@ -51,7 +98,8 @@ void Tonemapping_helper::Apply(
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::SrcTexture, src_srv_texture.GetSRVHandle());
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::DstTexture, dst_uav_texture.GetUAVHandle());
 
-    TonemappingCSInput input{{width, height}, settings.type, settings.exposure};
+    float whitePoint = settings.useWhitePoint ? calculateWhitePoint(settings.whitePoint, settings.type) : 1.0f;
+    TonemappingCSInput input{{width, height}, settings.type, settings.exposure, 1.0f / whitePoint};
     constexpr int inputSizeInInt = sizeof(TonemappingCSInput) / 4;
     commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
 
