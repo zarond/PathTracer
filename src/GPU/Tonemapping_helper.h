@@ -20,6 +20,7 @@ struct TonemapSettings {
         ACES_Narkowicz,
         ACES_Filmic,
         Khronos_PBR_Neutral,
+        Gran_Turismo_Sport,
 
         Count,
     };
@@ -31,7 +32,8 @@ struct TonemapSettings {
         "Hable alternative", 
         "ACES Narkowicz", 
         "ACES Filmic", 
-        "Khronos PBR Neutral"
+        "Khronos PBR Neutral", 
+        "Gran Turismo Sport",
     };
 
     bool has_white_point_controls();

@@ -12,6 +12,7 @@ static const int Hable_alternative =    3;
 static const int ACES_Narkowicz =       4;
 static const int ACES_Filmic =          5;
 static const int Khronos_PBR_Neutral =  6;
+static const int Gran_Turismo_Sport =   7;
 
 Texture2D<float4> SrcTexture : register(t0);
 RWTexture2D<float4> DstTexture : register(u0);
@@ -103,6 +104,31 @@ float3 tonemap_pbr_neutral(float3 color) {
     return lerp(color, newPeak * float3(1, 1, 1), g);
 }
 
+// Practical HDR and Wide Color Techniques in Gran Turismo SPORT from SIGGRAPH ASIA 2018
+// [ https://www.desmos.com/calculator/gslcdxvipg]
+float3 gran_turismo_sport(float3 x) {
+	static const float P = 1;      // Maximum brightness
+	static const float a = 1;      // Contrast
+	static const float m = 0.22;   // Linear section start
+	static const float l = 0.4;    // Linear section length
+	static const float c = 1.33;   // Black tightness
+	static const float b = 0;
+	static const float l0 = (P - m)*l / a;
+	//static const float L0 = m - m / a;
+	//static const float L1 = m + (1 - m) / a;
+	float3 L_x = m + a * (x - m);
+	float3 T_x = m * pow(x / m, c) + b;
+	static const float S0 = m + l0;
+	static const float S1 = m + a * l0;
+	static const float C2 = a * P / (P - S1);
+	float3 S_x = P - (P - S1) * exp(-(C2*(x-S0)/P));
+	float3 w0_x = 1.0 - smoothstep(0.0, m, x);
+	float3 w2_x = step(m + l0, x);
+	float3 w1_x = 1.0 - w0_x - w2_x;
+	float3 f_x = T_x * w0_x + L_x * w1_x + S_x * w2_x;
+	return f_x;
+}
+
 [numthreads(16, 16, 1)]
 void CS_Tonemapping(uint3 DTid : SV_DispatchThreadID)
 {
@@ -131,6 +157,9 @@ void CS_Tonemapping(uint3 DTid : SV_DispatchThreadID)
             break;
         case Khronos_PBR_Neutral:
             color.rgb = tonemap_pbr_neutral(color.rgb);
+            break;
+        case Gran_Turismo_Sport:
+            color.rgb = gran_turismo_sport(color.rgb);
             break;
         default:
             color.rgb = saturate(color.rgb);
