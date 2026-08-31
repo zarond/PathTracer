@@ -19,7 +19,7 @@ RWTexture2D<float4> DstTexture : register(u0);
 ConstantBuffer<TonemappingCSInput> g_CB : register(b0);
 
 float3 reinhard(float3 x) {
-    return x / (1.0 + x);
+    return x * (1.0 + x * g_CB.white_point_constant_inverse) / (1.0 + x);
 }
 
 float3 hable_original(float3 x) {

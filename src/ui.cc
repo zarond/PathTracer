@@ -857,7 +857,7 @@ void TonemappingUI(Viewer& viewer) {
             if (settings.has_white_point_controls()) {
                 settings_changed |= ImGui::Checkbox("Use White Point", &settings.useWhitePoint);
                 if (settings.useWhitePoint) {
-                    settings_changed |= ImGui::SliderFloat("White Point", &settings.whitePoint, 0.0f, 30.0f, "%.1f");
+                    settings_changed |= ImGui::SliderFloat("White Point", &settings.whitePoint, 0.0f, 30.0f, "%.1f", ImGuiSliderFlags_Logarithmic);
                 }
             }
         }
