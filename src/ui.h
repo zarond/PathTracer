@@ -111,4 +111,6 @@ void RenderedImageUI(Viewer& viewer, const bool hardware_ray_tracing_support);
 void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector<PendingDelete>& deferredDeletes,
     const bool hardware_ray_tracing_support);
 
+void TonemappingUI(Viewer& viewer);
+
 }  // namespace app

@@ -6,7 +6,7 @@
 #include <random>
 #include <vector>
 
-#include "cpu_framebuffer.h"
+#include "cpu_texture.h"
 #include "model_loader.h"
 #include "render_settings.h"
 

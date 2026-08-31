@@ -15,8 +15,7 @@ class Copy_helper {
     Copy_helper();
     ~Copy_helper();
 
-    void Copy(GPU_texture& dst_texture, GPU_texture& src_texture);
-    void Copy(D3D12_GPU_DESCRIPTOR_HANDLE dst_uav_handle, D3D12_GPU_DESCRIPTOR_HANDLE src_srv_handle, int width, int height);
+    void Copy(const GPU_texture& dst_texture, const GPU_texture& src_texture);
 
     static void Reload();
 

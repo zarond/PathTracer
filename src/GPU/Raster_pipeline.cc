@@ -561,12 +561,14 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
 
 void Raster_pipeline::copy_render_target_to_framebuffer(const CPUFrameBuffer& framebuffer) {
     static Copy_helper copy_helper{};
-    copy_helper.Copy(framebuffer.uav_gpu_handle, m_renderTarget.GetSRVHandle(), currentWidth, currentHeight);
+    const auto& gpu_texture = framebuffer.get_texture_resource();
+    copy_helper.Copy(gpu_texture, m_renderTarget);
 }
 
 void Raster_pipeline::copy_ssr_to_framebuffer(const CPUFrameBuffer& framebuffer) {
     static Copy_helper copy_helper{};
-    copy_helper.Copy(framebuffer.uav_gpu_handle, m_SSR.GetSRVHandle(), currentWidth, currentHeight);
+    const auto& gpu_texture = framebuffer.get_texture_resource();
+    copy_helper.Copy(gpu_texture, m_SSR);
 }
 
 void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
@@ -594,7 +596,7 @@ void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
 
     m_renderTarget_blurred.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;
-    m_renderTarget_blurred = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R16G16B16A16_FLOAT, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE};
+    m_renderTarget_blurred = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R16G16B16A16_FLOAT, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, true};
 
     m_frame_opaque_only.release_gpu_resource();
     flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;

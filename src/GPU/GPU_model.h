@@ -7,7 +7,7 @@
 #include <glm/fwd.hpp>
 #include <vector>
 
-#include "../cpu_framebuffer.h"
+#include "../cpu_texture.h"
 #include "../model_loader.h"
 #include "../d3d_context.h"
 
@@ -100,7 +100,7 @@ class GPU_texture {
   public:
     GPU_texture() = default;
     explicit GPU_texture(UINT64 width, UINT height, TEXTURE_TRAITS texture_options, DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN,
-        D3D12_RESOURCE_STATES initial_state_override = D3D12_RESOURCE_STATE_COMMON);
+        D3D12_RESOURCE_STATES initial_state = D3D12_RESOURCE_STATE_COMMON, bool use_initial_state = false);
     explicit GPU_texture(const CPUTexture<hdr_pixel>& cpu_texture, bool allocate_mips = false, bool is_normal_map = false);
     explicit GPU_texture(
         const CPUTexture<sdr_pixel>& cpu_texture, bool srgb_ = false, bool allocate_mips = false, bool is_normal_map = false);
@@ -139,7 +139,7 @@ class GPU_texture {
 
   private:
     void create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT format,
-        D3D12_RESOURCE_STATES initial_state_override = D3D12_RESOURCE_STATE_COMMON);
+        D3D12_RESOURCE_STATES initial_state_override = D3D12_RESOURCE_STATE_COMMON, bool use_initial_state_override = false);
     void upload_texture_to_gpu(int width_, int height_, const auto& data_, size_t sizeofpixel, DXGI_FORMAT format);
 
     DXGI_FORMAT choose_format() const;

@@ -39,17 +39,11 @@ void Copy_helper::Reload() {
 
 Copy_helper::~Copy_helper() { release_gpu_resources(); }
 
-void Copy_helper::Copy(GPU_texture& dst_texture, GPU_texture& src_texture) {
+void Copy_helper::Copy(const GPU_texture& dst_texture,  const GPU_texture& src_texture) {
     const auto& resource = dst_texture.get_gpu_resource();
     const auto description = resource->GetDesc();
     const auto width = description.Width;
     const auto height = description.Height;
-
-    Copy(dst_texture.GetUAVHandle(), src_texture.GetSRVHandle(), width, height);
-}
-
-void Copy_helper::Copy(
-    D3D12_GPU_DESCRIPTOR_HANDLE dst_uav_handle, D3D12_GPU_DESCRIPTOR_HANDLE src_srv_handle, int width, int height) {
 
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
@@ -57,8 +51,8 @@ void Copy_helper::Copy(
     commandList->SetComputeRootSignature(m_rootSignature.Get());
     commandList->SetPipelineState(m_PipelineState.Get());
 
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::SrcTexture, src_srv_handle);
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::DstTexture, dst_uav_handle);
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::SrcTexture, src_texture.GetSRVHandle());
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::DstTexture, dst_texture.GetUAVHandle());
 
     CopyCSInput input{{width, height}};
     constexpr int inputSizeInInt = sizeof(CopyCSInput) / 4;

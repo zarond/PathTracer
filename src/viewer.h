@@ -20,6 +20,7 @@
 
 #ifdef WINDOWS_SPECIFIC
 #include "GPU/GPU_renderer.h"
+#include "GPU/Tonemapping_helper.h"
 #endif
 
 namespace app {
@@ -93,6 +94,10 @@ class Viewer {
     void init_GPU_renderer();
     void switch_to_renderer(RendererMode mode);
     RendererMode get_renderer_mode() const;
+
+    void apply_tonemapping();
+    void set_tonemap_settings(const TonemapSettings& settings);
+    TonemapSettings get_tonemap_settings() const;
 #endif
 
     void wait_for_render_start(std::stop_token stop);
@@ -112,6 +117,10 @@ class Viewer {
     std::vector<Material> materials_backups_;
     bool need_materials_update_ = false;
     bool need_transforms_update_ = false;
+
+#ifdef WINDOWS_SPECIFIC
+    Tonemapping_helper tonemap;
+#endif
 
     std::mutex mtx_render_;
     std::condition_variable cv_render_;

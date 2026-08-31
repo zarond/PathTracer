@@ -355,6 +355,7 @@ void DXR_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envma
 
     UINT m_width = framebuffer.width();
     UINT m_height = framebuffer.height();
+    const auto& gpu_texture = framebuffer.get_texture_resource();
     auto DispatchRays = [&](auto* commandList, auto* stateObject, D3D12_DISPATCH_RAYS_DESC* dispatchDesc,
         ComPtr<ID3D12Resource> hitGroupShaderTable, ComPtr<ID3D12Resource> missShaderTable) 
     {
@@ -397,7 +398,7 @@ void DXR_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envma
     // Bind the heaps, acceleration structure and dispatch rays.
     D3D12_DISPATCH_RAYS_DESC dispatchDesc = {};
     // commandList->SetDescriptorHeaps(1, m_descriptorHeap.GetAddressOf());
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, framebuffer.uav_gpu_handle);
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, gpu_texture.GetUAVHandle());
     commandList->SetComputeRootShaderResourceView(
         GlobalRootSignatureParams::AccelerationStructureSlot, gpu_model.GetGPUVirtualAddress());
 

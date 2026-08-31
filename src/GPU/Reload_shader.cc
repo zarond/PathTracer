@@ -4,6 +4,7 @@
 #include <tuple>
 
 #include "Bilateral_filter.h"
+#include "Copy_helper.h"
 #include "Cubemaps_helper.h"
 #include "DFG_Lut_helper.h"
 #include "DXR_pipeline.h"
@@ -14,6 +15,7 @@
 #include "Reprojection_helper.h"
 #include "Silhouette_helper.h"
 #include "SSR_helper.h"
+#include "Tonemapping_helper.h"
 
 namespace app {
 
@@ -25,6 +27,7 @@ void RunAllTasks() {
 void ReloadShaders() { 
     RunAllTasks
         <Bilateral_filter, 
+        Copy_helper,
         EnvCube_helper,
         DFG_Lut_helper,
         DXR_pipeline,
@@ -34,7 +37,8 @@ void ReloadShaders() {
         Raster_pipeline,
         Reprojection_helper,
         Silhouette_helper,
-        SSR_helper>(); 
+        SSR_helper, 
+        Tonemapping_helper>(); 
 }
 
 }

@@ -18,12 +18,13 @@ namespace app {
 using namespace glm;
 
 Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture, const RenderSettings& settings)
-    : model_(std::move(model)), environment_texture_(std::move(environmentTexture)) {
+    : model_(std::move(model)),
+      environment_texture_(std::move(environmentTexture)) {
     if (model_.cameras.size() > 0) {
         active_camera_index_ = 0;
     }
-    framebuffer_ = CPUFrameBuffer(window_dimensions_.x, window_dimensions_.y);
 
+    framebuffer_.resize(window_dimensions_.x, window_dimensions_.y);
     renderers_.resize((int)RendererMode::Count);
     renderers_[(int)RendererMode::CPURenderer] = std::make_shared<Renderer>();
     renderer_ = renderers_[(int)RendererMode::CPURenderer];  // chose CPU renderer by default
@@ -69,14 +70,39 @@ void Viewer::switch_to_renderer(RendererMode mode) {
 }
 
 RendererMode Viewer::get_renderer_mode() const { return active_renderer_mode_; }
+
+void Viewer::apply_tonemapping() {
+    D3DContext& d3d_ctx = D3DContext::Get();
+    ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};
+    d3d_ctx.m_CommandList->SetDescriptorHeaps(1, desc_heap);
+
+    const auto& gpuTexture = framebuffer_.get_texture_resource();
+    const auto& gpuTextureTonemapped = framebuffer_.get_tonemapped_texture_resource();
+
+    auto barrier_1 = CD3DX12_RESOURCE_BARRIER::Transition(gpuTexture.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    auto barrier_2 = CD3DX12_RESOURCE_BARRIER::Transition(gpuTextureTonemapped.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    D3D12_RESOURCE_BARRIER bariers_in[] = {barrier_1, barrier_2};
+    d3d_ctx.m_CommandList->ResourceBarrier(2, bariers_in);
+
+    tonemap.Apply(gpuTextureTonemapped, gpuTexture, d3d_ctx.m_CommandList);
+
+    barrier_1 = CD3DX12_RESOURCE_BARRIER::Transition(gpuTexture.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    barrier_2 = CD3DX12_RESOURCE_BARRIER::Transition(gpuTextureTonemapped.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    D3D12_RESOURCE_BARRIER bariers_out[] = {barrier_1, barrier_2};
+    d3d_ctx.m_CommandList->ResourceBarrier(2, bariers_out);
+}
+
+void Viewer::set_tonemap_settings(const TonemapSettings& settings) { tonemap.settings = settings; }
+TonemapSettings Viewer::get_tonemap_settings() const { return tonemap.settings; }
 #endif
 
 void Viewer::resize_window(const ivec2& newDimensions, bool createGPUTex) {
     window_dimensions_ = newDimensions;
-#ifdef WINDOWS_SPECIFIC
-    framebuffer_.release_gpu_resource();
-#endif
-    framebuffer_ = CPUFrameBuffer(window_dimensions_.x, window_dimensions_.y);
+    framebuffer_.resize(window_dimensions_.x, window_dimensions_.y);
 #ifdef WINDOWS_SPECIFIC
     if (createGPUTex) {
         framebuffer_.create_texture_resource();
@@ -146,7 +172,11 @@ void Viewer::set_active_camera(std::optional<uint32_t> cameraIndex) {
 std::optional<uint32_t> Viewer::get_active_camera() const { return active_camera_index_; }
 
 void Viewer::take_snapshot(const std::filesystem::path& filePath) const {
-    framebuffer_.save_to_file(filePath, is_using_gpu_renderer());
+    bool tonemapping_enabled = false;
+#ifdef WINDOWS_SPECIFIC
+    tonemapping_enabled = tonemap.settings.enabled;
+#endif
+    framebuffer_.save_to_file(filePath, is_using_gpu_renderer(), tonemapping_enabled);
 }
 
 bool Viewer::snap_to_camera(bool use_default) {
