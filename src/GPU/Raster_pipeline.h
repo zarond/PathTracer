@@ -47,6 +47,7 @@ struct RasterConstantBuffer {
     float GTAOStrength;
     float TexturesAOStrength;
     int SSREnabled;
+    int DiffuseUseSphericalHarmonics;
     int specular_aa_enabled;
     float specular_aa_variance;
     float specular_aa_threshold;
@@ -60,6 +61,22 @@ struct RasterPerDrawData {
     float modelScale;
     int UseAOTexture;
     float padding;
+};
+
+struct SHCoefficients {
+    fvec4 L00;  // each coefficient is a rgb color, .a is unused;
+    fvec4 L1_1;
+    fvec4 L10;
+    fvec4 L11;
+    fvec4 L2_2;
+    fvec4 L2_1;
+    fvec4 L20;
+    fvec4 L21;
+    fvec4 L22;
+};
+
+struct GIData {
+    SHCoefficients diffuse;
 };
 
 struct DrawableSortingInfo {
@@ -93,6 +110,7 @@ class Raster_pipeline : public IRender_pipeline {
     void CreateConstantBuffers();
     void ComputeDFGLut();
     void ComputeEnvmapLut(const GPU_texture& envmap);
+    void ComputeEnvmapSH(const GPU_texture& envmap);
 
     static void ComputeMipMaps(GPU_texture& texture);
 
@@ -111,11 +129,19 @@ class Raster_pipeline : public IRender_pipeline {
         RasterConstantBuffer constants;
         uint8_t alignmentPadding[D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT];
     };
-    AlignedSceneConstantBuffer* m_mappedConstantData;
+    AlignedSceneConstantBuffer* m_mappedConstantData = nullptr;
 
-    // Raytracing scene
+    union AlignedGIBuffer {
+        GIData constants;
+        uint8_t alignmentPadding[D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT];
+    };
+    AlignedGIBuffer* m_mappedGIData = nullptr;
+
+    // Scene constants
     RasterConstantBuffer m_rasterCB;
+    GIData m_GI;
     ComPtr<ID3D12Resource> m_perFrameConstants;
+    ComPtr<ID3D12Resource> m_GIDataConstants;
 
     // Pipeline state objects
     CD3DX12_VIEWPORT m_viewport;
