@@ -5,6 +5,7 @@ struct SHCSInput {
     float2 inv_FrameSize;
     uint2 GroupsSize;
     uint numGroups;
+    uint useUVcoords;
 };
 
 Texture2D<float4> SrcTexture : register(t0);
@@ -13,6 +14,9 @@ globallycoherent RWStructuredBuffer<float4> TmpBuffer : register(u0);
 RWByteAddressBuffer GroupCounters : register(u0, space1);
 
 ConstantBuffer<SHCSInput> g_CB : register(b0);
+
+// Default sampler
+SamplerState Sampler : register(s0, space0);
 
 groupshared float4 sharedArray[9][256 / 32];     // Warning: assuming fixed wavesize of 32
 groupshared uint SurvivorFlag;
@@ -42,7 +46,14 @@ void CS_SphericalHarmonicsIrradiance(uint3 DTid : SV_DispatchThreadID, uint3 Gid
     bool use_thread = true;
     if (DTid.x >= g_CB.FrameSize.x || DTid.y >= g_CB.FrameSize.y) use_thread = false;
     uint2 coord = clamp(DTid.xy, 0, g_CB.FrameSize - 1);
-    float3 L = SrcTexture.Load(int3(coord, 0)).rgb;
+    float3 L;
+    if (g_CB.useUVcoords > 0) { // for ultra low resolution envmaps
+        float2 uv = (coord + 0.5f) * g_CB.inv_FrameSize;
+        uv.y = 1.0 - uv.y;
+        L = SrcTexture.SampleLevel(Sampler, uv, 0);
+    } else {
+        L = SrcTexture.Load(int3(coord, 0)).rgb;
+    }
     
     float d_phi = 2 * PI * g_CB.inv_FrameSize.x;
     float d_theta = PI * g_CB.inv_FrameSize.y;
@@ -134,7 +145,6 @@ void CS_SphericalHarmonicsIrradiance(uint3 DTid : SV_DispatchThreadID, uint3 Gid
 
             if (Gidx == 0) {
                 TmpBuffer[i] = float4(totalGroupSum, 0.0f);
-                //result[i] = totalGroupSum;
             }
         }
     }

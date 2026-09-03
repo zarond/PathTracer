@@ -25,6 +25,7 @@ struct SHCSInput {
     fvec2 inv_FrameSize;
     uvec2 GroupsSize;
     uint numGroups;
+    uint useUVcoords;
 };
 
 ComPtr<ID3D12RootSignature> SphericalHarmonics_helper::m_rootSignature{};
@@ -88,8 +89,15 @@ void SphericalHarmonics_helper::resize_tmp_buffer(int new_width, int new_height)
 void SphericalHarmonics_helper::Compute(const GPU_texture& envmap) {
     const auto& resource = envmap.get_gpu_resource();
     const auto description = resource->GetDesc();
-    const auto width = description.Width;
-    const auto height = description.Height;
+    auto width = description.Width;
+    auto height = description.Height;
+
+    bool low_resolution_mode = (width < 256 || height < 128);
+    // replace per pixel integration to per interpolated subpixels with fixed resolution for better accuracy
+    if (low_resolution_mode) {
+        width = 256;
+        height = 128;
+    }
 
     resize_tmp_buffer(width, height);
 
@@ -108,8 +116,10 @@ void SphericalHarmonics_helper::Compute(const GPU_texture& envmap) {
     int GroupsX = (width + 15) / 16;
     int GroupsY = (height + 15) / 16;
     int numGroups = GroupsX * GroupsY;
+    bool useUVcoords = low_resolution_mode;
 
-    SHCSInput input{{width, height}, {1.0f / width, 1.0f / height}, {GroupsX, GroupsY}, static_cast<uint>(numGroups)};
+    SHCSInput input{
+        {width, height}, {1.0f / width, 1.0f / height}, {GroupsX, GroupsY}, static_cast<uint>(numGroups), useUVcoords};
     constexpr int inputSizeInInt = sizeof(SHCSInput) / 4;
     commandList->SetComputeRootUnorderedAccessView(GlobalRootSignatureParams::GroupCounters, GroupCounters->GetGPUVirtualAddress());
     commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
@@ -135,8 +145,18 @@ void SphericalHarmonics_helper::CreateRootSignature() {
     rootParameters[GlobalRootSignatureParams::GroupCounters].InitAsUnorderedAccessView(0, 1);
     rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(SHCSInput) / 4, 0);
 
+    D3D12_STATIC_SAMPLER_DESC sampler = {};
+    sampler.Filter = D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT;
+    sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    sampler.MaxLOD = 0.0f;
+    sampler.ShaderRegister = 0;
+    sampler.RegisterSpace = 0;
+    sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
     auto flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
-    rootSignatureDesc.Init(ARRAYSIZE(rootParameters), rootParameters, 0, nullptr, flags);
+    rootSignatureDesc.Init(ARRAYSIZE(rootParameters), rootParameters, 1, &sampler, flags);
 
     SerializeAndCreateRootSignature(rootSignatureDesc, &m_rootSignature);
 }
