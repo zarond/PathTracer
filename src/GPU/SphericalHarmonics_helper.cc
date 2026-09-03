@@ -232,6 +232,10 @@ void SphericalHarmonics_helper::CreateCounterBuffer() {
     zero_uploadBuffer->Unmap(0, nullptr);
 
     d3d_ctx.m_DXRCommandList->CopyBufferRegion(GroupCounters.Get(), 0, zero_uploadBuffer.Get(), 0, bufferSize);
+
+    auto barrier_uav = CD3DX12_RESOURCE_BARRIER::Transition(
+        GroupCounters.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    d3d_ctx.m_DXRCommandList->ResourceBarrier(1, &barrier_uav);
 }
 
 std::vector<fvec4> SphericalHarmonics_helper::download_result_from_gpu() const {

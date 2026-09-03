@@ -18,7 +18,7 @@ ConstantBuffer<SHCSInput> g_CB : register(b0);
 // Default sampler
 SamplerState Sampler : register(s0, space0);
 
-groupshared float4 sharedArray[9][256 / 32];     // Warning: assuming fixed wavesize of 32
+groupshared float4 sharedArray[9][256 / 16];     // Warning: assuming minimum wavesize of 16, recommended is 32
 groupshared uint SurvivorFlag;
 
 void evalSH9(float3 d, out float sh[9]) {
@@ -39,7 +39,6 @@ void evalSH9(float3 d, out float sh[9]) {
     sh[8] = 0.5462742153 * (x * x - y * y); // L22
 }
 
-[WaveSize(32)]  // Warning: fixed wavesize
 [numthreads(16, 16, 1)]
 void CS_SphericalHarmonicsIrradiance(uint3 DTid : SV_DispatchThreadID, uint3 Gid : SV_GroupID, uint Gidx : SV_GroupIndex)
 {
@@ -76,14 +75,15 @@ void CS_SphericalHarmonicsIrradiance(uint3 DTid : SV_DispatchThreadID, uint3 Gid
     
     const uint lane = WaveGetLaneIndex();
     const uint waveSize = WaveGetLaneCount();
-    const uint waveCount = 256 / waveSize; // Assuming 256 threads per group, so 8 waves of 32 threads each
+    const uint waveCount = 256 / waveSize; // 256 threads per group, so 8 waves of 32 threads each, or 16 waves of 16 each
+    const uint waveIdx = Gidx / waveSize;
     
     [unroll]
     for (int i = 0; i < 9; ++i) {
         float3 contribution = L_weight * sh[i];
         float3 contribution_sum_wave = WaveActiveSum( contribution );
         if (lane == 0) {
-            sharedArray[i][Gidx / waveSize] = float4(contribution_sum_wave, 0.0f);
+            sharedArray[i][waveIdx] = float4(contribution_sum_wave, 0.0f);
         }
     }
     
@@ -93,7 +93,7 @@ void CS_SphericalHarmonicsIrradiance(uint3 DTid : SV_DispatchThreadID, uint3 Gid
     if (Gidx < waveCount) {
         for (int i = 0; i < 9; ++i) {
             float3 finalWaveVal = sharedArray[i][Gidx].rgb;
-            float3 totalGroupSum = WaveActiveSum(finalWaveVal); // Sum across the whole group because we only have 8 (256 / 32) elements
+            float3 totalGroupSum = WaveActiveSum(finalWaveVal); // Sum across the whole group because we only have 8 (256 / 32) elements, or 16 (256 / 16)
 
             if (Gidx == 0) {
                 uint Gid_lin = Gid.x + Gid.y * g_CB.GroupsSize.x;
@@ -131,7 +131,7 @@ void CS_SphericalHarmonicsIrradiance(uint3 DTid : SV_DispatchThreadID, uint3 Gid
 
         float3 value_sum_wave = WaveActiveSum( value );
         if (lane == 0) {
-            sharedArray[k][Gidx / waveSize] = float4(value_sum_wave, 0.0f);
+            sharedArray[k][waveIdx] = float4(value_sum_wave, 0.0f);
         }
     }
     
@@ -141,7 +141,7 @@ void CS_SphericalHarmonicsIrradiance(uint3 DTid : SV_DispatchThreadID, uint3 Gid
     if (Gidx < waveCount) {
         for (int i = 0; i < 9; ++i) {
             float3 finalWaveVal = sharedArray[i][Gidx].rgb;
-            float3 totalGroupSum = WaveActiveSum(finalWaveVal); // Sum across the whole group because we only have 8 (256 / 32) elements
+            float3 totalGroupSum = WaveActiveSum(finalWaveVal); // Sum across the whole group because we only have 8 (256 / 32) elements, or 16 (256 / 16)
 
             if (Gidx == 0) {
                 TmpBuffer[i] = float4(totalGroupSum, 0.0f);

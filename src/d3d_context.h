@@ -131,6 +131,7 @@ struct D3DContext {
     D3DContext() = default;
 
     bool CheckRaytracingSupport() const;
+    int CheckWaveLaneCount() const;
 };
 
 struct PendingDelete {
