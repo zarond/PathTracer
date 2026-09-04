@@ -44,6 +44,7 @@ set(SHADER_SOURCES
     CS_SSR_resolve      SSR.hlsl                    cs_6_6
     CS_Copy             CopyTexture.hlsl            cs_6_6
     CS_Tonemapping      Tonemapping.hlsl            cs_6_6
+    CS_SphericalHarmonicsIrradiance     SphericalHarmonics.hlsl     cs_6_6
 )
 
 set(APP_SOURCES
@@ -81,6 +82,7 @@ if(ON_WINDOWS)
         src/GPU/SSR_helper.cc
         src/GPU/Copy_helper.cc
         src/GPU/Tonemapping_helper.cc
+        src/GPU/SphericalHarmonics_helper.cc
         src/GPU/Reload_shader.cc
     )
 endif()

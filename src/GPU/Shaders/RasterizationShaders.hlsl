@@ -40,6 +40,9 @@ SamplerState DFGSampler : register(s2, space1);
 
 // Per draw call data
 ConstantBuffer<RasterPerDrawData> DrawData : register(b1);
+    
+// Scene diffuse spherical harmonics data
+ConstantBuffer<GIData> g_GI : register(b2);
 
 struct PSInput {
     float4 ndc_position : SV_POSITION;
@@ -134,6 +137,40 @@ float3 calculateTransmittedLight(float3 ws_pos, float4 ndc_position, float3 v, f
     }
     return transmitted_light;
 }
+    
+float3 sampleDiffuseIBL(float3 normal) {
+    if (g_rasterCB.DiffuseUseSphericalHarmonics) {
+        static const float c1 = 0.429043;
+        static const float c2 = 0.511664;
+        static const float c3 = 0.743125;
+        static const float c4 = 0.886227;
+        static const float c5 = 0.247708;
+            
+        SHCoefficients SH = g_GI.diffuse;
+        const float3 L00  = SH.L00;
+        const float3 L1_1 = SH.L1_1;
+        const float3 L10  = SH.L10;
+        const float3 L11  = SH.L11;
+        const float3 L2_2 = SH.L2_2;
+        const float3 L2_1 = SH.L2_1;
+        const float3 L20  = SH.L20;
+        const float3 L21  = SH.L21;
+        const float3 L22  = SH.L22;
+
+        const float x = normal.x;
+        const float y = normal.y;
+        const float z = normal.z;
+         
+        float3 E = c1 * L22 * (x*x - z*z) 
+                 + c3 * L20 * (y * y) 
+                 + c4 * L00 - c5 * L20
+                 + 2*c1*(L2_2 * (x*z) + L21 * (x*y) + L2_1 * (y*z))
+                 + 2*c2*(L11*x + L1_1*z + L10*y);
+        return E / PI;
+    } else {
+        return DiffuseLut.SampleLevel(Sampler, normal, 0).rgb;
+    }
+}
 
 [shader("pixel")]
 float4 PS_Main(PSInput input) : SV_TARGET {
@@ -218,7 +255,7 @@ float4 PS_Main(PSInput input) : SV_TARGET {
 
     float3 DiffuseSampleDir = N;
     DiffuseSampleDir.xz = mul(envmap_rotation_matrix, DiffuseSampleDir.xz);  // enmap rotation
-    float3 diffuseIBL = DiffuseLut.SampleLevel(Sampler, DiffuseSampleDir, 0).rgb;
+    float3 diffuseIBL = sampleDiffuseIBL(DiffuseSampleDir);
     
     float3 SpecularSampleDir = DominantReflectionVector(l, N, linear_roughness);
     SpecularSampleDir.xz = mul(envmap_rotation_matrix, SpecularSampleDir.xz);  // enmap rotation

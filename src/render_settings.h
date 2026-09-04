@@ -32,6 +32,7 @@ struct RenderSettings {
     float SSRPrefilteringDistance = 0.3f;
     bool SSRParallaxReprojection = true;
     bool ReprojectionDebugMode = false;
+    bool DiffuseUseSphericalHarmonics = false;
     bool specular_aa_enabled = true;
     float specular_aa_variance = 0.15f;
     float specular_aa_threshold = 0.2f;

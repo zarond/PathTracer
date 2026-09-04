@@ -44,6 +44,7 @@ struct RasterConstantBuffer {
     float GTAOStrength;
     float TexturesAOStrength;
     int SSREnabled;
+    int DiffuseUseSphericalHarmonics;
     int specular_aa_enabled;
     float specular_aa_variance;
     float specular_aa_threshold;
@@ -57,6 +58,22 @@ struct RasterPerDrawData {
     float modelScale;
     int UseAOTexture;
     float padding;
+};
+
+struct SHCoefficients {
+    float4 L00; // each coefficient is a rgb color, .a is unused;
+    float4 L1_1;
+    float4 L10;
+    float4 L11;
+    float4 L2_2;
+    float4 L2_1;
+    float4 L20;
+    float4 L21;
+    float4 L22;
+};
+
+struct GIData {
+    SHCoefficients diffuse;
 };
 
 struct Material {

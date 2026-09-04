@@ -233,6 +233,11 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
         std::cout << "WARNING: GPU does not support raytracing, DXR rendering mode is not available.\n";
     }
 
+    auto waveLanes = CheckWaveLaneCount();
+    if (waveLanes < 16) {
+        std::cout << "WARNING: GPU does not support sufficient wave lanes for certain compute shader.\n";
+    }
+
     CreateRenderTarget();
     return true;
 }
@@ -242,6 +247,26 @@ bool D3DContext::CheckRaytracingSupport() const {
     if (FAILED(m_d3dDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5)))) return false;
     if (options5.RaytracingTier < D3D12_RAYTRACING_TIER_1_0) return false;
     return true;
+}
+
+int D3DContext::CheckWaveLaneCount() const {
+    D3D12_FEATURE_DATA_D3D12_OPTIONS1 options1 = {};
+    HRESULT hr = m_d3dDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS1, &options1, sizeof(options1));
+
+    int LaneCount = 0;
+
+    if (SUCCEEDED(hr)) {
+        if (options1.WaveOps) {
+            UINT minLaneCount = options1.WaveLaneCountMin;
+            UINT maxLaneCount = options1.WaveLaneCountMax;
+
+            // device supports wave operations
+            LaneCount = maxLaneCount;
+        } else {
+            // Wave operations are not supported by this device/driver
+        }
+    }
+    return LaneCount;
 }
 
 void D3DContext::InitCommandList(ID3D12CommandAllocator& CommandAllocator) {

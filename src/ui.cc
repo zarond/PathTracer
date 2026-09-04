@@ -691,6 +691,7 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
     ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.5f);
     auto render_settings = viewer.get_render_settings();
     bool raster_settings_changed = false;
+    raster_settings_changed |= ImGui::Checkbox("Diffuse - use Spherical Harmonics", &render_settings.DiffuseUseSphericalHarmonics);
     raster_settings_changed |= ImGui::SliderFloat(
         "GTAO strength", &render_settings.GTAOStrength, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
     HelpTooltip("Ground Truth Ambient Occlusion");
