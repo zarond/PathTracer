@@ -753,14 +753,14 @@ void Raster_pipeline::ComputeEnvmapLut(const GPU_texture& envmap) {
     std::cout << "Diffuse and Specular Lut computed in " << diff.count() << " ms." << '\n';
 }
 
-void Raster_pipeline::ComputeEnvmapSH(const GPU_texture& envmap) {
+void Raster_pipeline::ComputeEnvmapSH(const GPU_texture& envmap, bool is_cubemap) {
     static SphericalHarmonics_helper SH_helper{};
     auto start = std::chrono::high_resolution_clock::now();
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
     
     SH_helper.Init();
-    SH_helper.Compute(envmap);
+    SH_helper.Compute(envmap, is_cubemap);
 
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();

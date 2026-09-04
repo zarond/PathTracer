@@ -8,6 +8,7 @@
 namespace GlobalRootSignatureParams {
 enum Value : int {
     SrcTexture,
+    SrcTextureCube,
     TmpBuffer,
     GroupCounters,
     RootConstants,
@@ -26,6 +27,7 @@ struct SHCSInput {
     uvec2 GroupsSize;
     uint numGroups;
     uint useUVcoords;
+    uint isCubemap;
 };
 
 ComPtr<ID3D12RootSignature> SphericalHarmonics_helper::m_rootSignature{};
@@ -50,14 +52,15 @@ void SphericalHarmonics_helper::Init() {
     }
 }
 
-void SphericalHarmonics_helper::resize_tmp_buffer(int new_width, int new_height) {
+void SphericalHarmonics_helper::resize_tmp_buffer(int new_width, int new_height, bool is_cubemap) {
     if (tmpWidth == new_width && tmpHeight == new_height) return;
     tmpWidth = std::max(new_width, 0);
     tmpHeight = std::max(new_height, 0);
 
     int GroupsX = (tmpWidth + 15) / 16;
     int GroupsY = (tmpHeight + 15) / 16;
-    int numGroups = GroupsX * GroupsY;
+    int GroupsZ = is_cubemap ? 6 : 1;
+    int numGroups = GroupsX * GroupsY * GroupsZ;
 
     tmp_buffer.Reset();
 
@@ -86,7 +89,7 @@ void SphericalHarmonics_helper::resize_tmp_buffer(int new_width, int new_height)
         &heapProps, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&tmp_buffer));
 }
 
-void SphericalHarmonics_helper::Compute(const GPU_texture& envmap) {
+void SphericalHarmonics_helper::Compute(const GPU_texture& envmap, bool is_cubemap) {
     const auto& resource = envmap.get_gpu_resource();
     const auto description = resource->GetDesc();
     auto width = description.Width;
@@ -95,11 +98,11 @@ void SphericalHarmonics_helper::Compute(const GPU_texture& envmap) {
     bool low_resolution_mode = (width < 256 || height < 128);
     // replace per pixel integration to per interpolated subpixels with fixed resolution for better accuracy
     if (low_resolution_mode) {
-        width = 256;
+        width = is_cubemap ? 128 : 256;
         height = 128;
     }
 
-    resize_tmp_buffer(width, height);
+    resize_tmp_buffer(width, height, is_cubemap);
 
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
@@ -110,21 +113,31 @@ void SphericalHarmonics_helper::Compute(const GPU_texture& envmap) {
     commandList->SetComputeRootSignature(m_rootSignature.Get());
     commandList->SetPipelineState(m_PipelineState.Get());
 
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::SrcTexture, envmap.GetSRVHandle());
+    if (is_cubemap) {
+        commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::SrcTextureCube, envmap.GetSRVHandle());
+    } else {
+        commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::SrcTexture, envmap.GetSRVHandle());
+    }
     commandList->SetComputeRootUnorderedAccessView(GlobalRootSignatureParams::TmpBuffer, tmp_buffer->GetGPUVirtualAddress());
 
     int GroupsX = (width + 15) / 16;
     int GroupsY = (height + 15) / 16;
-    int numGroups = GroupsX * GroupsY;
+    int GroupsZ = is_cubemap ? 6 : 1;
+    int numGroups = GroupsX * GroupsY * GroupsZ;
     bool useUVcoords = low_resolution_mode;
 
     SHCSInput input{
-        {width, height}, {1.0f / width, 1.0f / height}, {GroupsX, GroupsY}, static_cast<uint>(numGroups), useUVcoords};
+        {width, height}, 
+        {1.0f / width, 1.0f / height}, 
+        {GroupsX, GroupsY}, 
+        static_cast<uint>(numGroups), 
+        useUVcoords, 
+        is_cubemap};
     constexpr int inputSizeInInt = sizeof(SHCSInput) / 4;
     commandList->SetComputeRootUnorderedAccessView(GlobalRootSignatureParams::GroupCounters, GroupCounters->GetGPUVirtualAddress());
     commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
 
-    commandList->Dispatch(GroupsX, GroupsY, 1);
+    commandList->Dispatch(GroupsX, GroupsY, GroupsZ);
 
     const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(GroupCounters.Get());
     commandList->ResourceBarrier(1, &barrier);
@@ -135,12 +148,14 @@ void SphericalHarmonics_helper::CreateRootSignature() {
 
     CD3DX12_DESCRIPTOR_RANGE ranges[GlobalRootSignatureParams::Count];
     ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);  // 1 SrcTexture srv
-    ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 TmpBuffer uav
-    ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 1);  // 1 GroupCounters buffer
-    ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);  // 1 constant buffer.
+    ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);  // 1 SrcTextureCube srv
+    ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 TmpBuffer uav
+    ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 1);  // 1 GroupCounters buffer
+    ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);  // 1 constant buffer.
 
     CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
     rootParameters[GlobalRootSignatureParams::SrcTexture].InitAsDescriptorTable(1, &ranges[0]);
+    rootParameters[GlobalRootSignatureParams::SrcTextureCube].InitAsDescriptorTable(1, &ranges[1]);
     rootParameters[GlobalRootSignatureParams::TmpBuffer].InitAsUnorderedAccessView(0, 0);
     rootParameters[GlobalRootSignatureParams::GroupCounters].InitAsUnorderedAccessView(0, 1);
     rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(SHCSInput) / 4, 0);

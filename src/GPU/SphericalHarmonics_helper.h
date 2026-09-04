@@ -17,7 +17,7 @@ class SphericalHarmonics_helper {
 
     void Init();
 
-    void Compute(const GPU_texture& envmap);
+    void Compute(const GPU_texture& envmap, bool is_cubemap);
 
     std::vector<glm::fvec4> download_result_from_gpu() const;
 
@@ -39,7 +39,7 @@ class SphericalHarmonics_helper {
     ComPtr<ID3D12Resource> tmp_buffer;
     int tmpWidth = 0;
     int tmpHeight = 0;
-    void resize_tmp_buffer(int new_width, int new_height);
+    void resize_tmp_buffer(int new_width, int new_height, bool is_cubemap);
 
     void release_gpu_resources();
 };

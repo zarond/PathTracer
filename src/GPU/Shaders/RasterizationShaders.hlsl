@@ -158,13 +158,14 @@ float3 sampleDiffuseIBL(float3 normal) {
         const float3 L22  = SH.L22;
 
         const float x = normal.x;
-        const float y = normal.z;
-        const float z = normal.y;
+        const float y = normal.y;
+        const float z = normal.z;
          
-        float3 E = c1 * L22 * (x*x - y*y) + c3 * L20 * (z * z) 
+        float3 E = c1 * L22 * (x*x - z*z) 
+                 + c3 * L20 * (y * y) 
                  + c4 * L00 - c5 * L20
-                 + 2*c1*(L2_2 * (x*y) + L21 * (x*z) + L2_1 * (y*z))
-                 + 2*c2*(L11*x + L1_1*y + L10*z);
+                 + 2*c1*(L2_2 * (x*z) + L21 * (x*y) + L2_1 * (y*z))
+                 + 2*c2*(L11*x + L1_1*z + L10*y);
         return E / PI;
     } else {
         return DiffuseLut.SampleLevel(Sampler, normal, 0).rgb;

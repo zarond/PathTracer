@@ -6,9 +6,11 @@ struct SHCSInput {
     uint2 GroupsSize;
     uint numGroups;
     uint useUVcoords;
+    uint isCubemap;
 };
 
 Texture2D<float4> SrcTexture : register(t0);
+TextureCube<float4> SrcTextureCube : register(t1);
 globallycoherent RWStructuredBuffer<float4> TmpBuffer : register(u0);
 
 RWByteAddressBuffer GroupCounters : register(u0, space1);
@@ -28,15 +30,46 @@ void evalSH9(float3 d, out float sh[9]) {
 
     sh[0] = 0.2820947918;   // L00
 
-    sh[1] = 0.4886025119 * y;   // L1_1
-    sh[2] = 0.4886025119 * z;   // L10
+    sh[1] = 0.4886025119 * z;   // L1_1
+    sh[2] = 0.4886025119 * y;   // L10
     sh[3] = 0.4886025119 * x;   // L11
 
-    sh[4] = 1.0925484306 * x * y;   // L2_2
+    sh[4] = 1.0925484306 * x * z;   // L2_2
     sh[5] = 1.0925484306 * y * z;   // L2_1
-    sh[6] = 0.3153915653 * (3.0 * z * z - 1.0); // L20
-    sh[7] = 1.0925484306 * x * z;   // L21
-    sh[8] = 0.5462742153 * (x * x - y * y); // L22
+    sh[6] = 0.3153915653 * (3.0 * y * y - 1.0); // L20
+    sh[7] = 1.0925484306 * x * y;   // L21
+    sh[8] = 0.5462742153 * (x * x - z * z); // L22
+}
+
+float3 CalculateCubeDirection(float2 uv, uint faceIndex)
+{
+    float3 dir = 0;
+    switch(faceIndex)
+    {
+        case 0: dir = float3( 1.0f,  uv.y, -uv.x); break; // +X
+        case 1: dir = float3(-1.0f,  uv.y,  uv.x); break; // -X
+        case 2: dir = float3( uv.x,  1.0f, -uv.y); break; // +Y
+        case 3: dir = float3( uv.x, -1.0f,  uv.y); break; // -Y
+        case 4: dir = float3( uv.x,  uv.y,  1.0f); break; // +Z
+        case 5: dir = float3(-uv.x,  uv.y, -1.0f); break; // -Z
+    }
+    return normalize(dir);
+}
+
+// Helper function for the analytical solid angle calculation
+float AreaElement(float x, float y) {
+    return atan2(x * y, sqrt(x * x + y * y + 1.0));
+}
+
+float TexelSolidAngle(float2 ndc) { // ndc is uv in a range from -1 to 1
+    // Find the four corners of the texel in texture space
+    float x0 = ndc.x - g_CB.inv_FrameSize.x;
+    float y0 = ndc.y - g_CB.inv_FrameSize.y;
+    float x1 = ndc.x + g_CB.inv_FrameSize.x;
+    float y1 = ndc.y + g_CB.inv_FrameSize.y;
+    
+    // Integrate solid angle over the texel boundaries
+    return AreaElement(x0, y0) - AreaElement(x0, y1) - AreaElement(x1, y0) + AreaElement(x1, y1);
 }
 
 [numthreads(16, 16, 1)]
@@ -46,27 +79,40 @@ void CS_SphericalHarmonicsIrradiance(uint3 DTid : SV_DispatchThreadID, uint3 Gid
     if (DTid.x >= g_CB.FrameSize.x || DTid.y >= g_CB.FrameSize.y) use_thread = false;
     uint2 coord = clamp(DTid.xy, 0, g_CB.FrameSize - 1);
     float3 L;
-    if (g_CB.useUVcoords > 0) { // for ultra low resolution envmaps
-        float2 uv = (coord + 0.5f) * g_CB.inv_FrameSize;
-        uv.y = 1.0 - uv.y;
+    float3 cubemap_dir;
+    float2 uv = (coord + 0.5f) * g_CB.inv_FrameSize;
+    uv.y = 1.0 - uv.y;
+    if (g_CB.isCubemap) {
+        uv = uv * 2.0f - 1.0f;
+        cubemap_dir = CalculateCubeDirection(uv, DTid.z);
+        L = SrcTextureCube.SampleLevel(Sampler, cubemap_dir, 0);
+    } else if (g_CB.useUVcoords) { // for ultra low resolution envmaps
         L = SrcTexture.SampleLevel(Sampler, uv, 0);
     } else {
         L = SrcTexture.Load(int3(coord, 0)).rgb;
     }
     
-    float d_phi = 2 * PI * g_CB.inv_FrameSize.x;
-    float d_theta = PI * g_CB.inv_FrameSize.y;
-    
-    float phi = (coord.x + 0.5f) * d_phi;
-    float theta = (coord.y + 0.5f) * d_theta;
-    
-    float sin_phi, cos_phi;
-    sincos(phi, sin_phi, cos_phi);
-    float sin_theta, cos_theta;
-    sincos(theta, sin_theta, cos_theta);
-    
-    float3 w = float3(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta);
-    float weight = use_thread ? d_phi * d_theta * sin_theta : 0;
+    float3 w;
+    float weight;
+
+    if (g_CB.isCubemap) {
+        w = cubemap_dir;
+        float dOmega = TexelSolidAngle(uv);
+        weight = use_thread ? dOmega : 0;
+    } else {
+        float d_phi = 2 * PI * g_CB.inv_FrameSize.x;
+        float d_theta = PI * g_CB.inv_FrameSize.y;
+
+        float phi = (coord.x + 0.5f) * d_phi;
+        float theta = (coord.y + 0.5f) * d_theta;
+
+        float sin_phi, cos_phi;
+        sincos(phi, sin_phi, cos_phi);
+        float sin_theta, cos_theta;
+        sincos(theta, sin_theta, cos_theta);
+        w = float3(sin_theta * cos_phi, cos_theta, sin_theta * sin_phi);
+        weight = use_thread ? d_phi * d_theta * sin_theta : 0;
+    }
     
     float sh[9];
     evalSH9(w, sh);
@@ -89,14 +135,14 @@ void CS_SphericalHarmonicsIrradiance(uint3 DTid : SV_DispatchThreadID, uint3 Gid
     
     GroupMemoryBarrierWithGroupSync();
     
-    [unroll]
     if (Gidx < waveCount) {
+        [unroll]
         for (int i = 0; i < 9; ++i) {
             float3 finalWaveVal = sharedArray[i][Gidx].rgb;
             float3 totalGroupSum = WaveActiveSum(finalWaveVal); // Sum across the whole group because we only have 8 (256 / 32) elements, or 16 (256 / 16)
 
             if (Gidx == 0) {
-                uint Gid_lin = Gid.x + Gid.y * g_CB.GroupsSize.x;
+                uint Gid_lin = Gid.x + Gid.y * g_CB.GroupsSize.x + Gid.z * g_CB.GroupsSize.x * g_CB.GroupsSize.y;
                 TmpBuffer[9 * Gid_lin + i] = float4(totalGroupSum, 0.0f);
             }
         }
@@ -137,8 +183,8 @@ void CS_SphericalHarmonicsIrradiance(uint3 DTid : SV_DispatchThreadID, uint3 Gid
     
     AllMemoryBarrierWithGroupSync();
     
-    [unroll]
     if (Gidx < waveCount) {
+        [unroll]
         for (int i = 0; i < 9; ++i) {
             float3 finalWaveVal = sharedArray[i][Gidx].rgb;
             float3 totalGroupSum = WaveActiveSum(finalWaveVal); // Sum across the whole group because we only have 8 (256 / 32) elements, or 16 (256 / 16)

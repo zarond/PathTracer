@@ -110,7 +110,7 @@ class Raster_pipeline : public IRender_pipeline {
     void CreateConstantBuffers();
     void ComputeDFGLut();
     void ComputeEnvmapLut(const GPU_texture& envmap);
-    void ComputeEnvmapSH(const GPU_texture& envmap);
+    void ComputeEnvmapSH(const GPU_texture& envmap, bool is_cubemap = false);
 
     static void ComputeMipMaps(GPU_texture& texture);
 
