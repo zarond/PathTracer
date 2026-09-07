@@ -7,6 +7,7 @@ namespace GlobalRootSignatureParams {
 enum Value : int {
     OutputViewSlot = 0,
     EnvmapTex,
+    EnvmapTexCube,
     RootConstants,
 
     Count
@@ -19,6 +20,7 @@ struct LutCSInput {
     int currentMip;
     int numMips;
     float roughness;
+    glm::uint isCubemap;
 };
 
 ComPtr<ID3D12RootSignature> EnvCube_helper::m_rootSignature{};
@@ -41,7 +43,7 @@ EnvCube_helper::~EnvCube_helper() {
     release_gpu_resources(); 
 }
 
-void EnvCube_helper::CreateDiffuseEnvmapCube(const GPU_texture& envmap) {
+void EnvCube_helper::CreateDiffuseEnvmapCube(const GPU_texture& envmap, bool is_cubemap) {
     Diffuse_lut.release_gpu_resource();
     TEXTURE_TRAITS flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::Cubemap;
     Diffuse_lut = GPU_texture{Diffuse_size, Diffuse_size, flags, DXGI_FORMAT_R16G16B16A16_FLOAT};
@@ -56,9 +58,13 @@ void EnvCube_helper::CreateDiffuseEnvmapCube(const GPU_texture& envmap) {
     commandList->SetComputeRootSignature(m_rootSignature.Get());
 
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, Diffuse_lut.GetUAVHandle());
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::EnvmapTex, envmap.GetSRVHandle());
+    if (is_cubemap) {
+        commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::EnvmapTexCube, envmap.GetSRVHandle());
+    } else {
+        commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::EnvmapTex, envmap.GetSRVHandle());
+    }
 
-    LutCSInput input{0, envmap.mipLevels, 0.0};
+    LutCSInput input{0, envmap.mipLevels, 0.0, is_cubemap};
     constexpr int inputSizeInInt = sizeof(LutCSInput) / 4;
     commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
 
@@ -75,7 +81,7 @@ GPU_texture EnvCube_helper::GetBlankSRVSpecularTexture() {
         DXGI_FORMAT_R16G16B16A16_FLOAT};
 }
 
-void EnvCube_helper::CreateSpecularEnvmapCube(const GPU_texture& envmap) {
+void EnvCube_helper::CreateSpecularEnvmapCube(const GPU_texture& envmap, bool is_cubemap) {
     Specular_lut.release_gpu_resource();
     TEXTURE_TRAITS flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::Cubemap | TEXTURE_TRAITS::AllocateMips;
     Specular_lut = GPU_texture{Specular_size, Specular_size, flags, DXGI_FORMAT_R16G16B16A16_FLOAT};
@@ -89,7 +95,11 @@ void EnvCube_helper::CreateSpecularEnvmapCube(const GPU_texture& envmap) {
     commandList->SetPipelineState(m_SpecularPipelineState.Get());
     commandList->SetComputeRootSignature(m_rootSignature.Get());
 
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::EnvmapTex, envmap.GetSRVHandle());
+    if (is_cubemap) {
+        commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::EnvmapTexCube, envmap.GetSRVHandle());
+    } else {
+        commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::EnvmapTex, envmap.GetSRVHandle());
+    }
 
     m_mip_uav_handles.resize(SpecularMips);
 
@@ -109,7 +119,7 @@ void EnvCube_helper::CreateSpecularEnvmapCube(const GPU_texture& envmap) {
         commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, uav_gpu_handle);
 
         float roughness = static_cast<float>(mipLevel) / static_cast<float>(SpecularMips - 1);
-        LutCSInput input{mipLevel, envmap.mipLevels, roughness};
+        LutCSInput input{mipLevel, envmap.mipLevels, roughness, is_cubemap};
         constexpr int inputSizeInInt = sizeof(LutCSInput) / 4;
         commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
     
@@ -133,11 +143,13 @@ void EnvCube_helper::CreateRootSignature() {
     CD3DX12_DESCRIPTOR_RANGE ranges[GlobalRootSignatureParams::Count];
     ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);  // 1 output texture
     ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 1);  // 1 input texture
-    ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);     // 1 constant buffer.
+    ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 1);  // 1 input texture cubemap
+    ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);     // 1 constant buffer.
 
     CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
     rootParameters[GlobalRootSignatureParams::OutputViewSlot].InitAsDescriptorTable(1, &ranges[0]);
     rootParameters[GlobalRootSignatureParams::EnvmapTex].InitAsDescriptorTable(1, &ranges[1]);
+    rootParameters[GlobalRootSignatureParams::EnvmapTexCube].InitAsDescriptorTable(1, &ranges[2]);
     rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(LutCSInput) / 4, 0);
 
     D3D12_STATIC_SAMPLER_DESC envmap_sampler = {};  // Envmap static sampler.

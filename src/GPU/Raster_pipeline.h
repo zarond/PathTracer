@@ -9,7 +9,6 @@
 #include <glm/fwd.hpp>
 
 #include "../arguments.h"
-#include "../cpu_framebuffer.h"
 #include "../render_settings.h"
 #include "GPU_model.h"
 #include "DXR_pipeline.h"
@@ -96,7 +95,7 @@ class Raster_pipeline : public IRender_pipeline {
         const fmat4x4& ViewMatrix, const fmat4x4& ProjectionMatrix, fvec2 subpixelOffset, unsigned int frameID, int iteration,
         float invIterationCount) override;
 
-    void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) override;
+    void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer, UINT width, UINT height) override;
 
     void OnModelLoad(GPU_model& gpu_model) override;
 
@@ -104,19 +103,21 @@ class Raster_pipeline : public IRender_pipeline {
 
     static void Reload();
 
+    static void ComputeMipMaps(GPU_texture& texture);
+    static SHCoefficients ComputeEnvmapSH(const GPU_texture& envmap, bool is_cubemap = false);
+
+    void SetReflectionProbe(GPU_texture&& reflection_probe, GPU_texture&& diffuse_probe);
+
   private:
     static void CreateRootSignatures();
     static void CreatePipelineStateObjects();
     void CreateConstantBuffers();
     void ComputeDFGLut();
     void ComputeEnvmapLut(const GPU_texture& envmap);
-    void ComputeEnvmapSH(const GPU_texture& envmap, bool is_cubemap = false);
-
-    static void ComputeMipMaps(GPU_texture& texture);
 
     void resize_render_targets(int new_width, int new_height);
-    void copy_render_target_to_framebuffer(const CPUFrameBuffer& framebuffer);
-    void copy_ssr_to_framebuffer(const CPUFrameBuffer& framebuffer);
+    void copy_render_target_to_framebuffer(const GPU_texture& framebuffer);
+    void copy_ssr_to_framebuffer(const GPU_texture& framebuffer);
 
     static constexpr const wchar_t* c_vs_file_name = L"VS_Main.dxil";
     static constexpr const wchar_t* c_ps_file_name = L"PS_Main.dxil";
@@ -172,11 +173,17 @@ class Raster_pipeline : public IRender_pipeline {
     GPU_texture m_VelocityBuffer;
 
     bool DrawSSROnly = false;
+    bool useDiffuseProbe = false;
+    bool useReflectionProbe = false;
 
     // additional texture resources
     GPU_texture DFG_lut;  // precomputed DFG LUT for split-sum approximation of specular IBL
     GPU_texture Diffuse_lut;
     GPU_texture Specular_lut;
+    GPU_texture Diffuse_probe;
+    GPU_texture Reflection_probe;
+    SHCoefficients diffuse_irradiance_sh;  // precomputed irradiance SH coefficients from Specular_lut
+    SHCoefficients diffuse_irradiance_sh_from_probe;  // precomputed irradiance SH coefficients from Reflection_probe
 
     std::vector<DrawableSortingInfo> m_sortedDrawables;  // reusable vector for sorting drawables every frame
     void sort_objects_for_rendering(

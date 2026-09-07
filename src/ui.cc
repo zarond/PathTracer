@@ -691,6 +691,24 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
     ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.5f);
     auto render_settings = viewer.get_render_settings();
     bool raster_settings_changed = false;
+    static bool light_probe_computed = false;
+    if (viewer.get_rendering_state() == RenderingState::Idle) {
+        if (ImGui::Button("Compute light probe")) {
+            viewer.render_lighting_probe();
+            light_probe_computed = true;
+            render_settings.useDiffuseProbe = true;
+            render_settings.useReflectionProbe = true;
+            raster_settings_changed = true;
+        }
+    } else {
+        ImGui::Text("Stop rendering process to compute light probe");
+    }
+    if (light_probe_computed) {
+        raster_settings_changed |= ImGui::Checkbox("Use diffuse probe", &render_settings.useDiffuseProbe);
+        raster_settings_changed |= ImGui::Checkbox("Use reflection probe", &render_settings.useReflectionProbe);
+    }
+    ImGui::Separator();
+
     raster_settings_changed |= ImGui::Checkbox("Diffuse - use Spherical Harmonics", &render_settings.DiffuseUseSphericalHarmonics);
     raster_settings_changed |= ImGui::SliderFloat(
         "GTAO strength", &render_settings.GTAOStrength, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);

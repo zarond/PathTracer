@@ -60,6 +60,8 @@ class GPURenderer : public IRenderer {
     RenderPipelineMode get_active_pipeline_mode() const;
     void set_active_pipeline_mode(RenderPipelineMode mode);
 
+    void render_lighting_probe();
+
   private:
     const Model* model_ref_ = nullptr;
     const CPUTexture<hdr_pixel>* envmap_ref_ = nullptr;

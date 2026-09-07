@@ -1271,6 +1271,40 @@ void GPU_texture::copy_texture_mip0_only(GPU_texture& dst, GPU_texture& src,
     };
     commandList->ResourceBarrier(2, from_barriers);
 }
+void GPU_texture::copy_texture_to_cubemap_side(GPU_texture& dst, GPU_texture& src, D3D12_RESOURCE_STATES dst_state,
+    D3D12_RESOURCE_STATES src_state, int face_idx, ComPtr<ID3D12GraphicsCommandList4>& commandList) {
+    const auto& gpuDst = dst.get_gpu_resource();
+    const auto& gpuSrc = src.get_gpu_resource();
+    int mipLevels = dst.mipLevels;
+
+    D3D12_RESOURCE_BARRIER to_barriers[2] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuDst.Get(), dst_state, D3D12_RESOURCE_STATE_COMMON),
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuSrc.Get(), src_state, D3D12_RESOURCE_STATE_COPY_SOURCE),
+    };
+    commandList->ResourceBarrier(2, to_barriers);
+
+    for (int i = 0; i < mipLevels; ++i) {
+        // For a standard 2D texture, subresource index is just srcMipIndex.
+        UINT srcSubresource = i;
+        // For a Cubemap array, Subresource = MipSlice + (ArraySlice * MipLevels)
+        UINT dstSubresource = D3D12CalcSubresource(i,  // MipSlice
+            face_idx,                                  // ArraySlice (0 to 5)
+            0,                                         // PlaneSlice (0 for standard color formats)
+            mipLevels,                                 // MipLevels
+            6                                          // ArraySize (6 faces for a Cubemap)
+        );
+
+        CD3DX12_TEXTURE_COPY_LOCATION dstLocation{gpuDst.Get(), dstSubresource};
+        CD3DX12_TEXTURE_COPY_LOCATION srcLocation{gpuSrc.Get(), srcSubresource};
+        commandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, nullptr);
+    }
+
+    D3D12_RESOURCE_BARRIER from_barriers[2] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuDst.Get(), D3D12_RESOURCE_STATE_COPY_DEST, dst_state),
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuSrc.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, src_state),
+    };
+    commandList->ResourceBarrier(2, from_barriers);
+}
 
 D3D12_GPU_DESCRIPTOR_HANDLE GPU_texture::GetSRVHandle() const { return srv_handle.gpuHandle; }
 

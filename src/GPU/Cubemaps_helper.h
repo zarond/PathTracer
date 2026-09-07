@@ -14,9 +14,9 @@ class EnvCube_helper {
   public:
     EnvCube_helper();
     ~EnvCube_helper();
-    void CreateDiffuseEnvmapCube(const GPU_texture& envmap);
+    void CreateDiffuseEnvmapCube(const GPU_texture& envmap, bool is_cubemap = false);
     GPU_texture&& GetDiffuseEnvmapCube();
-    void CreateSpecularEnvmapCube(const GPU_texture& envmap);
+    void CreateSpecularEnvmapCube(const GPU_texture& envmap, bool is_cubemap = false);
     GPU_texture&& GetSpecularEnvmapCube();
 
     static constexpr int Diffuse_size = 32;

@@ -80,8 +80,8 @@ void Raster_pipeline::OnEnvmapLoad(GPU_texture& envmap) {
     auto diff = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start);
     float time_ms = static_cast<float>(diff.count()) / 1000.0f;
     std::cout << "Envmap texture mips were computed in " << std::fixed << std::setprecision(2) << time_ms << " ms." << '\n';
-    ComputeEnvmapLut(envmap);
-    ComputeEnvmapSH(envmap);
+    ComputeEnvmapLut(envmap);   
+    diffuse_irradiance_sh = ComputeEnvmapSH(envmap);
 }
 
 Raster_pipeline::~Raster_pipeline() { release_gpu_resources(); }
@@ -135,6 +135,8 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_GTAO_helper.AONormalSigma = render_settings.AONormalSigma;
     m_rasterCB.SSREnabled = render_settings.SSREnabled;
     m_rasterCB.DiffuseUseSphericalHarmonics = render_settings.DiffuseUseSphericalHarmonics;
+    useDiffuseProbe = render_settings.useDiffuseProbe;
+    useReflectionProbe = render_settings.useReflectionProbe;
     DrawSSROnly = render_settings.DrawSSROnly;
     m_SSR_helper.DenoiseEnabled = render_settings.SSRDenoiseEnabled;
     m_SSR_helper.RayReuseEnabled = render_settings.SSRRayReuseEnabled;
@@ -316,12 +318,9 @@ void Raster_pipeline::CreateConstantBuffers() {
     ThrowIfFailed(m_GIDataConstants->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedGIData)));
 }
 
-void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) {
+void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer, UINT width, UINT height) {
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
-
-    UINT width = framebuffer.width();
-    UINT height = framebuffer.height();
 
     m_rasterCB.RenderFrameMips = std::min(GPU_texture::CalculateMipCount(width, height), static_cast<unsigned int>(Kawase_blur_helper::BlurIterations));
     m_rasterCB.FrameSize = {width, height};
@@ -335,6 +334,12 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     commandList->RSSetViewports(1, &m_viewport);
     commandList->RSSetScissorRects(1, &m_scissorRect);
 
+    if (useDiffuseProbe) {
+        m_GI.diffuse = diffuse_irradiance_sh_from_probe;
+    } else {
+        m_GI.diffuse = diffuse_irradiance_sh;
+    }
+
     // Copy the updated scene constant buffer to GPU.
     memcpy(&m_mappedConstantData->constants, &m_rasterCB, sizeof(m_rasterCB));
     auto cbGpuAddress = m_perFrameConstants->GetGPUVirtualAddress();
@@ -347,8 +352,16 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     commandList->SetGraphicsRootDescriptorTable(
         GlobalRootSignatureParams::MaterialsBufferSlot, gpu_model.materials_array.gpuHandle);
     commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::DFGTex, DFG_lut.GetSRVHandle());
-    commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::DiffuseLutTex, Diffuse_lut.GetSRVHandle());
-    commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SpecularLutTex, Specular_lut.GetSRVHandle());
+    if (useDiffuseProbe) {
+        commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::DiffuseLutTex, Diffuse_probe.GetSRVHandle());
+    } else {
+        commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::DiffuseLutTex, Diffuse_lut.GetSRVHandle());
+    }
+    if (useReflectionProbe) {
+        commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SpecularLutTex, Reflection_probe.GetSRVHandle());
+    } else {
+        commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SpecularLutTex, Specular_lut.GetSRVHandle());
+    }
 
     const auto& combined_mesh = gpu_model.get_combined_mesh();
 
@@ -493,7 +506,13 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     }
     // Draw background
     commandList->SetPipelineState(m_backgroundPipelineState.Get());
+    if (useReflectionProbe) {
+        commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SpecularLutTex, Specular_lut.GetSRVHandle());
+    }
     commandList->DrawInstanced(3, 1, 0, 0);
+    if (useReflectionProbe) {
+        commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SpecularLutTex, Reflection_probe.GetSRVHandle());
+    }
 
     if (!transmissive_objects.empty()) {
         GPU_texture::copy_texture_mip0_only(m_frame_opaque_only, m_renderTarget,
@@ -580,16 +599,14 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     m_rasterCB.viewProjection_prev = m_rasterCB.viewProjection;
 }
 
-void Raster_pipeline::copy_render_target_to_framebuffer(const CPUFrameBuffer& framebuffer) {
+void Raster_pipeline::copy_render_target_to_framebuffer(const GPU_texture& framebuffer) {
     static Copy_helper copy_helper{};
-    const auto& gpu_texture = framebuffer.get_texture_resource();
-    copy_helper.Copy(gpu_texture, m_renderTarget);
+    copy_helper.Copy(framebuffer, m_renderTarget);
 }
 
-void Raster_pipeline::copy_ssr_to_framebuffer(const CPUFrameBuffer& framebuffer) {
+void Raster_pipeline::copy_ssr_to_framebuffer(const GPU_texture& framebuffer) {
     static Copy_helper copy_helper{};
-    const auto& gpu_texture = framebuffer.get_texture_resource();
-    copy_helper.Copy(gpu_texture, m_SSR);
+    copy_helper.Copy(framebuffer, m_SSR);
 }
 
 void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
@@ -753,7 +770,7 @@ void Raster_pipeline::ComputeEnvmapLut(const GPU_texture& envmap) {
     std::cout << "Diffuse and Specular Lut computed in " << diff.count() << " ms." << '\n';
 }
 
-void Raster_pipeline::ComputeEnvmapSH(const GPU_texture& envmap, bool is_cubemap) {
+SHCoefficients Raster_pipeline::ComputeEnvmapSH(const GPU_texture& envmap, bool is_cubemap) {
     static SphericalHarmonics_helper SH_helper{};
     auto start = std::chrono::high_resolution_clock::now();
     D3DContext& d3d_ctx = D3DContext::Get();
@@ -777,10 +794,9 @@ void Raster_pipeline::ComputeEnvmapSH(const GPU_texture& envmap, bool is_cubemap
     diffuse.L21     = sh_results[7];
     diffuse.L22     = sh_results[8];
 
-    m_GI.diffuse = diffuse;
-
     auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
     std::cout << "Spherical Harmonics Irradiance computed in " << diff.count() << " ms." << '\n';
+    return diffuse;
 }
 
 void Raster_pipeline::ComputeMipMaps(GPU_texture& texture) { 
@@ -804,6 +820,12 @@ void Raster_pipeline::ComputeMipMaps(GPU_texture& texture) {
     
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();
+}
+
+void Raster_pipeline::SetReflectionProbe(GPU_texture&& reflection_probe, GPU_texture&& diffuse_probe) {
+    Reflection_probe = std::move(reflection_probe);
+    Diffuse_probe = std::move(diffuse_probe);
+    diffuse_irradiance_sh_from_probe = ComputeEnvmapSH(Reflection_probe, true);
 }
 
 }

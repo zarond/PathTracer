@@ -5,7 +5,7 @@ struct LutCSInput {
     int currentMip;
     int numMips; // of an Envmap texture
     float roughness;
-    float padding;
+    uint isCubemap;
 };
 
 // Output texture, accessed as a UAV
@@ -13,6 +13,7 @@ RWTexture2DArray<float4> gOutput : register(u0);
 
 // Envmap
 Texture2D<float4> EnvMap : register(t0, space1);
+TextureCube<float4> EnvMapCube : register(t1, space1);
 SamplerState EnvMapSampler : register(s0, space1);
 
 // Input parameters
@@ -52,14 +53,27 @@ float Equirectangular_distortion(float3 dir) {
     return sinT;
 }
 
-float ComputeEnvmapLod(float3 dir, float p, float maxMip, int num_samples) {
-    return max(0.0f, (maxMip - 1.5f) - 0.5f * log2(num_samples * p * Equirectangular_distortion(dir)));
+float ComputeEnvmapLod(float3 dir, float pdf, float maxMip, int num_samples) {
+    if (InputInfo.isCubemap) {
+        // Solid angle of a single cubemap texel
+        float log2_omegaTexel = log2(2.0f * PI/ 3.0f) - 2.0f * maxMip;
+        // Solid angle of the sample
+        float omegaSample = 1.0f / (float(num_samples) * pdf);
+        return max(0.0f, 0.5f * (log2(omegaSample) - log2_omegaTexel));
+    } else {
+        return max(0.0f, (maxMip - 1.5f) - 0.5f * log2(num_samples * pdf * Equirectangular_distortion(dir)));
+    }
 }
 
 float3 SampleEnvmap(float3 dir, float lod) {  // dir is expected to be normalized
-    float2 uv = float2(atan2(-dir.z, -dir.x), -2.0f * asin(dir.y)) * (1.0f / PI);
-    uv = uv * 0.5f + 0.5f;
-    return EnvMap.SampleLevel(EnvMapSampler, uv, lod).xyz;
+    if (InputInfo.isCubemap) {
+        dir.z *= -1.0f; // Flip X for cubemap sampling
+        return EnvMapCube.SampleLevel(EnvMapSampler, dir, lod).xyz;
+    } else {
+        float2 uv = float2(atan2(-dir.z, -dir.x), -2.0f * asin(dir.y)) * (1.0f / PI);
+        uv = uv * 0.5f + 0.5f;
+        return EnvMap.SampleLevel(EnvMapSampler, uv, lod).xyz;
+    }
 }
 
 [numthreads(16, 16, 1)] 

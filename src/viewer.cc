@@ -372,6 +372,20 @@ void Viewer::apply_rest_pose() {
     need_transforms_update_ = true;
 }
 
+#ifdef WINDOWS_SPECIFIC
+void Viewer::render_lighting_probe() {
+    if (!is_using_gpu_renderer()) {
+        return;
+    }
+    const auto& i_renderer = renderers_[(int)RendererMode::GPURenderer];
+    if (i_renderer == nullptr) {
+        return;
+    }
+    auto* gpu_renderer = static_cast<GPURenderer*>(i_renderer.get());
+    gpu_renderer->render_lighting_probe();
+}
+#endif
+
 void save_render_image_timed_action(const Viewer& viewer, const std::filesystem::path& image_path) {
     auto start = std::chrono::high_resolution_clock::now();
     viewer.take_snapshot(image_path);

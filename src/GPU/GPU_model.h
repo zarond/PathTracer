@@ -136,6 +136,8 @@ class GPU_texture {
         ComPtr<ID3D12GraphicsCommandList4>& commandList);
     static void copy_texture_mip0_only(GPU_texture& dst, GPU_texture& src, D3D12_RESOURCE_STATES dst_state, D3D12_RESOURCE_STATES src_state,
         ComPtr<ID3D12GraphicsCommandList4>& commandList);
+    static void copy_texture_to_cubemap_side(GPU_texture& dst, GPU_texture& src, D3D12_RESOURCE_STATES dst_state,
+        D3D12_RESOURCE_STATES src_state, int face_idx, ComPtr<ID3D12GraphicsCommandList4>& commandList);
 
   private:
     void create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT format,
