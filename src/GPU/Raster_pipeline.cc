@@ -80,7 +80,7 @@ void Raster_pipeline::OnEnvmapLoad(GPU_texture& envmap) {
     auto diff = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start);
     float time_ms = static_cast<float>(diff.count()) / 1000.0f;
     std::cout << "Envmap texture mips were computed in " << std::fixed << std::setprecision(2) << time_ms << " ms." << '\n';
-    ComputeEnvmapLut(envmap);   
+    ComputeEnvmapLut(envmap, false, Diffuse_lut, Specular_lut);
     diffuse_irradiance_sh = ComputeEnvmapSH(envmap);
 }
 
@@ -601,7 +601,18 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
 
 void Raster_pipeline::copy_render_target_to_framebuffer(const GPU_texture& framebuffer) {
     static Copy_helper copy_helper{};
+    D3DContext& d3d_ctx = D3DContext::Get();
+    auto commandList = d3d_ctx.m_DXRCommandList;
+
+    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTarget.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    commandList->ResourceBarrier(1, &barrier);
+
     copy_helper.Copy(framebuffer, m_renderTarget);
+
+    barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTarget.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    commandList->ResourceBarrier(1, &barrier);
 }
 
 void Raster_pipeline::copy_ssr_to_framebuffer(const GPU_texture& framebuffer) {
@@ -732,14 +743,15 @@ void Raster_pipeline::ComputeDFGLut() {
     std::cout << "DFG Lut computed in " << diff.count() << " ms." << '\n';
 }
 
-void Raster_pipeline::ComputeEnvmapLut(const GPU_texture& envmap) {
+void Raster_pipeline::ComputeEnvmapLut(
+    const GPU_texture& envmap, bool is_cubemap, GPU_texture& output_diffuse, GPU_texture& output_specular) {
     auto start = std::chrono::high_resolution_clock::now();
 
-    Diffuse_lut.release_gpu_resource();
-    Specular_lut.release_gpu_resource();
+    output_diffuse.release_gpu_resource();
+    output_specular.release_gpu_resource();
 
-    Diffuse_lut = EnvCube_helper::GetBlankSRVDiffuseTexture();
-    Specular_lut = EnvCube_helper::GetBlankSRVSpecularTexture();
+    output_diffuse = EnvCube_helper::GetBlankSRVDiffuseTexture();
+    output_specular = EnvCube_helper::GetBlankSRVSpecularTexture();
 
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
@@ -750,15 +762,15 @@ void Raster_pipeline::ComputeEnvmapLut(const GPU_texture& envmap) {
     commandList->ResourceBarrier(1, &barrier);
     
     static EnvCube_helper EnvCube_helper{};
-    EnvCube_helper.CreateDiffuseEnvmapCube(envmap);
-    EnvCube_helper.CreateSpecularEnvmapCube(envmap);
+    EnvCube_helper.CreateDiffuseEnvmapCube(envmap, is_cubemap);
+    EnvCube_helper.CreateSpecularEnvmapCube(envmap, is_cubemap);
 
     GPU_texture Diffuse_lut_tmp = std::move(EnvCube_helper.GetDiffuseEnvmapCube());
     GPU_texture Specular_lut_tmp = std::move(EnvCube_helper.GetSpecularEnvmapCube());
     // copy textures from UAV to SRV-only textures
-    GPU_texture::copy_texture(Diffuse_lut, Diffuse_lut_tmp, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+    GPU_texture::copy_texture(output_diffuse, Diffuse_lut_tmp, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS, d3d_ctx.m_DXRCommandList);
-    GPU_texture::copy_texture(Specular_lut, Specular_lut_tmp, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+    GPU_texture::copy_texture(output_specular, Specular_lut_tmp, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS, d3d_ctx.m_DXRCommandList);
 
     d3d_ctx.DispatchDXRCommandList();
@@ -770,14 +782,27 @@ void Raster_pipeline::ComputeEnvmapLut(const GPU_texture& envmap) {
     std::cout << "Diffuse and Specular Lut computed in " << diff.count() << " ms." << '\n';
 }
 
-SHCoefficients Raster_pipeline::ComputeEnvmapSH(const GPU_texture& envmap, bool is_cubemap) {
+SHCoefficients Raster_pipeline::ComputeEnvmapSH(const GPU_texture& envmap, bool is_cubemap, D3D12_RESOURCE_STATES initial_state) {
     static SphericalHarmonics_helper SH_helper{};
     auto start = std::chrono::high_resolution_clock::now();
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
+    auto commandList = d3d_ctx.m_DXRCommandList;
+
+    if (initial_state != D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) {
+        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+            envmap.get_gpu_resource().Get(), initial_state, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        commandList->ResourceBarrier(1, &barrier);
+    }
     
     SH_helper.Init();
     SH_helper.Compute(envmap, is_cubemap);
+
+    if (initial_state != D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) {
+        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+            envmap.get_gpu_resource().Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, initial_state);
+        commandList->ResourceBarrier(1, &barrier);
+    }
 
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();
@@ -825,7 +850,7 @@ void Raster_pipeline::ComputeMipMaps(GPU_texture& texture) {
 void Raster_pipeline::SetReflectionProbe(GPU_texture&& reflection_probe, GPU_texture&& diffuse_probe) {
     Reflection_probe = std::move(reflection_probe);
     Diffuse_probe = std::move(diffuse_probe);
-    diffuse_irradiance_sh_from_probe = ComputeEnvmapSH(Reflection_probe, true);
+    diffuse_irradiance_sh_from_probe = ComputeEnvmapSH(Reflection_probe, true, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 }
 
 }

@@ -311,7 +311,8 @@ void GPURenderer::render_lighting_probe() {
     GPU_texture cubemap{cubemap_size, cubemap_size, flags};
     // calculate mip maps for the cubemap texture
     for (int face_idx = 0; face_idx < 6; ++face_idx) {
-        Raster_pipeline::ComputeMipMaps(cubemap_textures[face_idx]);
+        auto& cubemap_side = cubemap_textures[face_idx];
+        Raster_pipeline::ComputeMipMaps(cubemap_side);
     }
     // copy each cubemap face into the cubemap texture
     d3d_ctx.InitDXRCommandList();
@@ -319,41 +320,16 @@ void GPURenderer::render_lighting_probe() {
     d3d_ctx.m_DXRCommandList->SetDescriptorHeaps(1, copy_desc_heap);
 
     for (int face_idx = 0; face_idx < 6; ++face_idx) {
-        GPU_texture::copy_texture_to_cubemap_side(cubemap, cubemap_textures[face_idx], D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+        auto& cubemap_side = cubemap_textures[face_idx];
+        GPU_texture::copy_texture_to_cubemap_side(cubemap, cubemap_side, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, face_idx, d3d_ctx.m_DXRCommandList);
     }
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();
 
-    //----------------------------------------------------
-    // Todo: use ComputeEnvmapLut and not copy-paste the code
-    // Compute GGX reflection probe from the cubemap
-    GPU_texture diffuse_probe = EnvCube_helper::GetBlankSRVDiffuseTexture();
-    GPU_texture reflection_probe = EnvCube_helper::GetBlankSRVSpecularTexture();
-
-    d3d_ctx.InitDXRCommandList();
-
-    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(cubemap.get_gpu_resource().Get(),
-        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    d3d_ctx.m_DXRCommandList->ResourceBarrier(1, &barrier);
-    
-    static EnvCube_helper EnvCube_helper{};
-    EnvCube_helper.CreateDiffuseEnvmapCube(cubemap, true);
-    EnvCube_helper.CreateSpecularEnvmapCube(cubemap, true);
-
-    GPU_texture Diffuse_lut_tmp = std::move(EnvCube_helper.GetDiffuseEnvmapCube());
-    GPU_texture Specular_lut_tmp = std::move(EnvCube_helper.GetSpecularEnvmapCube());
-    // copy textures from UAV to SRV-only textures
-    GPU_texture::copy_texture(diffuse_probe, Diffuse_lut_tmp, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-        D3D12_RESOURCE_STATE_UNORDERED_ACCESS, d3d_ctx.m_DXRCommandList);
-    GPU_texture::copy_texture(reflection_probe, Specular_lut_tmp, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-        D3D12_RESOURCE_STATE_UNORDERED_ACCESS, d3d_ctx.m_DXRCommandList);
-
-    d3d_ctx.DispatchDXRCommandList();
-    d3d_ctx.WaitForPendingDXR();
-
-    EnvCube_helper.ReleaseTemporaryGPUResources();
-    //----------------------------------------------------
+    GPU_texture diffuse_probe;
+    GPU_texture reflection_probe;
+    Raster_pipeline::ComputeEnvmapLut(cubemap, true, diffuse_probe, reflection_probe);
 
     // apply the reflection probe to the raster pipeline
     auto raster_pipeline = pipelines_[(int)RenderPipelineMode::RasterPipeline];

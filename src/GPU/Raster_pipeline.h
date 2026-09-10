@@ -104,7 +104,9 @@ class Raster_pipeline : public IRender_pipeline {
     static void Reload();
 
     static void ComputeMipMaps(GPU_texture& texture);
-    static SHCoefficients ComputeEnvmapSH(const GPU_texture& envmap, bool is_cubemap = false);
+    static SHCoefficients ComputeEnvmapSH(const GPU_texture& envmap, bool is_cubemap = false, D3D12_RESOURCE_STATES initial_state = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    static void ComputeEnvmapLut(
+        const GPU_texture& envmap, bool is_cubemap, GPU_texture& output_diffuse, GPU_texture& output_specular);
 
     void SetReflectionProbe(GPU_texture&& reflection_probe, GPU_texture&& diffuse_probe);
 
@@ -113,7 +115,6 @@ class Raster_pipeline : public IRender_pipeline {
     static void CreatePipelineStateObjects();
     void CreateConstantBuffers();
     void ComputeDFGLut();
-    void ComputeEnvmapLut(const GPU_texture& envmap);
 
     void resize_render_targets(int new_width, int new_height);
     void copy_render_target_to_framebuffer(const GPU_texture& framebuffer);
