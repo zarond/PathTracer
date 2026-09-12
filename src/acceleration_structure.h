@@ -36,6 +36,7 @@ struct BBox {
 };
 
 BBox object_to_ws_bbox(const Object& obj, const Mesh& mesh) noexcept;
+int get_longest_axis(const BBox& bbox) noexcept;
 
 struct DOP {
     DOP() noexcept;

@@ -219,30 +219,22 @@ void GPURenderer::OnModelLoad() {
     }
 }
 
-void GPURenderer::render_lighting_probe() {
-    assert(model_ref_);
-    if (model_ref_ == nullptr || envmap_ref_ == nullptr || gpu_model_ == nullptr) {
-        throw std::runtime_error("One of components is nullptr in GPURenderer::render_lighting_probe()");
-    }
-    if (gpu_model_->isEmpty()) {
-        std::cout << "Model has no vertices, skipping rendering" << '\n';
-        render_state_ = RenderingState::Idle;
-        return;
-    }
-
+GPU_texture GPURenderer::render_cubemap(const UINT cubemap_size, bool need_mips, fvec3 cubemap_origin) {
     // Save current state
+    const auto saved_origin = origin_;
     const auto saved_viewMatrix = viewMatrix_;
     const auto saved_projectionMatrix = projectionMatrix_;
     const auto saved_NDC2WorldMatrix = NDC2WorldMatrix_;
     const auto saved_render_state = render_state_.load();
     const auto saved_render_settings = render_settings_;
 
-    const UINT cubemap_size = EnvCube_helper::Specular_size;
-
     // Create cubemap textures (6 faces)
     std::array<GPU_texture, 6> cubemap_textures;
+    auto flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
+    if (need_mips) {
+        flags |= TEXTURE_TRAITS::AllocateMips;
+    }
     for (int face_idx = 0; face_idx < 6; ++face_idx) {
-        const auto flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;
         cubemap_textures[face_idx] = GPU_texture{cubemap_size, cubemap_size, flags };
     }
 
@@ -286,7 +278,7 @@ void GPURenderer::render_lighting_probe() {
 
         // Set up camera for this face
         const auto camera = fastgltf::Camera::Perspective{1.0f, glm ::radians(90.0f), 1000.0f, 0.1f};
-        update_camera_transform_state(origin_, face.forward, face.up, camera);
+        update_camera_transform_state(cubemap_origin, face.forward, face.up, camera);
 
         // Set rendering settings for this frame
         glm::fvec2 jitter{0.0f};
@@ -307,12 +299,26 @@ void GPURenderer::render_lighting_probe() {
         progress_ = (face_idx + 1) / 6.0f;
     }
 
-    const auto flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::Cubemap | TEXTURE_TRAITS::AllocateMips;
-    GPU_texture cubemap{cubemap_size, cubemap_size, flags};
+    // Restore original state
+    origin_ = saved_origin;
+    viewMatrix_ = saved_viewMatrix;
+    projectionMatrix_ = saved_projectionMatrix;
+    NDC2WorldMatrix_ = saved_NDC2WorldMatrix;
+    render_state_ = saved_render_state;
+    render_settings_ = saved_render_settings;
+    progress_ = 0.0f;
+
+    auto cubemap_flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::Cubemap;
+    if (need_mips) {
+        cubemap_flags |= TEXTURE_TRAITS::AllocateMips;
+    }
+    GPU_texture cubemap{cubemap_size, cubemap_size, cubemap_flags};
     // calculate mip maps for the cubemap texture
-    for (int face_idx = 0; face_idx < 6; ++face_idx) {
-        auto& cubemap_side = cubemap_textures[face_idx];
-        Raster_pipeline::ComputeMipMaps(cubemap_side);
+    if (need_mips) {
+        for (int face_idx = 0; face_idx < 6; ++face_idx) {
+            auto& cubemap_side = cubemap_textures[face_idx];
+            Raster_pipeline::ComputeMipMaps(cubemap_side);
+        }    
     }
     // copy each cubemap face into the cubemap texture
     d3d_ctx.InitDXRCommandList();
@@ -327,6 +333,22 @@ void GPURenderer::render_lighting_probe() {
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();
 
+    return cubemap;
+}
+
+void GPURenderer::compute_lighting_probe() {
+    assert(model_ref_);
+    if (model_ref_ == nullptr || envmap_ref_ == nullptr || gpu_model_ == nullptr) {
+        throw std::runtime_error("One of components is nullptr in GPURenderer::render_lighting_probe()");
+    }
+    if (gpu_model_->isEmpty()) {
+        std::cout << "Model has no vertices, skipping rendering" << '\n';
+        render_state_ = RenderingState::Idle;
+        return;
+    }
+
+    GPU_texture cubemap = render_cubemap(EnvCube_helper::Specular_size, true, origin_);
+
     GPU_texture diffuse_probe;
     GPU_texture reflection_probe;
     Raster_pipeline::ComputeEnvmapLut(cubemap, true, diffuse_probe, reflection_probe);
@@ -337,14 +359,50 @@ void GPURenderer::render_lighting_probe() {
         static_cast<Raster_pipeline*>(raster_pipeline.get())
             ->SetReflectionProbe(std::move(reflection_probe), std::move(diffuse_probe));
     }
+}
 
-    // Restore original state
-    viewMatrix_ = saved_viewMatrix;
-    projectionMatrix_ = saved_projectionMatrix;
-    NDC2WorldMatrix_ = saved_NDC2WorldMatrix;
-    render_state_ = saved_render_state;
-    render_settings_ = saved_render_settings;
-    progress_ = 0.0f;
+void GPURenderer::compute_GI(BBox bbox, int longest_dimension_N) {
+    assert(model_ref_);
+    if (model_ref_ == nullptr || envmap_ref_ == nullptr || gpu_model_ == nullptr) {
+        throw std::runtime_error("One of components is nullptr in GPURenderer::render_lighting_probe()");
+    }
+    if (gpu_model_->isEmpty()) {
+        std::cout << "Model has no vertices, skipping rendering" << '\n';
+        return;
+    }
+    if (bbox.is_empty()) {
+        std::cout << "Bounding box is empty, skipping rendering" << '\n';
+        return;
+    }
+    fvec3 bbox_size = bbox.max - bbox.min;
+    int longest_axis = get_longest_axis(bbox);
+    float main_axis_delta = abs(bbox_size[longest_axis] / static_cast<float>(longest_dimension_N));
+    uvec3 grid_dim = bbox_size / main_axis_delta;
+    grid_dim = glm::max(grid_dim, uvec3{1});
+    grid_dim[longest_axis] = longest_dimension_N;
+    fvec3 delta = bbox_size / fvec3{grid_dim};
+
+    std::vector<SHCoefficients> sh_probes;
+    sh_probes.reserve(grid_dim.x * grid_dim.y * grid_dim.z);
+
+    for (int z = 0; z < grid_dim.z; ++z) {
+        for (int y = 0; y < grid_dim.y; ++y) {
+            for (int x = 0; x < grid_dim.x; ++x) {
+                fvec3 sample_pos = bbox.min + (fvec3{x, y, z} + fvec3{0.5f}) * delta;
+                GPU_texture cubemap = render_cubemap(256, false, sample_pos);
+                const auto sh_probe = Raster_pipeline::ComputeEnvmapSH(cubemap, true, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+                sh_probes.push_back(sh_probe);
+            }
+        }
+        std::cout << "Computed GI probes for " << (z + 1) << " out of " << grid_dim.z << " slices." << std::endl;
+    }
+
+    // apply the sh probe grid to the raster pipeline
+    auto raster_pipeline = pipelines_[(int)RenderPipelineMode::RasterPipeline];
+    if (raster_pipeline) {
+        static_cast<Raster_pipeline*>(raster_pipeline.get())
+            ->SetGI(std::move(sh_probes), bbox, grid_dim);
+    }
 }
 
 }  // namespace app

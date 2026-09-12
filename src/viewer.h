@@ -113,6 +113,7 @@ class Viewer {
 
 #ifdef WINDOWS_SPECIFIC  
     void render_lighting_probe();
+    void render_GI();
 #endif
 
   private:

@@ -41,8 +41,11 @@ SamplerState DFGSampler : register(s2, space1);
 // Per draw call data
 ConstantBuffer<RasterPerDrawData> DrawData : register(b1);
     
-// Scene diffuse spherical harmonics data
-ConstantBuffer<GIData> g_GI : register(b2);
+// Scene diffuse spherical harmonics settings data
+ConstantBuffer<GISettings> g_GI_settings : register(b2);
+    
+// GI data buffers
+//StructuredBuffer<SHCoefficients> g_GI_data : register(t1, space0);
 
 struct PSInput {
     float4 ndc_position : SV_POSITION;
@@ -146,7 +149,7 @@ float3 sampleDiffuseIBL(float3 normal) {
         static const float c4 = 0.886227;
         static const float c5 = 0.247708;
             
-        SHCoefficients SH = g_GI.diffuse;
+        SHCoefficients SH = g_GI_settings.diffuse;
         const float3 L00  = SH.L00;
         const float3 L1_1 = SH.L1_1;
         const float3 L10  = SH.L10;

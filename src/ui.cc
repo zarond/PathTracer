@@ -692,6 +692,7 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
     auto render_settings = viewer.get_render_settings();
     bool raster_settings_changed = false;
     static bool light_probe_computed = false;
+    static bool gi_computed = false;
     if (viewer.get_rendering_state() == RenderingState::Idle) {
         if (ImGui::Button("Compute light probe")) {
             viewer.render_lighting_probe();
@@ -700,12 +701,21 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
             render_settings.useReflectionProbe = true;
             raster_settings_changed = true;
         }
+        if (ImGui::Button("Compute GI")) {
+            viewer.render_GI();
+            gi_computed = true;
+            render_settings.useGI = true;
+            raster_settings_changed = true;
+        }
     } else {
         ImGui::Text("Stop rendering process to compute light probe");
     }
     if (light_probe_computed) {
         raster_settings_changed |= ImGui::Checkbox("Use diffuse probe", &render_settings.useDiffuseProbe);
         raster_settings_changed |= ImGui::Checkbox("Use reflection probe", &render_settings.useReflectionProbe);
+    }
+    if (gi_computed) {
+        raster_settings_changed |= ImGui::Checkbox("Use GI", &render_settings.useGI);
     }
     ImGui::Separator();
 

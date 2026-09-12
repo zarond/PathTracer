@@ -27,13 +27,6 @@ D3D12_SHADER_RESOURCE_VIEW_DESC CreateSRVDescription(UINT numElements, UINT elem
     return srvDesc;
 }
 
-void CreateBufferSRV(D3DContext& d3d_ctx, const ComPtr<ID3D12Resource>& buffer, UINT numElements, UINT elementSize,
-    D3D_Handle_Pair& handles) {
-    d3d_ctx.m_SrvDescHeapAlloc.Alloc(&handles.cpuHandle, &handles.gpuHandle);
-    const auto srvDesc = CreateSRVDescription(numElements, elementSize);
-    d3d_ctx.m_d3dDevice->CreateShaderResourceView(buffer.Get(), &srvDesc, handles.cpuHandle);
-}
-
 bool isTrue(TEXTURE_TRAITS a) { return a != TEXTURE_TRAITS::None; }
 bool isHDR(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::HDR) != TEXTURE_TRAITS::None; }
 bool isSRGB(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::sRGB) != TEXTURE_TRAITS::None; }
@@ -49,6 +42,13 @@ bool AllocateMips(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::AllocateMips) 
 namespace app {
 
 using namespace glm;
+
+void CreateBufferSRV(
+    D3DContext& d3d_ctx, const ComPtr<ID3D12Resource>& buffer, UINT numElements, UINT elementSize, D3D_Handle_Pair& handles) {
+    d3d_ctx.m_SrvDescHeapAlloc.Alloc(&handles.cpuHandle, &handles.gpuHandle);
+    const auto srvDesc = CreateSRVDescription(numElements, elementSize);
+    d3d_ctx.m_d3dDevice->CreateShaderResourceView(buffer.Get(), &srvDesc, handles.cpuHandle);
+}
 
 inline void ThrowIfFailed(HRESULT hr) {
     if (FAILED(hr)) {

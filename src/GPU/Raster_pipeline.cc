@@ -28,7 +28,8 @@ enum Value : int {
     SSRTex,
     MaterialIDTex,
     RootConstants,
-    GIData,
+    GISettings,
+    //GIData,
 
     Count
 };
@@ -95,10 +96,14 @@ void Raster_pipeline::release_gpu_resources() {
     m_GbufferPipelineState.Reset();
 
     m_perFrameConstants->Unmap(0, nullptr);
-    m_GIDataConstants->Unmap(0, nullptr);
+    m_GISettingsConstants->Unmap(0, nullptr);
 
     m_perFrameConstants.Reset();
-    m_GIDataConstants.Reset();
+    m_GISettingsConstants.Reset();
+    m_GIData.Reset();
+
+    D3DContext& d3d_ctx = D3DContext::Get();
+    d3d_ctx.m_SrvDescHeapAlloc.Free(gi_data_handles.cpuHandle, gi_data_handles.gpuHandle);
 }
 
 void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings, fvec3 origin, const fmat4x4& NDC2WorldMatrix,
@@ -166,7 +171,8 @@ void Raster_pipeline::CreateRootSignatures() {
     ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5, 1);  // 8 SSR texture.
     ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6, 1);  // 9 MaterialID texture
     ranges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1);      // 10 per draw constants buffer.
-    ranges[10].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2);      // 11 GI data constants buffer.
+    ranges[10].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2);      // 11 GI settings constants buffer.
+    //ranges[11].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);      // 12 GI data buffer.
 
     D3D12_STATIC_SAMPLER_DESC default_sampler = {};  // Default static sampler.
     default_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -206,7 +212,8 @@ void Raster_pipeline::CreateRootSignatures() {
     rootParameters[GlobalRootSignatureParams::SSRTex].InitAsDescriptorTable(1, &ranges[7]);
     rootParameters[GlobalRootSignatureParams::MaterialIDTex].InitAsDescriptorTable(1, &ranges[8]);
     rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(RasterPerDrawData) / 4, 1);
-    rootParameters[GlobalRootSignatureParams::GIData].InitAsConstantBufferView(2);
+    rootParameters[GlobalRootSignatureParams::GISettings].InitAsConstantBufferView(2);
+    //rootParameters[GlobalRootSignatureParams::GIData].InitAsDescriptorTable(1, &ranges[11]);
 
     auto flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT 
         | D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
@@ -314,8 +321,8 @@ void Raster_pipeline::CreateConstantBuffers() {
     cbSize = sizeof(AlignedGIBuffer);
     constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(cbSize);
     ThrowIfFailed(device->CreateCommittedResource(&uploadHeapProperties, D3D12_HEAP_FLAG_NONE, &constantBufferDesc,
-        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_GIDataConstants)));
-    ThrowIfFailed(m_GIDataConstants->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedGIData)));
+        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_GISettingsConstants)));
+    ThrowIfFailed(m_GISettingsConstants->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedGIData)));
 }
 
 void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer, UINT width, UINT height) {
@@ -335,20 +342,20 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     commandList->RSSetScissorRects(1, &m_scissorRect);
 
     if (useDiffuseProbe) {
-        m_GI.diffuse = diffuse_irradiance_sh_from_probe;
+        m_GI_settings.diffuse = diffuse_irradiance_sh_from_probe;
     } else {
-        m_GI.diffuse = diffuse_irradiance_sh;
+        m_GI_settings.diffuse = diffuse_irradiance_sh;
     }
 
     // Copy the updated scene constant buffer to GPU.
     memcpy(&m_mappedConstantData->constants, &m_rasterCB, sizeof(m_rasterCB));
     auto cbGpuAddress = m_perFrameConstants->GetGPUVirtualAddress();
     // Copy the GI data to constant buffer
-    memcpy(&m_mappedGIData->constants, &m_GI, sizeof(m_GI));
-    auto GIcbGpuAddress = m_GIDataConstants->GetGPUVirtualAddress();
+    memcpy(&m_mappedGIData->constants, &m_GI_settings, sizeof(m_GI_settings));
+    auto GIcbGpuAddress = m_GISettingsConstants->GetGPUVirtualAddress();
 
     commandList->SetGraphicsRootConstantBufferView(GlobalRootSignatureParams::SceneConstantSlot, cbGpuAddress);
-    commandList->SetGraphicsRootConstantBufferView(GlobalRootSignatureParams::GIData, GIcbGpuAddress);
+    commandList->SetGraphicsRootConstantBufferView(GlobalRootSignatureParams::GISettings, GIcbGpuAddress);
     commandList->SetGraphicsRootDescriptorTable(
         GlobalRootSignatureParams::MaterialsBufferSlot, gpu_model.materials_array.gpuHandle);
     commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::DFGTex, DFG_lut.GetSRVHandle());
@@ -851,6 +858,73 @@ void Raster_pipeline::SetReflectionProbe(GPU_texture&& reflection_probe, GPU_tex
     Reflection_probe = std::move(reflection_probe);
     Diffuse_probe = std::move(diffuse_probe);
     diffuse_irradiance_sh_from_probe = ComputeEnvmapSH(Reflection_probe, true, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+}
+
+void Raster_pipeline::SetGI(std::vector<SHCoefficients>&& sh_probes, BBox bbox, uvec3 dim) {
+    fvec3 bbox_size = bbox.max - bbox.min;
+    fvec3 delta = bbox_size / fvec3{dim};
+
+    m_GI_settings.bbox_min = xyz0(bbox.min);
+    m_GI_settings.bbox_max = xyz0(bbox.max);
+    m_GI_settings.grid_dim = xyz0(dim);
+
+    // delete old data
+    m_GIData.Reset();
+
+    ComPtr<ID3D12Resource2> gi_uploadBuffer;
+
+    uint32_t probeCount = sh_probes.size();
+    const UINT BufferSize = sizeof(SHCoefficients) * probeCount;
+
+    const D3D12_HEAP_PROPERTIES def_props{
+        .Type = D3D12_HEAP_TYPE_DEFAULT,
+        .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
+        .CreationNodeMask = 1,
+        .VisibleNodeMask = 1,
+    };
+
+    const D3D12_HEAP_PROPERTIES upload_props{
+        .Type = D3D12_HEAP_TYPE_UPLOAD,
+        .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
+        .CreationNodeMask = 1,
+        .VisibleNodeMask = 1,
+    };
+
+    const D3D12_RESOURCE_DESC upload_desc{
+        .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
+        .Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+        .Width = BufferSize,
+        .Height = 1,
+        .DepthOrArraySize = 1,
+        .MipLevels = 1,
+        .Format = DXGI_FORMAT_UNKNOWN,
+        .SampleDesc = {1, 0},
+        .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+        .Flags = D3D12_RESOURCE_FLAG_NONE,
+    };
+
+    D3DContext& d3d_ctx = D3DContext::Get();
+
+    ThrowIfFailed(d3d_ctx.m_d3dDevice->CreateCommittedResource(
+        &def_props, D3D12_HEAP_FLAG_NONE, &upload_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&m_GIData)));
+    CreateBufferSRV(d3d_ctx, m_GIData, probeCount, sizeof(SHCoefficients), gi_data_handles);
+
+    ThrowIfFailed(d3d_ctx.m_d3dDevice->CreateCommittedResource(&upload_props, D3D12_HEAP_FLAG_NONE, &upload_desc,
+        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&gi_uploadBuffer)));
+
+    void* pDataBegin;
+    ThrowIfFailed(gi_uploadBuffer->Map(0, nullptr, &pDataBegin));
+    memcpy(pDataBegin, sh_probes.data(), BufferSize);
+    gi_uploadBuffer->Unmap(0, nullptr);
+
+    d3d_ctx.InitCopyCommandList();
+
+    d3d_ctx.m_CopyCommandList->CopyBufferRegion(m_GIData.Get(), 0, gi_uploadBuffer.Get(), 0, BufferSize);
+
+    d3d_ctx.DispatchCopyCommandList();
+    d3d_ctx.WaitForPendingCopy();
 }
 
 }

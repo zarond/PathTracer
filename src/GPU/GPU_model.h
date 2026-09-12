@@ -15,6 +15,9 @@ namespace app {
 
 using Microsoft::WRL::ComPtr;
 
+void CreateBufferSRV(
+    D3DContext& d3d_ctx, const ComPtr<ID3D12Resource>& buffer, UINT numElements, UINT elementSize, D3D_Handle_Pair& handles);
+
 class GPU_mesh {
   public:
     GPU_mesh() = default;  // empty mesh, useful for combined mesh in GPU_model

@@ -382,7 +382,18 @@ void Viewer::render_lighting_probe() {
         return;
     }
     auto* gpu_renderer = static_cast<GPURenderer*>(i_renderer.get());
-    gpu_renderer->render_lighting_probe();
+    gpu_renderer->compute_lighting_probe();
+}
+void Viewer::render_GI() {
+    if (!is_using_gpu_renderer()) {
+        return;
+    }
+    const auto& i_renderer = renderers_[(int)RendererMode::GPURenderer];
+    if (i_renderer == nullptr) {
+        return;
+    }
+    auto* gpu_renderer = static_cast<GPURenderer*>(i_renderer.get());
+    gpu_renderer->compute_GI(BBox{fvec3{0}, fvec3{1}}, 10);
 }
 #endif
 

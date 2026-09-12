@@ -35,6 +35,7 @@ struct RenderSettings {
     bool DiffuseUseSphericalHarmonics = false;
     bool useDiffuseProbe = false;
     bool useReflectionProbe = false;
+    bool useGI = false;
     bool specular_aa_enabled = true;
     float specular_aa_variance = 0.15f;
     float specular_aa_threshold = 0.2f;

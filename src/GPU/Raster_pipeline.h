@@ -10,6 +10,7 @@
 
 #include "../arguments.h"
 #include "../render_settings.h"
+#include "../acceleration_structure.h"
 #include "GPU_model.h"
 #include "DXR_pipeline.h"
 #include "Kawase_blur_helper.h"
@@ -74,8 +75,11 @@ struct SHCoefficients {
     fvec4 L22;
 };
 
-struct GIData {
-    SHCoefficients diffuse;
+struct GISettings {
+    fvec4 bbox_min;  // world space bounding box of the GI probe grid
+    fvec4 bbox_max;
+    glm::uvec4 grid_dim;  // number of probes in each dimension (x, y, z)
+    SHCoefficients diffuse; // one global sh probe
 };
 
 struct DrawableSortingInfo {
@@ -109,6 +113,7 @@ class Raster_pipeline : public IRender_pipeline {
         const GPU_texture& envmap, bool is_cubemap, GPU_texture& output_diffuse, GPU_texture& output_specular);
 
     void SetReflectionProbe(GPU_texture&& reflection_probe, GPU_texture&& diffuse_probe);
+    void SetGI(std::vector<SHCoefficients>&& sh_probes, BBox bbox, glm::uvec3 dim);
 
   private:
     static void CreateRootSignatures();
@@ -134,16 +139,18 @@ class Raster_pipeline : public IRender_pipeline {
     AlignedSceneConstantBuffer* m_mappedConstantData = nullptr;
 
     union AlignedGIBuffer {
-        GIData constants;
+        GISettings constants;
         uint8_t alignmentPadding[D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT];
     };
     AlignedGIBuffer* m_mappedGIData = nullptr;
 
     // Scene constants
     RasterConstantBuffer m_rasterCB;
-    GIData m_GI;
+    GISettings m_GI_settings;
     ComPtr<ID3D12Resource> m_perFrameConstants;
-    ComPtr<ID3D12Resource> m_GIDataConstants;
+    ComPtr<ID3D12Resource> m_GISettingsConstants;  // for GI settings like probe count, grid dimensions, etc.
+    ComPtr<ID3D12Resource> m_GIData;  // 3D grid of SH coefficients for GI probes
+    D3D_Handle_Pair gi_data_handles{};
 
     // Pipeline state objects
     CD3DX12_VIEWPORT m_viewport;
