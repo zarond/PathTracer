@@ -51,9 +51,9 @@ struct RasterConstantBuffer {
 };
 
 struct RasterPerDrawData {
-    float4x4 modelMatrix;
-	float4x4 modelMatrix_prev;
-    float4x4 normalMatrix;
+    row_major float3x4 modelMatrix;
+	row_major float3x4 modelMatrix_prev;
+    row_major float3x4 normalMatrix;
     int meshID;
     float modelScale;
     int UseAOTexture;

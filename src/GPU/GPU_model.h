@@ -160,9 +160,9 @@ class GPU_texture {
 };
 
 struct GPU_object_info {
-    fmat4x4 ModelMatrix;
-    fmat4x4 ModelMatrix_prev;
-    fmat4x4 NormalMatrix;
+    glm::fmat3x4 ModelMatrix;
+    glm::fmat3x4 ModelMatrix_prev;
+    glm::fmat3x4 NormalMatrix;
     uint32_t meshIndex;
 
     GPU_object_info(const Object& obj);

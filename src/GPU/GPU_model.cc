@@ -1,5 +1,4 @@
 #include "GPU_model.h"
-#include "GPU_model.h"
 
 #include "../d3d_context.h"
 
@@ -366,9 +365,9 @@ GPU_Material::GPU_Material(const Material& mat, const std::vector<int>& texture_
 }
 
 GPU_object_info::GPU_object_info(const Object& obj) :
-    ModelMatrix(obj.ModelMatrix),
-    ModelMatrix_prev(obj.ModelMatrix),
-    NormalMatrix(obj.NormalMatrix),
+    ModelMatrix(transpose(obj.ModelMatrix)),
+    ModelMatrix_prev(ModelMatrix),
+    NormalMatrix(transpose(obj.NormalMatrix)),
     meshIndex(obj.meshIndex) {}
 
 GPU_model::GPU_model(const Model& cpu_model, bool raytracing_support) {
@@ -469,7 +468,7 @@ void GPU_model::create_top_level_AS(const Model& cpu_model) {
         const auto& Mat = obj.ModelMatrix;
         for (int r = 0; r < 3; ++r) {
             for (int c = 0; c < 4; ++c) {
-                inst.Transform[r][c] = Mat[c][r];
+                inst.Transform[r][c] = Mat[r][c];
             }
         }
         const auto& cpu_mesh = cpu_model.meshes[obj.meshIndex];
@@ -804,8 +803,8 @@ void GPU_model::update_transforms(const Model& model, bool updateTLAS) {
         auto& obj = objects[i];
         const auto& obj_new = model.objects[i];
         obj.ModelMatrix_prev = obj.ModelMatrix;
-        obj.ModelMatrix = obj_new.ModelMatrix;
-        obj.NormalMatrix = obj_new.NormalMatrix;
+        obj.ModelMatrix = transpose(obj_new.ModelMatrix);
+        obj.NormalMatrix = transpose(obj_new.NormalMatrix);
         obj.meshIndex = obj_new.meshIndex;
     }
     if (!updateTLAS) return;
@@ -830,7 +829,7 @@ void GPU_model::update_transforms(const Model& model, bool updateTLAS) {
         const auto& Mat = obj.ModelMatrix;
         for (int r = 0; r < 3; ++r) {
             for (int c = 0; c < 4; ++c) {
-                inst.Transform[r][c] = Mat[c][r];
+                inst.Transform[r][c] = Mat[r][c];
             }
         }
     }

@@ -689,16 +689,17 @@ void Raster_pipeline::sort_objects_for_rendering(
     const auto& materials = gpu_model.get_materials_cpu_array();
     fvec3 camera_forward = normalize(xyz(m_rasterCB.projectionToWorld * fvec4(0, 0, 0, 1)));
     for (const auto& obj : gpu_model.objects) {
-        fvec3 v = xyz(obj.ModelMatrix[3]) - xyz(m_rasterCB.cameraPosition);
+        fvec3 obj_pos = fvec3(obj.ModelMatrix[0][3], obj.ModelMatrix[1][3], obj.ModelMatrix[2][3]);
+        fvec3 v = obj_pos - xyz(m_rasterCB.cameraPosition);
         const auto& mat = materials[obj.meshIndex];
         float ZDistanceToCamera = dot(camera_forward, v);
         bool alphaBlending = mat.alphaBlending;
         bool transmittance = mat.hasVolume || (mat.transmisionFactor != 0.0f);
 
         glm::fvec3 scale;
-        scale.x = glm::length(glm::fvec3(obj.ModelMatrix[0]));
-        scale.y = glm::length(glm::fvec3(obj.ModelMatrix[1]));
-        scale.z = glm::length(glm::fvec3(obj.ModelMatrix[2]));
+        scale.x = glm::length(fvec3(obj.ModelMatrix[0][0], obj.ModelMatrix[1][0], obj.ModelMatrix[2][0]));
+        scale.y = glm::length(fvec3(obj.ModelMatrix[0][1], obj.ModelMatrix[1][1], obj.ModelMatrix[2][1]));
+        scale.z = glm::length(fvec3(obj.ModelMatrix[0][2], obj.ModelMatrix[1][2], obj.ModelMatrix[2][2]));
         float model_scale = max(max(scale.x,scale.y),scale.z);
 
         if (alphaBlending) {

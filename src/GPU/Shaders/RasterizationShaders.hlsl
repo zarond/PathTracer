@@ -66,13 +66,13 @@ PSInput VS_Main(
 
     position.w = 1.0f;
     normal.w = 0.0f;
-    position = mul(DrawData.modelMatrix, position);
+    position.xyz = mul(DrawData.modelMatrix, position);
     float tangent_sign = tangent.w;
     tangent.w = 0.0f; 
     result.world_position = position;
     result.ndc_position = mul(g_rasterCB.viewProjection, position);
-    result.normal = mul(DrawData.normalMatrix, normal);
-    result.tangent = mul(DrawData.modelMatrix, tangent);
+    result.normal.xyz = mul(DrawData.normalMatrix, normal);
+    result.tangent.xyz = mul(DrawData.modelMatrix, tangent);
     result.tangent.w = tangent_sign;
     result.uv = uv;
 
@@ -337,8 +337,8 @@ GBInput VS_Gbuffer(float4 position : POSITION, float4 normal : NORMAL, float4 ta
     position.w = 1.0f;
     normal.w = 0.0f;
 
-    float4 current_ws_pos = mul(DrawData.modelMatrix, position);
-    float4 previous_ws_pos = mul(DrawData.modelMatrix_prev, position);
+    float4 current_ws_pos = float4(mul(DrawData.modelMatrix, position), 1.0f);
+    float4 previous_ws_pos = float4(mul(DrawData.modelMatrix_prev, position), 1.0f);
 
     float tangent_sign = tangent.w;
     tangent.w = 0.0f;
@@ -347,8 +347,8 @@ GBInput VS_Gbuffer(float4 position : POSITION, float4 normal : NORMAL, float4 ta
 	result.ndc_position_curr = result.ndc_position;
     result.ndc_position_prev = mul(g_rasterCB.viewProjection_prev, previous_ws_pos);
 
-    result.normal = mul(DrawData.normalMatrix, normal);
-    result.tangent = mul(DrawData.modelMatrix, tangent);
+    result.normal.xyz = mul(DrawData.normalMatrix, normal);
+    result.tangent.xyz = mul(DrawData.modelMatrix, tangent);
     result.normal.w = 0.0f;
     result.tangent.w = 0.0f;
     result.normal = mul(g_rasterCB.viewMatrix, result.normal);

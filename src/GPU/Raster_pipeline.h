@@ -20,6 +20,7 @@
 namespace app {
 
 using glm::fmat4x4;
+using glm::fmat3x4;
 using glm::fmat2x2;
 using glm::fvec2;
 using glm::fvec3;
@@ -54,9 +55,9 @@ struct RasterConstantBuffer {
 };
 
 struct RasterPerDrawData {
-    fmat4x4 modelMatrix;
-    fmat4x4 modelMatrix_prev;
-    fmat4x4 normalMatrix;
+    fmat3x4 modelMatrix;
+    fmat3x4 modelMatrix_prev;
+    fmat3x4 normalMatrix;
     int meshID;
     float modelScale;
     int UseAOTexture;
