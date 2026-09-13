@@ -61,7 +61,7 @@ class GPURenderer : public IRenderer {
     void set_active_pipeline_mode(RenderPipelineMode mode);
 
     void compute_lighting_probe();
-    void compute_GI(BBox bbox, int longest_dimension_N);
+    void compute_GI(BBox bbox, int longest_dimension_N, bool expand_bbox = false);
 
   private:
     const Model* model_ref_ = nullptr;

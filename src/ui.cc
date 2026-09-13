@@ -718,6 +718,7 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
     }
     if (gi_computed) {
         raster_settings_changed |= ImGui::Checkbox("Use GI", &render_settings.useGI);
+        raster_settings_changed |= ImGui::Checkbox("Draw GI Probes", &render_settings.GIDebugDraw);
     }
     ImGui::Separator();
 

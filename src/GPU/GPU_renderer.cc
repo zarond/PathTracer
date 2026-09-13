@@ -361,7 +361,7 @@ void GPURenderer::compute_lighting_probe() {
     }
 }
 
-void GPURenderer::compute_GI(BBox bbox, int longest_dimension_N) {
+void GPURenderer::compute_GI(BBox bbox, int longest_dimension_N, bool expand_bbox) {
     assert(model_ref_);
     if (model_ref_ == nullptr || envmap_ref_ == nullptr || gpu_model_ == nullptr) {
         throw std::runtime_error("One of components is nullptr in GPURenderer::render_lighting_probe()");
@@ -384,6 +384,15 @@ void GPURenderer::compute_GI(BBox bbox, int longest_dimension_N) {
     grid_dim[longest_axis] = longest_dimension_N;
     fvec3 delta = bbox_size / fvec3{grid_dim};
 
+    if (expand_bbox) {
+        fvec3 new_distance_edge_probes = bbox_size + delta * 0.5f;  // a little extra space around the probes to avoid clipping
+        bvec3 expand_directions = glm::greaterThan(grid_dim, uvec3{1});
+        delta = glm::mix(delta, new_distance_edge_probes / (fvec3(grid_dim) - fvec3{1.0f}), expand_directions);
+        bbox.min -= delta * 0.5f * fvec3{expand_directions};
+        bbox.max += delta * 0.5f * fvec3{expand_directions};
+        bbox_size = bbox.max - bbox.min;
+    }
+
     std::vector<SHCoefficients> sh_probes;
     sh_probes.reserve(grid_dim.x * grid_dim.y * grid_dim.z);
 
@@ -392,7 +401,8 @@ void GPURenderer::compute_GI(BBox bbox, int longest_dimension_N) {
             for (int x = 0; x < grid_dim.x; ++x) {
                 fvec3 sample_pos = bbox.min + (fvec3{x, y, z} + fvec3{0.5f}) * delta;
                 GPU_texture cubemap = render_cubemap(256, false, sample_pos);
-                const auto sh_probe = Raster_pipeline::ComputeEnvmapSH(cubemap, true, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+                const auto sh_probe = Raster_pipeline::ComputeEnvmapSH(
+                    cubemap, true, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, true);
                 sh_probes.push_back(sh_probe);
             }
         }

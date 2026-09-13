@@ -67,7 +67,7 @@ float ComputeEnvmapLod(float3 dir, float pdf, float maxMip, int num_samples) {
 
 float3 SampleEnvmap(float3 dir, float lod) {  // dir is expected to be normalized
     if (InputInfo.isCubemap) {
-        dir.z *= -1.0f; // Flip X for cubemap sampling
+        dir.z *= -1.0f; // Flip Z for cubemap sampling
         return EnvMapCube.SampleLevel(EnvMapSampler, dir, lod).xyz;
     } else {
         float2 uv = float2(atan2(-dir.z, -dir.x), -2.0f * asin(dir.y)) * (1.0f / PI);

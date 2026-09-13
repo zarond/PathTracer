@@ -17,7 +17,7 @@ class SphericalHarmonics_helper {
 
     void Init();
 
-    void Compute(const GPU_texture& envmap, bool is_cubemap);
+    void Compute(const GPU_texture& envmap, bool is_cubemap, bool flip_cubemap_axis = false);
 
     std::vector<glm::fvec4> download_result_from_gpu() const;
 

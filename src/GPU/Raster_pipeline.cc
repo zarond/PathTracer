@@ -44,10 +44,11 @@ ComPtr<ID3D12PipelineState> Raster_pipeline::m_pipelineState{};
 ComPtr<ID3D12PipelineState> Raster_pipeline::m_alphaBlendingPipelineState{};
 ComPtr<ID3D12PipelineState> Raster_pipeline::m_backgroundPipelineState{};
 ComPtr<ID3D12PipelineState> Raster_pipeline::m_GbufferPipelineState{};
+ComPtr<ID3D12PipelineState> Raster_pipeline::m_GIDebugPipelineState{};
 
 Raster_pipeline::Raster_pipeline() {
     if (!m_rootSignature || !m_pipelineState || !m_alphaBlendingPipelineState || !m_backgroundPipelineState ||
-        !m_GbufferPipelineState) {
+        !m_GbufferPipelineState || !m_GIDebugPipelineState) {
         Reload();
     }
     CreateConstantBuffers();
@@ -97,6 +98,7 @@ void Raster_pipeline::release_gpu_resources() {
     m_alphaBlendingPipelineState.Reset();
     m_backgroundPipelineState.Reset();
     m_GbufferPipelineState.Reset();
+    m_GIDebugPipelineState.Reset();
 
     m_perFrameConstants->Unmap(0, nullptr);
     m_GISettingsConstants->Unmap(0, nullptr);
@@ -144,6 +146,7 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_rasterCB.SSREnabled = render_settings.SSREnabled;
     m_rasterCB.DiffuseUseSphericalHarmonics = render_settings.DiffuseUseSphericalHarmonics;
     m_rasterCB.UseGI = render_settings.useGI;
+    GIDebugDraw = render_settings.GIDebugDraw;
     useDiffuseProbe = render_settings.useDiffuseProbe;
     useReflectionProbe = render_settings.useReflectionProbe;
     DrawSSROnly = render_settings.DrawSSROnly;
@@ -233,6 +236,8 @@ void Raster_pipeline::CreatePipelineStateObjects() {
     auto [ps_background_shaderBlob, ps_background_bytecode] = LoadShader(c_ps_background_file_name);
     auto [vs_gbuff_shaderBlob, vs_gbuff_bytecode] = LoadShader(c_vs_gbuff_file_name);
     auto [ps_gbuff_shaderBlob, ps_gbuff_bytecode] = LoadShader(c_ps_gbuff_file_name);
+    auto [vs_gi_debug_shaderBlob, vs_gi_debug_bytecode] = LoadShader(c_vs_gi_debug_file_name);
+    auto [ps_gi_debug_shaderBlob, ps_gi_debug_bytecode] = LoadShader(c_ps_gi_debug_file_name);
 
     D3DContext& d3d_ctx = D3DContext::Get();
     auto device = d3d_ctx.m_d3dDevice;
@@ -300,6 +305,12 @@ void Raster_pipeline::CreatePipelineStateObjects() {
     psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
     rtBlend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL ^ D3D12_COLOR_WRITE_ENABLE_ALPHA;
     ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_backgroundPipelineState)));
+
+    // PSO for GI debug rendering
+    psoDesc.VS = vs_gi_debug_bytecode;
+    psoDesc.PS = ps_gi_debug_bytecode;
+    psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+    ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_GIDebugPipelineState)));
 }
 
 void Raster_pipeline::CreateConstantBuffers() {
@@ -374,7 +385,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     } else {
         commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SpecularLutTex, Specular_lut.GetSRVHandle());
     }
-    if (m_rasterCB.UseGI) {
+    if ((m_rasterCB.UseGI || GIDebugDraw) && gi_data_handles.gpuHandle.ptr) {
         commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::GIData, gi_data_handles.gpuHandle);
     }
 
@@ -518,6 +529,14 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
     for (const auto& element : opaque_objects) {
         draw_object(element, true);
+    }
+    // Draw GI probes as spheres
+    if (GIDebugDraw) {
+        commandList->SetPipelineState(m_GIDebugPipelineState.Get());
+        auto grid = m_GI_settings.grid_dim;
+        uint32_t probeCount = grid.x * grid.y * grid.z;
+        constexpr uint32_t verticesPerSphere = 16 * 8 * 6;
+        commandList->DrawInstanced(verticesPerSphere, probeCount, 0, 0);
     }
     // Draw background
     commandList->SetPipelineState(m_backgroundPipelineState.Get());
@@ -798,7 +817,8 @@ void Raster_pipeline::ComputeEnvmapLut(
     std::cout << "Diffuse and Specular Lut computed in " << diff.count() << " ms." << '\n';
 }
 
-SHCoefficients Raster_pipeline::ComputeEnvmapSH(const GPU_texture& envmap, bool is_cubemap, D3D12_RESOURCE_STATES initial_state) {
+SHCoefficients Raster_pipeline::ComputeEnvmapSH(
+    const GPU_texture& envmap, bool is_cubemap, D3D12_RESOURCE_STATES initial_state, bool flip_cubemap_axis) {
     static SphericalHarmonics_helper SH_helper{};
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
@@ -811,7 +831,7 @@ SHCoefficients Raster_pipeline::ComputeEnvmapSH(const GPU_texture& envmap, bool 
     }
     
     SH_helper.Init();
-    SH_helper.Compute(envmap, is_cubemap);
+    SH_helper.Compute(envmap, is_cubemap, flip_cubemap_axis);
 
     if (initial_state != D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) {
         auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(

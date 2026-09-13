@@ -111,7 +111,10 @@ class Raster_pipeline : public IRender_pipeline {
     static void Reload();
 
     static void ComputeMipMaps(GPU_texture& texture);
-    static SHCoefficients ComputeEnvmapSH(const GPU_texture& envmap, bool is_cubemap = false, D3D12_RESOURCE_STATES initial_state = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    static SHCoefficients ComputeEnvmapSH(
+        const GPU_texture& envmap, bool is_cubemap = false, 
+        D3D12_RESOURCE_STATES initial_state = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, 
+        bool flip_cubemap_axis = false);
     static void ComputeEnvmapLut(
         const GPU_texture& envmap, bool is_cubemap, GPU_texture& output_diffuse, GPU_texture& output_specular);
 
@@ -134,6 +137,8 @@ class Raster_pipeline : public IRender_pipeline {
     static constexpr const wchar_t* c_ps_background_file_name = L"PS_Background.dxil";
     static constexpr const wchar_t* c_vs_gbuff_file_name = L"VS_Gbuffer.dxil";
     static constexpr const wchar_t* c_ps_gbuff_file_name = L"PS_Gbuffer.dxil";
+    static constexpr const wchar_t* c_vs_gi_debug_file_name = L"VS_GI_Debug.dxil";
+    static constexpr const wchar_t* c_ps_gi_debug_file_name = L"PS_GI_Debug.dxil";
 
     union AlignedSceneConstantBuffer {
         RasterConstantBuffer constants;
@@ -163,6 +168,7 @@ class Raster_pipeline : public IRender_pipeline {
     static ComPtr<ID3D12PipelineState> m_alphaBlendingPipelineState;
     static ComPtr<ID3D12PipelineState> m_backgroundPipelineState;
     static ComPtr<ID3D12PipelineState> m_GbufferPipelineState;
+    static ComPtr<ID3D12PipelineState> m_GIDebugPipelineState;
     
     Kawase_blur_helper m_blur_helper{};
     Kawase_blur_helper m_bloom_helper{};
@@ -186,6 +192,7 @@ class Raster_pipeline : public IRender_pipeline {
     bool DrawSSROnly = false;
     bool useDiffuseProbe = false;
     bool useReflectionProbe = false;
+    bool GIDebugDraw = false;
 
     // additional texture resources
     GPU_texture DFG_lut;  // precomputed DFG LUT for split-sum approximation of specular IBL

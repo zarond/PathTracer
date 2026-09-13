@@ -7,6 +7,7 @@ struct SHCSInput {
     uint numGroups;
     uint useUVcoords;
     uint isCubemap;
+    uint FlipCubemapAxis;
 };
 
 Texture2D<float4> SrcTexture : register(t0);
@@ -85,7 +86,11 @@ void CS_SphericalHarmonicsIrradiance(uint3 DTid : SV_DispatchThreadID, uint3 Gid
     if (g_CB.isCubemap) {
         uv = uv * 2.0f - 1.0f;
         cubemap_dir = CalculateCubeDirection(uv, DTid.z);
-        L = SrcTextureCube.SampleLevel(Sampler, cubemap_dir, 0);
+        float3 sample_dir = cubemap_dir;
+        if (g_CB.FlipCubemapAxis) {
+            sample_dir.z *= -1.0f; // Flip Z for cubemap sampling
+        }
+        L = SrcTextureCube.SampleLevel(Sampler, sample_dir, 0);
     } else if (g_CB.useUVcoords) { // for ultra low resolution envmaps
         L = SrcTexture.SampleLevel(Sampler, uv, 0);
     } else {

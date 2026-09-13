@@ -405,7 +405,7 @@ void Viewer::render_GI(int grid_size) {
     auto scene_bounds = cpu_renderer->get_scene_bound();
 
     auto* gpu_renderer = static_cast<GPURenderer*>(i_renderer.get());
-    gpu_renderer->compute_GI(scene_bounds, grid_size);
+    gpu_renderer->compute_GI(scene_bounds, grid_size, true);
 }
 #endif
 

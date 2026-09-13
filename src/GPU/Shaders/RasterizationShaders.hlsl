@@ -410,3 +410,103 @@ GBOutput PS_Gbuffer(GBInput input) : SV_TARGET {
 
     return result;
 }
+
+// GI probe grid debug rendering
+struct VS_GIDebugOutput
+{
+    float4 ndc_position : SV_POSITION;
+    float3 normal : NORMAL;
+    uint index : TEXCOORD;
+};
+    
+[shader("vertex")]
+VS_GIDebugOutput VS_GI_Debug(
+    uint vertexID   : SV_VertexID,
+    uint instanceID : SV_InstanceID)
+{
+    VS_GIDebugOutput output;
+        
+    // ------------------------------------------------------------
+    // Convert instanceID -> 3D probe coordinate
+    // ------------------------------------------------------------
+    float3 bbox_max = g_GI_settings.bbox_max;
+    float3 bbox_min = g_GI_settings.bbox_min;
+    float3 bbox_delta = bbox_max - bbox_min;
+    uint3 GridDimensions = g_GI_settings.grid_dim;
+    float3 GridDelta = bbox_delta / float3(GridDimensions);
+
+    uint x = instanceID % GridDimensions.x;
+    uint y = (instanceID / GridDimensions.x) % GridDimensions.y;
+    uint z = instanceID / (GridDimensions.x * GridDimensions.y);
+
+    float3 probePosition = bbox_min + (float3(x, y, z) + 0.5f) * GridDelta;
+        
+     // ------------------------------------------------------------
+    // Generate sphere vertex
+    // ------------------------------------------------------------
+
+    const uint Segments = 16;
+    const uint Rings    = 8;
+    const float ProbeRadius = 0.1f * GridDelta.x;
+
+    // 6 vertices per quad
+    uint quadID = vertexID / 6;
+    uint corner = vertexID % 6;
+
+    uint segment = quadID % Segments;
+    uint ring    = quadID / Segments;
+
+    float u0 = float(segment)     / float(Segments);
+    float u1 = float(segment + 1) / float(Segments);
+
+    float v0 = float(ring)     / float(Rings);
+    float v1 = float(ring + 1) / float(Rings);
+
+    float2 corners[6] =
+    {
+        float2(u0, v0),
+        float2(u1, v0),
+        float2(u0, v1),
+
+        float2(u0, v1),
+        float2(u1, v0),
+        float2(u1, v1)
+    };
+
+    float2 uv = corners[corner];
+
+    // ------------------------------------------------------------
+    // UV -> sphere
+    // ------------------------------------------------------------
+
+    float theta = uv.x * 2.0 * PI;
+    float phi   = uv.y * PI;
+
+    float sinPhi = sin(phi);
+    float cosPhi = cos(phi);
+
+    float3 normal = float3(
+        sinPhi * cos(theta),
+        cosPhi,
+        sinPhi * sin(theta)
+    );
+
+    float3 position = probePosition + normal.xyz * ProbeRadius;
+
+    output.ndc_position = mul(g_rasterCB.viewProjection, float4(position, 1.0f));
+    output.normal = normal;
+    output.index = instanceID;
+
+    return output;
+}
+    
+[shader("pixel")]
+float4 PS_GI_Debug(VS_GIDebugOutput input) : SV_TARGET
+{
+    float3 N = normalize(input.normal);
+
+    SHCoefficients SH = g_GI_data[input.index];
+    float3 col = evaluateSH(SH, N);
+
+    return float4(col, 1.0f);
+}
