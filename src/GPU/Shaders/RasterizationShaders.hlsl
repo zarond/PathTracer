@@ -170,6 +170,20 @@ float3 evaluateSH(SHCoefficients SH, float3 normal) {
     return max(E, 0.0f) / PI;
 }
     
+SHCoefficients lerpSH(SHCoefficients a, SHCoefficients b, float t) {
+    SHCoefficients result;
+    result.L00  = lerp(a.L00,  b.L00,  t);
+    result.L1_1 = lerp(a.L1_1, b.L1_1, t);
+    result.L10  = lerp(a.L10,  b.L10,  t);
+    result.L11  = lerp(a.L11,  b.L11,  t);
+    result.L2_2 = lerp(a.L2_2, b.L2_2, t);
+    result.L2_1 = lerp(a.L2_1, b.L2_1, t);
+    result.L20  = lerp(a.L20,  b.L20,  t);
+    result.L21  = lerp(a.L21,  b.L21,  t);
+    result.L22  = lerp(a.L22,  b.L22,  t);
+    return result;
+}
+
 float3 sampleDiffuseIBL(float3 normal, float3 pos) {
     if (g_rasterCB.UseGI == 0 && g_rasterCB.DiffuseUseSphericalHarmonics == 0) {
         return DiffuseLut.SampleLevel(Sampler, normal, 0).rgb;
@@ -178,10 +192,29 @@ float3 sampleDiffuseIBL(float3 normal, float3 pos) {
     if (g_rasterCB.UseGI) {
         float3 bbox_max = g_GI_settings.bbox_max;
         float3 bbox_min = g_GI_settings.bbox_min;
-        float3 bbox_delta = bbox_max - bbox_min;
+        float3 inv_delta =  g_GI_settings.inv_delta;
         uint3 dim = g_GI_settings.grid_dim;
-        uint3 index = clamp(uint3((pos - bbox_min) / bbox_delta * dim), uint3(0, 0, 0), dim - 1);
-        SH = g_GI_data[index.z * dim.y * dim.x + index.y * dim.x + index.x];
+        // trilinear interpolation between the 8 surrounding probes (probes are placed at cell centers)
+        float3 grid_coord = (pos - bbox_min) * inv_delta - 0.5f;
+        uint3 index0 = uint3(clamp(grid_coord, 0.0f, dim - 1.0f));
+        uint3 index1 = min(index0 + 1, dim - 1);
+        float3 t = clamp(grid_coord - floor(grid_coord), 0.0f, 1.0f);
+        SHCoefficients c[8];
+        [unroll]
+        for (uint i = 0; i < 8; ++i) {
+            uint3 idx = uint3(index0.x, index0.y, index0.z);
+            if (i & 1) idx.x = index1.x;
+            if (i & 2) idx.y = index1.y;
+            if (i & 4) idx.z = index1.z;
+            c[i] = g_GI_data[idx.z * dim.y * dim.x + idx.y * dim.x + idx.x];
+        }
+        SHCoefficients x00 = lerpSH(c[0], c[1], t.x);
+        SHCoefficients x10 = lerpSH(c[2], c[3], t.x);
+        SHCoefficients x01 = lerpSH(c[4], c[5], t.x);
+        SHCoefficients x11 = lerpSH(c[6], c[7], t.x);
+        SHCoefficients y0 = lerpSH(x00, x10, t.y);
+        SHCoefficients y1 = lerpSH(x01, x11, t.y);
+        SH = lerpSH(y0, y1, t.z);
     } else {   
         SH = g_GI_settings.diffuse;
     }

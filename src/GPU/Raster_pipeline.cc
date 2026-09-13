@@ -893,6 +893,8 @@ void Raster_pipeline::SetGI(std::vector<SHCoefficients>&& sh_probes, BBox bbox, 
     m_GI_settings.bbox_min = xyz0(bbox.min);
     m_GI_settings.bbox_max = xyz0(bbox.max);
     m_GI_settings.grid_dim = xyz0(dim);
+    m_GI_settings.delta = xyz0(delta);
+    m_GI_settings.inv_delta = xyz0(1.0f / delta);
 
     // delete old data
     m_GIData.Reset();

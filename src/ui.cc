@@ -699,7 +699,6 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
         if (ImGui::Button("Compute light probe")) {
             viewer.render_lighting_probe();
             light_probe_computed = true;
-            render_settings.useDiffuseProbe = true;
             render_settings.useReflectionProbe = true;
             raster_settings_changed = true;
         }

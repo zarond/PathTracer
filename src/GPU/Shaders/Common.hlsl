@@ -78,6 +78,8 @@ struct GISettings {
     float4 bbox_min;  // world space bounding box of the GI probe grid
     float4 bbox_max;
     uint4 grid_dim;  // number of probes in each dimension (x, y, z)
+    float4 delta;
+    float4 inv_delta;
     SHCoefficients diffuse; // one global sh probe
 };
 

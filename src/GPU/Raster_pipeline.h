@@ -82,6 +82,8 @@ struct GISettings {
     fvec4 bbox_min;  // world space bounding box of the GI probe grid
     fvec4 bbox_max;
     glm::uvec4 grid_dim;  // number of probes in each dimension (x, y, z)
+    fvec4 delta;
+    fvec4 inv_delta;
     SHCoefficients diffuse; // one global sh probe
 };
 
