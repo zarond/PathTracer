@@ -113,7 +113,7 @@ class Viewer {
 
 #ifdef WINDOWS_SPECIFIC  
     void render_lighting_probe();
-    void render_GI();
+    void render_GI(int grid_size);
 #endif
 
   private:

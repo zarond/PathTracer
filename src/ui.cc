@@ -693,7 +693,9 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
     bool raster_settings_changed = false;
     static bool light_probe_computed = false;
     static bool gi_computed = false;
+    static int gi_grid_size = 4;
     if (viewer.get_rendering_state() == RenderingState::Idle) {
+        ImGui::SliderInt("GI grid size", &gi_grid_size, 1, 32);
         if (ImGui::Button("Compute light probe")) {
             viewer.render_lighting_probe();
             light_probe_computed = true;
@@ -701,8 +703,8 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
             render_settings.useReflectionProbe = true;
             raster_settings_changed = true;
         }
-        if (ImGui::Button("Compute GI")) {
-            viewer.render_GI();
+        if (ImGui::Button("Compute GI") && gi_grid_size > 0) {
+            viewer.render_GI(gi_grid_size);
             gi_computed = true;
             render_settings.useGI = true;
             raster_settings_changed = true;

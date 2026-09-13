@@ -384,7 +384,10 @@ void Viewer::render_lighting_probe() {
     auto* gpu_renderer = static_cast<GPURenderer*>(i_renderer.get());
     gpu_renderer->compute_lighting_probe();
 }
-void Viewer::render_GI() {
+void Viewer::render_GI(int grid_size) {
+    if (grid_size <= 0) {
+        return;
+    }
     if (!is_using_gpu_renderer()) {
         return;
     }
@@ -392,8 +395,17 @@ void Viewer::render_GI() {
     if (i_renderer == nullptr) {
         return;
     }
+
+    // force loading the scene to CPU renderer to query the scene bounds for GI computation
+    auto settings = get_render_settings();
+    settings.accelStructType = AccelerationStructureType::BVH;
+    const auto& cpu_renderer = renderers_[(int)RendererMode::CPURenderer];
+    cpu_renderer->set_render_settings(settings);
+    cpu_renderer->load_scene(model_, environment_texture_, last_model_fence_value_, last_envmap_fence_value_);
+    auto scene_bounds = cpu_renderer->get_scene_bound();
+
     auto* gpu_renderer = static_cast<GPURenderer*>(i_renderer.get());
-    gpu_renderer->compute_GI(BBox{fvec3{0}, fvec3{1}}, 10);
+    gpu_renderer->compute_GI(scene_bounds, grid_size);
 }
 #endif
 

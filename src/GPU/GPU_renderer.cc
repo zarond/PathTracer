@@ -374,6 +374,8 @@ void GPURenderer::compute_GI(BBox bbox, int longest_dimension_N) {
         std::cout << "Bounding box is empty, skipping rendering" << '\n';
         return;
     }
+    auto start = std::chrono::high_resolution_clock::now();
+
     fvec3 bbox_size = bbox.max - bbox.min;
     int longest_axis = get_longest_axis(bbox);
     float main_axis_delta = abs(bbox_size[longest_axis] / static_cast<float>(longest_dimension_N));
@@ -403,6 +405,9 @@ void GPURenderer::compute_GI(BBox bbox, int longest_dimension_N) {
         static_cast<Raster_pipeline*>(raster_pipeline.get())
             ->SetGI(std::move(sh_probes), bbox, grid_dim);
     }
+
+    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+    std::cout << "GI grid computed in " << diff.count() << " ms." << '\n';
 }
 
 }  // namespace app

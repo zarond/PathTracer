@@ -38,6 +38,7 @@ struct RasterConstantBuffer {
     fvec4 cameraPosition;
     fvec2 subpixelOffset;
     glm::ivec2 FrameSize;
+    fvec2 invFrameSize;
     float envmap_rotation_sin;
     float envmap_rotation_cos;
     
@@ -49,6 +50,7 @@ struct RasterConstantBuffer {
     float TexturesAOStrength;
     int SSREnabled;
     int DiffuseUseSphericalHarmonics;
+    int UseGI;
     int specular_aa_enabled;
     float specular_aa_variance;
     float specular_aa_threshold;

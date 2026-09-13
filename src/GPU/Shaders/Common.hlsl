@@ -34,6 +34,7 @@ struct RasterConstantBuffer {
     float4 cameraPosition;
     float2 subpixel_offset;
     int2 FrameSize;
+    float2 invFrameSize;
     float envmap_rotation_sin;
     float envmap_rotation_cos;
 
@@ -45,6 +46,7 @@ struct RasterConstantBuffer {
     float TexturesAOStrength;
     int SSREnabled;
     int DiffuseUseSphericalHarmonics;
+    int UseGI;
     int specular_aa_enabled;
     float specular_aa_variance;
     float specular_aa_threshold;

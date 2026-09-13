@@ -29,7 +29,7 @@ enum Value : int {
     MaterialIDTex,
     RootConstants,
     GISettings,
-    //GIData,
+    GIData,
 
     Count
 };
@@ -82,7 +82,10 @@ void Raster_pipeline::OnEnvmapLoad(GPU_texture& envmap) {
     float time_ms = static_cast<float>(diff.count()) / 1000.0f;
     std::cout << "Envmap texture mips were computed in " << std::fixed << std::setprecision(2) << time_ms << " ms." << '\n';
     ComputeEnvmapLut(envmap, false, Diffuse_lut, Specular_lut);
+    start = std::chrono::high_resolution_clock::now();
     diffuse_irradiance_sh = ComputeEnvmapSH(envmap);
+    diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+    std::cout << "Spherical Harmonics Irradiance computed in " << diff.count() << " ms." << '\n';
 }
 
 Raster_pipeline::~Raster_pipeline() { release_gpu_resources(); }
@@ -140,6 +143,7 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_GTAO_helper.AONormalSigma = render_settings.AONormalSigma;
     m_rasterCB.SSREnabled = render_settings.SSREnabled;
     m_rasterCB.DiffuseUseSphericalHarmonics = render_settings.DiffuseUseSphericalHarmonics;
+    m_rasterCB.UseGI = render_settings.useGI;
     useDiffuseProbe = render_settings.useDiffuseProbe;
     useReflectionProbe = render_settings.useReflectionProbe;
     DrawSSROnly = render_settings.DrawSSROnly;
@@ -172,7 +176,7 @@ void Raster_pipeline::CreateRootSignatures() {
     ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6, 1);  // 9 MaterialID texture
     ranges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1);      // 10 per draw constants buffer.
     ranges[10].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2);      // 11 GI settings constants buffer.
-    //ranges[11].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);      // 12 GI data buffer.
+    ranges[11].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);      // 12 GI data buffer.
 
     D3D12_STATIC_SAMPLER_DESC default_sampler = {};  // Default static sampler.
     default_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -213,7 +217,7 @@ void Raster_pipeline::CreateRootSignatures() {
     rootParameters[GlobalRootSignatureParams::MaterialIDTex].InitAsDescriptorTable(1, &ranges[8]);
     rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(RasterPerDrawData) / 4, 1);
     rootParameters[GlobalRootSignatureParams::GISettings].InitAsConstantBufferView(2);
-    //rootParameters[GlobalRootSignatureParams::GIData].InitAsDescriptorTable(1, &ranges[11]);
+    rootParameters[GlobalRootSignatureParams::GIData].InitAsDescriptorTable(1, &ranges[11]);
 
     auto flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT 
         | D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
@@ -331,6 +335,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
 
     m_rasterCB.RenderFrameMips = std::min(GPU_texture::CalculateMipCount(width, height), static_cast<unsigned int>(Kawase_blur_helper::BlurIterations));
     m_rasterCB.FrameSize = {width, height};
+    m_rasterCB.invFrameSize = fvec2{1.0f} / fvec2{m_rasterCB.FrameSize};
 
     resize_render_targets(width, height);
 
@@ -368,6 +373,9 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
         commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SpecularLutTex, Reflection_probe.GetSRVHandle());
     } else {
         commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SpecularLutTex, Specular_lut.GetSRVHandle());
+    }
+    if (m_rasterCB.UseGI) {
+        commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::GIData, gi_data_handles.gpuHandle);
     }
 
     const auto& combined_mesh = gpu_model.get_combined_mesh();
@@ -792,7 +800,6 @@ void Raster_pipeline::ComputeEnvmapLut(
 
 SHCoefficients Raster_pipeline::ComputeEnvmapSH(const GPU_texture& envmap, bool is_cubemap, D3D12_RESOURCE_STATES initial_state) {
     static SphericalHarmonics_helper SH_helper{};
-    auto start = std::chrono::high_resolution_clock::now();
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
     auto commandList = d3d_ctx.m_DXRCommandList;
@@ -827,8 +834,6 @@ SHCoefficients Raster_pipeline::ComputeEnvmapSH(const GPU_texture& envmap, bool 
     diffuse.L21     = sh_results[7];
     diffuse.L22     = sh_results[8];
 
-    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
-    std::cout << "Spherical Harmonics Irradiance computed in " << diff.count() << " ms." << '\n';
     return diffuse;
 }
 

@@ -45,7 +45,7 @@ ConstantBuffer<RasterPerDrawData> DrawData : register(b1);
 ConstantBuffer<GISettings> g_GI_settings : register(b2);
     
 // GI data buffers
-//StructuredBuffer<SHCoefficients> g_GI_data : register(t1, space0);
+StructuredBuffer<SHCoefficients> g_GI_data : register(t1, space0);
 
 struct PSInput {
     float4 ndc_position : SV_POSITION;
@@ -127,7 +127,7 @@ float3 calculateTransmittedLight(float3 ws_pos, float4 ndc_position, float3 v, f
     if (transmission == 0.0f) return 0.0f;
     float t_roughness = sqrt(transmission_roughness(linear_roughness, mat.ior));
     if (!mat.hasVolume) {
-        float2 uv = ndc_position.xy / g_rasterCB.FrameSize;
+        float2 uv = ndc_position.xy * g_rasterCB.invFrameSize;
         float lod = t_roughness * (g_rasterCB.RenderFrameMips - 1);
         return (1.0f - Fresnel) * SampleFrameBicubic(uv, lod).rgb;
     }
@@ -141,38 +141,51 @@ float3 calculateTransmittedLight(float3 ws_pos, float4 ndc_position, float3 v, f
     return transmitted_light;
 }
     
-float3 sampleDiffuseIBL(float3 normal) {
-    if (g_rasterCB.DiffuseUseSphericalHarmonics) {
-        static const float c1 = 0.429043;
-        static const float c2 = 0.511664;
-        static const float c3 = 0.743125;
-        static const float c4 = 0.886227;
-        static const float c5 = 0.247708;
-            
-        SHCoefficients SH = g_GI_settings.diffuse;
-        const float3 L00  = SH.L00;
-        const float3 L1_1 = SH.L1_1;
-        const float3 L10  = SH.L10;
-        const float3 L11  = SH.L11;
-        const float3 L2_2 = SH.L2_2;
-        const float3 L2_1 = SH.L2_1;
-        const float3 L20  = SH.L20;
-        const float3 L21  = SH.L21;
-        const float3 L22  = SH.L22;
+float3 evaluateSH(SHCoefficients SH, float3 normal) {
+    static const float c1 = 0.429043;
+    static const float c2 = 0.511664;
+    static const float c3 = 0.743125;
+    static const float c4 = 0.886227;
+    static const float c5 = 0.247708;
+        
+    const float3 L00  = SH.L00;
+    const float3 L1_1 = SH.L1_1;
+    const float3 L10  = SH.L10;
+    const float3 L11  = SH.L11;
+    const float3 L2_2 = SH.L2_2;
+    const float3 L2_1 = SH.L2_1;
+    const float3 L20  = SH.L20;
+    const float3 L21  = SH.L21;
+    const float3 L22  = SH.L22;
 
-        const float x = normal.x;
-        const float y = normal.y;
-        const float z = normal.z;
+    const float x = normal.x;
+    const float y = normal.y;
+    const float z = normal.z;
          
-        float3 E = c1 * L22 * (x*x - z*z) 
-                 + c3 * L20 * (y * y) 
-                 + c4 * L00 - c5 * L20
-                 + 2*c1*(L2_2 * (x*z) + L21 * (x*y) + L2_1 * (y*z))
-                 + 2*c2*(L11*x + L1_1*z + L10*y);
-        return E / PI;
-    } else {
+    float3 E = c1 * L22 * (x*x - z*z) 
+                + c3 * L20 * (y * y) 
+                + c4 * L00 - c5 * L20
+                + 2*c1*(L2_2 * (x*z) + L21 * (x*y) + L2_1 * (y*z))
+                + 2*c2*(L11*x + L1_1*z + L10*y);
+    return max(E, 0.0f) / PI;
+}
+    
+float3 sampleDiffuseIBL(float3 normal, float3 pos) {
+    if (g_rasterCB.UseGI == 0 && g_rasterCB.DiffuseUseSphericalHarmonics == 0) {
         return DiffuseLut.SampleLevel(Sampler, normal, 0).rgb;
     }
+    SHCoefficients SH;
+    if (g_rasterCB.UseGI) {
+        float3 bbox_max = g_GI_settings.bbox_max;
+        float3 bbox_min = g_GI_settings.bbox_min;
+        float3 bbox_delta = bbox_max - bbox_min;
+        uint3 dim = g_GI_settings.grid_dim;
+        uint3 index = clamp(uint3((pos - bbox_min) / bbox_delta * dim), uint3(0, 0, 0), dim - 1);
+        SH = g_GI_data[index.z * dim.y * dim.x + index.y * dim.x + index.x];
+    } else {   
+        SH = g_GI_settings.diffuse;
+    }
+    return evaluateSH(SH, normal);
 }
 
 [shader("pixel")]
@@ -253,12 +266,12 @@ float4 PS_Main(PSInput input) : SV_TARGET {
     }
     transmission_thickness.g *= DrawData.modelScale;
     float transmission = transmission_thickness.r;
-    float3 transmissionIBL = calculateTransmittedLight(input.world_position, input.ndc_position, v, N, mat, Fresnel,
+    float3 transmissionIBL = calculateTransmittedLight(input.world_position.xyz, input.ndc_position, v, N, mat, Fresnel,
         linear_roughness, transmission, transmission_thickness.g, envmap_rotation_matrix).rgb;
 
     float3 DiffuseSampleDir = N;
     DiffuseSampleDir.xz = mul(envmap_rotation_matrix, DiffuseSampleDir.xz);  // enmap rotation
-    float3 diffuseIBL = sampleDiffuseIBL(DiffuseSampleDir);
+    float3 diffuseIBL = sampleDiffuseIBL(DiffuseSampleDir, input.world_position.xyz);
     
     float3 SpecularSampleDir = DominantReflectionVector(l, N, linear_roughness);
     SpecularSampleDir.xz = mul(envmap_rotation_matrix, SpecularSampleDir.xz);  // enmap rotation
