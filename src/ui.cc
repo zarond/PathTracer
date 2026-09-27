@@ -717,6 +717,9 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
     }
     if (gi_computed) {
         raster_settings_changed |= ImGui::Checkbox("Use GI", &render_settings.useGI);
+        raster_settings_changed |= ImGui::SliderFloat("Probes Visibility weighting strength", &render_settings.probeVisibilityFilterStrength,
+            0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
+        HelpTooltip("Simple Normal-Based Backface Cull / Half-Space Filtering Visibility function");
         raster_settings_changed |= ImGui::Checkbox("Draw GI Probes", &render_settings.GIDebugDraw);
     }
     ImGui::Separator();

@@ -184,6 +184,30 @@ SHCoefficients lerpSH(SHCoefficients a, SHCoefficients b, float t) {
     return result;
 }
 
+void addSH(inout SHCoefficients a, SHCoefficients b, float w) {
+    a.L00  += b.L00  * w;
+    a.L1_1 += b.L1_1 * w;
+    a.L10  += b.L10  * w;
+    a.L11  += b.L11  * w;
+    a.L2_2 += b.L2_2 * w;
+    a.L2_1 += b.L2_1 * w;
+    a.L20  += b.L20  * w;
+    a.L21  += b.L21  * w;
+    a.L22  += b.L22  * w;
+}
+    
+void scaleSH(inout SHCoefficients a, float w) {
+    a.L00  *= w;
+    a.L1_1 *= w;
+    a.L10  *= w;
+    a.L11  *= w;
+    a.L2_2 *= w;
+    a.L2_1 *= w;
+    a.L20  *= w;
+    a.L21  *= w;
+    a.L22  *= w;
+}
+
 float3 sampleDiffuseIBL(float3 normal, float3 pos) {
     if (g_rasterCB.UseGI == 0 && g_rasterCB.DiffuseUseSphericalHarmonics == 0) {
         return DiffuseLut.SampleLevel(Sampler, normal, 0).rgb;
@@ -192,6 +216,7 @@ float3 sampleDiffuseIBL(float3 normal, float3 pos) {
     if (g_rasterCB.UseGI) {
         float3 bbox_max = g_GI_settings.bbox_max;
         float3 bbox_min = g_GI_settings.bbox_min;
+        float3 delta = g_GI_settings.delta;
         float3 inv_delta =  g_GI_settings.inv_delta;
         uint3 dim = g_GI_settings.grid_dim;
         // trilinear interpolation between the 8 surrounding probes (probes are placed at cell centers)
@@ -199,22 +224,41 @@ float3 sampleDiffuseIBL(float3 normal, float3 pos) {
         uint3 index0 = uint3(clamp(grid_coord, 0.0f, dim - 1.0f));
         uint3 index1 = min(index0 + 1, dim - 1);
         float3 t = clamp(grid_coord - floor(grid_coord), 0.0f, 1.0f);
-        SHCoefficients c[8];
-        [unroll]
+        
+        float total_weight = 0.0f;
+        SH = (SHCoefficients)0;
+        //[unroll]
         for (uint i = 0; i < 8; ++i) {
             uint3 idx = uint3(index0.x, index0.y, index0.z);
             if (i & 1) idx.x = index1.x;
             if (i & 2) idx.y = index1.y;
             if (i & 4) idx.z = index1.z;
-            c[i] = g_GI_data[idx.z * dim.y * dim.x + idx.y * dim.x + idx.x];
-        }
-        SHCoefficients x00 = lerpSH(c[0], c[1], t.x);
-        SHCoefficients x10 = lerpSH(c[2], c[3], t.x);
-        SHCoefficients x01 = lerpSH(c[4], c[5], t.x);
-        SHCoefficients x11 = lerpSH(c[6], c[7], t.x);
-        SHCoefficients y0 = lerpSH(x00, x10, t.y);
-        SHCoefficients y1 = lerpSH(x01, x11, t.y);
-        SH = lerpSH(y0, y1, t.z);
+            SHCoefficients c = g_GI_data[idx.z * dim.y * dim.x + idx.y * dim.x + idx.x];
+            
+            // Base trilinear weight factor for probe i
+            float3 trilinear_factor = float3(
+                (i & 1) ? t.x : (1.0f - t.x),
+                (i & 2) ? t.y : (1.0f - t.y),
+                (i & 4) ? t.z : (1.0f - t.z)
+            );
+            float weight = trilinear_factor.x * trilinear_factor.y * trilinear_factor.z;
+                
+            float3 probe_pos = bbox_min + (idx + 0.5f) * delta;
+            float3 dir_to_probe = probe_pos - pos;
+            float dist_to_probe = length(dir_to_probe);
+                
+            if (dist_to_probe > 0.0001f) {
+                dir_to_probe /= dist_to_probe; // Normalize direction
+                // VISIBILITY TEST : Normal-Based Half-Space Culling
+                float NdotL = dot(normal, dir_to_probe);
+                float backface_weight = saturate(NdotL);
+
+                weight *= lerp(1.0f, backface_weight, g_rasterCB.probeVisibilityFilterStrength);
+            }
+            addSH(SH, c, weight);
+            total_weight += weight;
+        }   
+        scaleSH(SH, 1.0f / total_weight);
     } else {   
         SH = g_GI_settings.diffuse;
     }

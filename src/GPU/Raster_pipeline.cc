@@ -151,6 +151,7 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_rasterCB.SSREnabled = render_settings.SSREnabled;
     m_rasterCB.DiffuseUseSphericalHarmonics = render_settings.DiffuseUseSphericalHarmonics;
     m_rasterCB.UseGI = render_settings.useGI;
+    m_rasterCB.probeVisibilityFilterStrength = render_settings.probeVisibilityFilterStrength;
     GIDebugDraw = render_settings.GIDebugDraw;
     useDiffuseProbe = render_settings.useDiffuseProbe;
     useReflectionProbe = render_settings.useReflectionProbe;

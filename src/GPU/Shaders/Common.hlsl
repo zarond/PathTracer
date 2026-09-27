@@ -47,6 +47,7 @@ struct RasterConstantBuffer {
     int SSREnabled;
     int DiffuseUseSphericalHarmonics;
     int UseGI;
+    float probeVisibilityFilterStrength;
     int specular_aa_enabled;
     float specular_aa_variance;
     float specular_aa_threshold;
