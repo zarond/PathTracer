@@ -126,6 +126,7 @@ if(ON_WINDOWS)
         list(GET SHADER_SOURCES ${i2} SHADER_STAGE_TYPE)
         # compile into build dir (config-independent)
         set(COMPILED_SHADER ${CMAKE_CURRENT_BINARY_DIR}/${SHADER}.dxil)
+        set(DEP_FILE ${CMAKE_CURRENT_BINARY_DIR}/${SHADER}.d)
 
         # todo: better yet, compile into object file and link into executable, use extern const in code
         add_custom_command(
@@ -136,7 +137,16 @@ if(ON_WINDOWS)
                     -E ${SHADER}
                     -Fo ${COMPILED_SHADER}
                     ${CMAKE_SOURCE_DIR}/src/GPU/Shaders/${SHADER_SOURCE_FILE_NAME}
+            # dxc's -MD/-MF put it into a preprocess-only mode that writes the
+            # dependency file but no code, so the depfile needs its own invocation
+            COMMAND ${DXC}
+                    -T ${SHADER_STAGE_TYPE}
+                    -E ${SHADER}
+                    -Fo ${COMPILED_SHADER}
+                    -MF ${DEP_FILE}
+                    ${CMAKE_SOURCE_DIR}/src/GPU/Shaders/${SHADER_SOURCE_FILE_NAME}
             DEPENDS src/GPU/Shaders/${SHADER_SOURCE_FILE_NAME}
+            DEPFILE ${DEP_FILE}
             COMMENT "Compiling shader ${SHADER}"
         )
         list(APPEND COMPILED_SHADERS ${COMPILED_SHADER})
