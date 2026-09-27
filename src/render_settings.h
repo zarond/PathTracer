@@ -37,6 +37,7 @@ struct RenderSettings {
     bool useReflectionProbe = false;
     bool useGI = false;
     bool GIDebugDraw = false;
+    bool disableDepthClip = false;  // draw opaque objects with depth clip disabled (mainly for light probe rendering)
     bool specular_aa_enabled = true;
     float specular_aa_variance = 0.15f;
     float specular_aa_threshold = 0.2f;

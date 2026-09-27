@@ -167,9 +167,11 @@ class Raster_pipeline : public IRender_pipeline {
     CD3DX12_RECT m_scissorRect;
     static ComPtr<ID3D12RootSignature> m_rootSignature;
     static ComPtr<ID3D12PipelineState> m_pipelineState;
+    static ComPtr<ID3D12PipelineState> m_NoDepthClipPipelineState;
     static ComPtr<ID3D12PipelineState> m_alphaBlendingPipelineState;
     static ComPtr<ID3D12PipelineState> m_backgroundPipelineState;
     static ComPtr<ID3D12PipelineState> m_GbufferPipelineState;
+    static ComPtr<ID3D12PipelineState> m_GbufferNoDepthClipPipelineState;
     static ComPtr<ID3D12PipelineState> m_GIDebugPipelineState;
     
     Kawase_blur_helper m_blur_helper{};
@@ -195,6 +197,7 @@ class Raster_pipeline : public IRender_pipeline {
     bool useDiffuseProbe = false;
     bool useReflectionProbe = false;
     bool GIDebugDraw = false;
+    bool m_disableDepthClip = false;
 
     // additional texture resources
     GPU_texture DFG_lut;  // precomputed DFG LUT for split-sum approximation of specular IBL

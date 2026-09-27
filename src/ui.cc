@@ -764,6 +764,9 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
         "Specular AA Variance", &render_settings.specular_aa_variance, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
     raster_settings_changed |= ImGui::SliderFloat(
         "Specular AA Threshold", &render_settings.specular_aa_threshold, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
+    // For testing only:
+    // raster_settings_changed |= ImGui::Checkbox("Disable depth clip", &render_settings.disableDepthClip);
+    // HelpTooltip("Draw opaque G-buffer objects with depth clip disabled (mainly for light probe rendering)");
     if (raster_settings_changed) {
         viewer.set_render_settings(render_settings);
     }

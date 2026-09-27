@@ -266,6 +266,7 @@ GPU_texture GPURenderer::render_cubemap(const UINT cubemap_size, bool need_mips,
 
     render_state_ = RenderingState::Rendering;
     render_settings_.SSREnabled = false;
+    render_settings_.disableDepthClip = true;
     progress_ = 0.0f;
 
     // Render each cubemap face

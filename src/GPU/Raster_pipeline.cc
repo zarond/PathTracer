@@ -41,14 +41,17 @@ using namespace glm;
 
 ComPtr<ID3D12RootSignature> Raster_pipeline::m_rootSignature{};
 ComPtr<ID3D12PipelineState> Raster_pipeline::m_pipelineState{};
+ComPtr<ID3D12PipelineState> Raster_pipeline::m_NoDepthClipPipelineState{};
 ComPtr<ID3D12PipelineState> Raster_pipeline::m_alphaBlendingPipelineState{};
 ComPtr<ID3D12PipelineState> Raster_pipeline::m_backgroundPipelineState{};
 ComPtr<ID3D12PipelineState> Raster_pipeline::m_GbufferPipelineState{};
+ComPtr<ID3D12PipelineState> Raster_pipeline::m_GbufferNoDepthClipPipelineState{};
 ComPtr<ID3D12PipelineState> Raster_pipeline::m_GIDebugPipelineState{};
 
 Raster_pipeline::Raster_pipeline() {
-    if (!m_rootSignature || !m_pipelineState || !m_alphaBlendingPipelineState || !m_backgroundPipelineState ||
-        !m_GbufferPipelineState || !m_GIDebugPipelineState) {
+    if (!m_rootSignature || !m_pipelineState || !m_NoDepthClipPipelineState
+        || !m_alphaBlendingPipelineState || !m_backgroundPipelineState ||
+        !m_GbufferPipelineState || !m_GbufferNoDepthClipPipelineState || !m_GIDebugPipelineState) {
         Reload();
     }
     CreateConstantBuffers();
@@ -95,9 +98,11 @@ void Raster_pipeline::release_gpu_resources() {
     m_rootSignature.Reset();
 
     m_pipelineState.Reset();
+    m_NoDepthClipPipelineState.Reset();
     m_alphaBlendingPipelineState.Reset();
     m_backgroundPipelineState.Reset();
     m_GbufferPipelineState.Reset();
+    m_GbufferNoDepthClipPipelineState.Reset();
     m_GIDebugPipelineState.Reset();
 
     m_perFrameConstants->Unmap(0, nullptr);
@@ -150,6 +155,7 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     useDiffuseProbe = render_settings.useDiffuseProbe;
     useReflectionProbe = render_settings.useReflectionProbe;
     DrawSSROnly = render_settings.DrawSSROnly;
+    m_disableDepthClip = render_settings.disableDepthClip;
     m_SSR_helper.DenoiseEnabled = render_settings.SSRDenoiseEnabled;
     m_SSR_helper.RayReuseEnabled = render_settings.SSRRayReuseEnabled;
     m_SSR_helper.zeroAlphaMotionCleanup = render_settings.SSRZeroAlphaMotionCleanup;
@@ -271,6 +277,11 @@ void Raster_pipeline::CreatePipelineStateObjects() {
     psoDesc.SampleDesc.Count = 1;
     ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState)));
 
+    // Same as opaque PSO but with depth clip disabled (for light probe rendering)
+    psoDesc.RasterizerState.DepthClipEnable = FALSE;
+    ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_NoDepthClipPipelineState)));
+    psoDesc.RasterizerState.DepthClipEnable = TRUE;
+
     // PSO for G-buffer rendering
     psoDesc.VS = vs_gbuff_bytecode;
     psoDesc.PS = ps_gbuff_bytecode;
@@ -280,6 +291,11 @@ void Raster_pipeline::CreatePipelineStateObjects() {
     psoDesc.RTVFormats[1] = DXGI_FORMAT_R16G16B16A16_FLOAT;
     psoDesc.RTVFormats[2] = DXGI_FORMAT_R8_UINT;
     ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_GbufferPipelineState)));
+
+    // Same as G-buffer PSO but with depth clip disabled (for light probe rendering)
+    psoDesc.RasterizerState.DepthClipEnable = FALSE;
+    ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_GbufferNoDepthClipPipelineState)));
+    psoDesc.RasterizerState.DepthClipEnable = TRUE;
 
     // PSO for alpha blending
     psoDesc.NumRenderTargets = 1;
@@ -455,7 +471,8 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
 
     if (useGBuffer) {
         // Draw opaque objects into Gbuffer
-        commandList->SetPipelineState(m_GbufferPipelineState.Get());
+        commandList->SetPipelineState(
+            m_disableDepthClip ? m_GbufferNoDepthClipPipelineState.Get() : m_GbufferPipelineState.Get());
         for (const auto& element : opaque_objects) {
             draw_object(element);
         }
@@ -524,7 +541,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     }
 
     // Draw opaque objects
-    commandList->SetPipelineState(m_pipelineState.Get());
+    commandList->SetPipelineState(m_disableDepthClip ? m_NoDepthClipPipelineState.Get() : m_pipelineState.Get());
     commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &depthHandle);
     commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
     for (const auto& element : opaque_objects) {
@@ -585,7 +602,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
         commandList->ResourceBarrier(1, &barrier_uav_to_srv);
 
         commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::FrameTex, m_frame_opaque_only.GetSRVHandle());
-        commandList->SetPipelineState(m_pipelineState.Get());
+        commandList->SetPipelineState(m_disableDepthClip ? m_NoDepthClipPipelineState.Get() : m_pipelineState.Get());
         for (const auto& element : transmissive_objects) {
             draw_object(element, true);
         }
