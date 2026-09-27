@@ -15,6 +15,9 @@ namespace app {
 
 using Microsoft::WRL::ComPtr;
 
+void CreateBufferSRV(
+    D3DContext& d3d_ctx, const ComPtr<ID3D12Resource>& buffer, UINT numElements, UINT elementSize, D3D_Handle_Pair& handles);
+
 class GPU_mesh {
   public:
     GPU_mesh() = default;  // empty mesh, useful for combined mesh in GPU_model
@@ -136,6 +139,8 @@ class GPU_texture {
         ComPtr<ID3D12GraphicsCommandList4>& commandList);
     static void copy_texture_mip0_only(GPU_texture& dst, GPU_texture& src, D3D12_RESOURCE_STATES dst_state, D3D12_RESOURCE_STATES src_state,
         ComPtr<ID3D12GraphicsCommandList4>& commandList);
+    static void copy_texture_to_cubemap_side(GPU_texture& dst, GPU_texture& src, D3D12_RESOURCE_STATES dst_state,
+        D3D12_RESOURCE_STATES src_state, int face_idx, ComPtr<ID3D12GraphicsCommandList4>& commandList);
 
   private:
     void create_texture_resource(UINT64 width, UINT height, DXGI_FORMAT format,
@@ -155,9 +160,9 @@ class GPU_texture {
 };
 
 struct GPU_object_info {
-    fmat4x4 ModelMatrix;
-    fmat4x4 ModelMatrix_prev;
-    fmat4x4 NormalMatrix;
+    glm::fmat3x4 ModelMatrix;
+    glm::fmat3x4 ModelMatrix_prev;
+    glm::fmat3x4 NormalMatrix;
     uint32_t meshIndex;
 
     GPU_object_info(const Object& obj);

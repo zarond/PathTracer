@@ -9,8 +9,8 @@
 #include <glm/fwd.hpp>
 
 #include "../arguments.h"
-#include "../cpu_framebuffer.h"
 #include "../render_settings.h"
+#include "../acceleration_structure.h"
 #include "GPU_model.h"
 #include "DXR_pipeline.h"
 #include "Kawase_blur_helper.h"
@@ -20,6 +20,7 @@
 namespace app {
 
 using glm::fmat4x4;
+using glm::fmat3x4;
 using glm::fmat2x2;
 using glm::fvec2;
 using glm::fvec3;
@@ -37,6 +38,7 @@ struct RasterConstantBuffer {
     fvec4 cameraPosition;
     fvec2 subpixelOffset;
     glm::ivec2 FrameSize;
+    fvec2 invFrameSize;
     float envmap_rotation_sin;
     float envmap_rotation_cos;
     
@@ -48,15 +50,17 @@ struct RasterConstantBuffer {
     float TexturesAOStrength;
     int SSREnabled;
     int DiffuseUseSphericalHarmonics;
+    int UseGI;
+    float probeVisibilityFilterStrength;
     int specular_aa_enabled;
     float specular_aa_variance;
     float specular_aa_threshold;
 };
 
 struct RasterPerDrawData {
-    fmat4x4 modelMatrix;
-    fmat4x4 modelMatrix_prev;
-    fmat4x4 normalMatrix;
+    fmat3x4 modelMatrix;
+    fmat3x4 modelMatrix_prev;
+    fmat3x4 normalMatrix;
     int meshID;
     float modelScale;
     int UseAOTexture;
@@ -75,8 +79,13 @@ struct SHCoefficients {
     fvec4 L22;
 };
 
-struct GIData {
-    SHCoefficients diffuse;
+struct GISettings {
+    fvec4 bbox_min;  // world space bounding box of the GI probe grid
+    fvec4 bbox_max;
+    glm::uvec4 grid_dim;  // number of probes in each dimension (x, y, z)
+    fvec4 delta;
+    fvec4 inv_delta;
+    SHCoefficients diffuse; // one global sh probe
 };
 
 struct DrawableSortingInfo {
@@ -96,7 +105,7 @@ class Raster_pipeline : public IRender_pipeline {
         const fmat4x4& ViewMatrix, const fmat4x4& ProjectionMatrix, fvec2 subpixelOffset, unsigned int frameID, int iteration,
         float invIterationCount) override;
 
-    void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) override;
+    void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer, UINT width, UINT height) override;
 
     void OnModelLoad(GPU_model& gpu_model) override;
 
@@ -104,19 +113,26 @@ class Raster_pipeline : public IRender_pipeline {
 
     static void Reload();
 
+    static void ComputeMipMaps(GPU_texture& texture);
+    static SHCoefficients ComputeEnvmapSH(
+        const GPU_texture& envmap, bool is_cubemap = false, 
+        D3D12_RESOURCE_STATES initial_state = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, 
+        bool flip_cubemap_axis = false);
+    static void ComputeEnvmapLut(
+        const GPU_texture& envmap, bool is_cubemap, GPU_texture& output_diffuse, GPU_texture& output_specular);
+
+    void SetReflectionProbe(GPU_texture&& reflection_probe, GPU_texture&& diffuse_probe);
+    void SetGI(std::vector<SHCoefficients>&& sh_probes, BBox bbox, glm::uvec3 dim);
+
   private:
     static void CreateRootSignatures();
     static void CreatePipelineStateObjects();
     void CreateConstantBuffers();
     void ComputeDFGLut();
-    void ComputeEnvmapLut(const GPU_texture& envmap);
-    void ComputeEnvmapSH(const GPU_texture& envmap, bool is_cubemap = false);
-
-    static void ComputeMipMaps(GPU_texture& texture);
 
     void resize_render_targets(int new_width, int new_height);
-    void copy_render_target_to_framebuffer(const CPUFrameBuffer& framebuffer);
-    void copy_ssr_to_framebuffer(const CPUFrameBuffer& framebuffer);
+    void copy_render_target_to_framebuffer(const GPU_texture& framebuffer);
+    void copy_ssr_to_framebuffer(const GPU_texture& framebuffer);
 
     static constexpr const wchar_t* c_vs_file_name = L"VS_Main.dxil";
     static constexpr const wchar_t* c_ps_file_name = L"PS_Main.dxil";
@@ -124,6 +140,8 @@ class Raster_pipeline : public IRender_pipeline {
     static constexpr const wchar_t* c_ps_background_file_name = L"PS_Background.dxil";
     static constexpr const wchar_t* c_vs_gbuff_file_name = L"VS_Gbuffer.dxil";
     static constexpr const wchar_t* c_ps_gbuff_file_name = L"PS_Gbuffer.dxil";
+    static constexpr const wchar_t* c_vs_gi_debug_file_name = L"VS_GI_Debug.dxil";
+    static constexpr const wchar_t* c_ps_gi_debug_file_name = L"PS_GI_Debug.dxil";
 
     union AlignedSceneConstantBuffer {
         RasterConstantBuffer constants;
@@ -132,25 +150,30 @@ class Raster_pipeline : public IRender_pipeline {
     AlignedSceneConstantBuffer* m_mappedConstantData = nullptr;
 
     union AlignedGIBuffer {
-        GIData constants;
+        GISettings constants;
         uint8_t alignmentPadding[D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT];
     };
     AlignedGIBuffer* m_mappedGIData = nullptr;
 
     // Scene constants
     RasterConstantBuffer m_rasterCB;
-    GIData m_GI;
+    GISettings m_GI_settings;
     ComPtr<ID3D12Resource> m_perFrameConstants;
-    ComPtr<ID3D12Resource> m_GIDataConstants;
+    ComPtr<ID3D12Resource> m_GISettingsConstants;  // for GI settings like probe count, grid dimensions, etc.
+    ComPtr<ID3D12Resource> m_GIData;  // 3D grid of SH coefficients for GI probes
+    D3D_Handle_Pair gi_data_handles{};
 
     // Pipeline state objects
     CD3DX12_VIEWPORT m_viewport;
     CD3DX12_RECT m_scissorRect;
     static ComPtr<ID3D12RootSignature> m_rootSignature;
     static ComPtr<ID3D12PipelineState> m_pipelineState;
+    static ComPtr<ID3D12PipelineState> m_NoDepthClipPipelineState;
     static ComPtr<ID3D12PipelineState> m_alphaBlendingPipelineState;
     static ComPtr<ID3D12PipelineState> m_backgroundPipelineState;
     static ComPtr<ID3D12PipelineState> m_GbufferPipelineState;
+    static ComPtr<ID3D12PipelineState> m_GbufferNoDepthClipPipelineState;
+    static ComPtr<ID3D12PipelineState> m_GIDebugPipelineState;
     
     Kawase_blur_helper m_blur_helper{};
     Kawase_blur_helper m_bloom_helper{};
@@ -172,11 +195,19 @@ class Raster_pipeline : public IRender_pipeline {
     GPU_texture m_VelocityBuffer;
 
     bool DrawSSROnly = false;
+    bool useDiffuseProbe = false;
+    bool useReflectionProbe = false;
+    bool GIDebugDraw = false;
+    bool m_disableDepthClip = false;
 
     // additional texture resources
     GPU_texture DFG_lut;  // precomputed DFG LUT for split-sum approximation of specular IBL
     GPU_texture Diffuse_lut;
     GPU_texture Specular_lut;
+    GPU_texture Diffuse_probe;
+    GPU_texture Reflection_probe;
+    SHCoefficients diffuse_irradiance_sh;  // precomputed irradiance SH coefficients from Specular_lut
+    SHCoefficients diffuse_irradiance_sh_from_probe;  // precomputed irradiance SH coefficients from Reflection_probe
 
     std::vector<DrawableSortingInfo> m_sortedDrawables;  // reusable vector for sorting drawables every frame
     void sort_objects_for_rendering(

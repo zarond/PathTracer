@@ -54,15 +54,6 @@ inline barycentric_coords intersect_ray_triangle(
     return {1.0f - u - v, u, t, true, (det < 0.0f) && !backface_culling};
 }
 
-int get_longest_axis(const BBox& bbox) noexcept {
-    fvec3 extents = bbox.max - bbox.min;
-    if (extents.x >= extents.y && extents.x >= extents.z) {
-        return 0;
-    } else if (extents.y >= extents.x && extents.y >= extents.z) {
-        return 1;
-    }
-    return 2;
-}
 float SurfaceAreaHeuristic(const BBox& bbox, int N) {
     if (bbox.is_empty()) return std::numeric_limits<float>::infinity();
     return bbox.surface_area() * N;
@@ -148,6 +139,15 @@ BBox object_to_ws_bbox(const Object& obj, const Mesh& mesh) noexcept {
     return std::transform_reduce(std::execution::unseq, mesh.vertices.begin(), mesh.vertices.end(), BBox{}, combine, make_bbox);
     // unfortunately no performance benefit using transform_reduce compared to simple for_each vertex expand() on my
     // machine std::execution::par_unseq is slower too
+}
+int get_longest_axis(const BBox& bbox) noexcept {
+    fvec3 extents = bbox.max - bbox.min;
+    if (extents.x >= extents.y && extents.x >= extents.z) {
+        return 0;
+    } else if (extents.y >= extents.x && extents.y >= extents.z) {
+        return 1;
+    }
+    return 2;
 }
 
 DOP::DOP() noexcept { min_max.fill(fvec2{std::numeric_limits<float>::max(), std::numeric_limits<float>::lowest()}); }

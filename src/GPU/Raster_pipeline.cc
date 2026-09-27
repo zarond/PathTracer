@@ -28,6 +28,7 @@ enum Value : int {
     SSRTex,
     MaterialIDTex,
     RootConstants,
+    GISettings,
     GIData,
 
     Count
@@ -40,13 +41,17 @@ using namespace glm;
 
 ComPtr<ID3D12RootSignature> Raster_pipeline::m_rootSignature{};
 ComPtr<ID3D12PipelineState> Raster_pipeline::m_pipelineState{};
+ComPtr<ID3D12PipelineState> Raster_pipeline::m_NoDepthClipPipelineState{};
 ComPtr<ID3D12PipelineState> Raster_pipeline::m_alphaBlendingPipelineState{};
 ComPtr<ID3D12PipelineState> Raster_pipeline::m_backgroundPipelineState{};
 ComPtr<ID3D12PipelineState> Raster_pipeline::m_GbufferPipelineState{};
+ComPtr<ID3D12PipelineState> Raster_pipeline::m_GbufferNoDepthClipPipelineState{};
+ComPtr<ID3D12PipelineState> Raster_pipeline::m_GIDebugPipelineState{};
 
 Raster_pipeline::Raster_pipeline() {
-    if (!m_rootSignature || !m_pipelineState || !m_alphaBlendingPipelineState || !m_backgroundPipelineState ||
-        !m_GbufferPipelineState) {
+    if (!m_rootSignature || !m_pipelineState || !m_NoDepthClipPipelineState
+        || !m_alphaBlendingPipelineState || !m_backgroundPipelineState ||
+        !m_GbufferPipelineState || !m_GbufferNoDepthClipPipelineState || !m_GIDebugPipelineState) {
         Reload();
     }
     CreateConstantBuffers();
@@ -80,8 +85,11 @@ void Raster_pipeline::OnEnvmapLoad(GPU_texture& envmap) {
     auto diff = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start);
     float time_ms = static_cast<float>(diff.count()) / 1000.0f;
     std::cout << "Envmap texture mips were computed in " << std::fixed << std::setprecision(2) << time_ms << " ms." << '\n';
-    ComputeEnvmapLut(envmap);
-    ComputeEnvmapSH(envmap);
+    ComputeEnvmapLut(envmap, false, Diffuse_lut, Specular_lut);
+    start = std::chrono::high_resolution_clock::now();
+    diffuse_irradiance_sh = ComputeEnvmapSH(envmap);
+    diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+    std::cout << "Spherical Harmonics Irradiance computed in " << diff.count() << " ms." << '\n';
 }
 
 Raster_pipeline::~Raster_pipeline() { release_gpu_resources(); }
@@ -90,15 +98,22 @@ void Raster_pipeline::release_gpu_resources() {
     m_rootSignature.Reset();
 
     m_pipelineState.Reset();
+    m_NoDepthClipPipelineState.Reset();
     m_alphaBlendingPipelineState.Reset();
     m_backgroundPipelineState.Reset();
     m_GbufferPipelineState.Reset();
+    m_GbufferNoDepthClipPipelineState.Reset();
+    m_GIDebugPipelineState.Reset();
 
     m_perFrameConstants->Unmap(0, nullptr);
-    m_GIDataConstants->Unmap(0, nullptr);
+    m_GISettingsConstants->Unmap(0, nullptr);
 
     m_perFrameConstants.Reset();
-    m_GIDataConstants.Reset();
+    m_GISettingsConstants.Reset();
+    m_GIData.Reset();
+
+    D3DContext& d3d_ctx = D3DContext::Get();
+    d3d_ctx.m_SrvDescHeapAlloc.Free(gi_data_handles.cpuHandle, gi_data_handles.gpuHandle);
 }
 
 void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings, fvec3 origin, const fmat4x4& NDC2WorldMatrix,
@@ -135,7 +150,13 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_GTAO_helper.AONormalSigma = render_settings.AONormalSigma;
     m_rasterCB.SSREnabled = render_settings.SSREnabled;
     m_rasterCB.DiffuseUseSphericalHarmonics = render_settings.DiffuseUseSphericalHarmonics;
+    m_rasterCB.UseGI = render_settings.useGI;
+    m_rasterCB.probeVisibilityFilterStrength = render_settings.probeVisibilityFilterStrength;
+    GIDebugDraw = render_settings.GIDebugDraw;
+    useDiffuseProbe = render_settings.useDiffuseProbe;
+    useReflectionProbe = render_settings.useReflectionProbe;
     DrawSSROnly = render_settings.DrawSSROnly;
+    m_disableDepthClip = render_settings.disableDepthClip;
     m_SSR_helper.DenoiseEnabled = render_settings.SSRDenoiseEnabled;
     m_SSR_helper.RayReuseEnabled = render_settings.SSRRayReuseEnabled;
     m_SSR_helper.zeroAlphaMotionCleanup = render_settings.SSRZeroAlphaMotionCleanup;
@@ -164,7 +185,8 @@ void Raster_pipeline::CreateRootSignatures() {
     ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5, 1);  // 8 SSR texture.
     ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 6, 1);  // 9 MaterialID texture
     ranges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1);      // 10 per draw constants buffer.
-    ranges[10].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2);      // 11 GI data constants buffer.
+    ranges[10].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2);      // 11 GI settings constants buffer.
+    ranges[11].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);      // 12 GI data buffer.
 
     D3D12_STATIC_SAMPLER_DESC default_sampler = {};  // Default static sampler.
     default_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -204,7 +226,8 @@ void Raster_pipeline::CreateRootSignatures() {
     rootParameters[GlobalRootSignatureParams::SSRTex].InitAsDescriptorTable(1, &ranges[7]);
     rootParameters[GlobalRootSignatureParams::MaterialIDTex].InitAsDescriptorTable(1, &ranges[8]);
     rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(RasterPerDrawData) / 4, 1);
-    rootParameters[GlobalRootSignatureParams::GIData].InitAsConstantBufferView(2);
+    rootParameters[GlobalRootSignatureParams::GISettings].InitAsConstantBufferView(2);
+    rootParameters[GlobalRootSignatureParams::GIData].InitAsDescriptorTable(1, &ranges[11]);
 
     auto flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT 
         | D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
@@ -220,6 +243,8 @@ void Raster_pipeline::CreatePipelineStateObjects() {
     auto [ps_background_shaderBlob, ps_background_bytecode] = LoadShader(c_ps_background_file_name);
     auto [vs_gbuff_shaderBlob, vs_gbuff_bytecode] = LoadShader(c_vs_gbuff_file_name);
     auto [ps_gbuff_shaderBlob, ps_gbuff_bytecode] = LoadShader(c_ps_gbuff_file_name);
+    auto [vs_gi_debug_shaderBlob, vs_gi_debug_bytecode] = LoadShader(c_vs_gi_debug_file_name);
+    auto [ps_gi_debug_shaderBlob, ps_gi_debug_bytecode] = LoadShader(c_ps_gi_debug_file_name);
 
     D3DContext& d3d_ctx = D3DContext::Get();
     auto device = d3d_ctx.m_d3dDevice;
@@ -253,6 +278,11 @@ void Raster_pipeline::CreatePipelineStateObjects() {
     psoDesc.SampleDesc.Count = 1;
     ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState)));
 
+    // Same as opaque PSO but with depth clip disabled (for light probe rendering)
+    psoDesc.RasterizerState.DepthClipEnable = FALSE;
+    ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_NoDepthClipPipelineState)));
+    psoDesc.RasterizerState.DepthClipEnable = TRUE;
+
     // PSO for G-buffer rendering
     psoDesc.VS = vs_gbuff_bytecode;
     psoDesc.PS = ps_gbuff_bytecode;
@@ -262,6 +292,11 @@ void Raster_pipeline::CreatePipelineStateObjects() {
     psoDesc.RTVFormats[1] = DXGI_FORMAT_R16G16B16A16_FLOAT;
     psoDesc.RTVFormats[2] = DXGI_FORMAT_R8_UINT;
     ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_GbufferPipelineState)));
+
+    // Same as G-buffer PSO but with depth clip disabled (for light probe rendering)
+    psoDesc.RasterizerState.DepthClipEnable = FALSE;
+    ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_GbufferNoDepthClipPipelineState)));
+    psoDesc.RasterizerState.DepthClipEnable = TRUE;
 
     // PSO for alpha blending
     psoDesc.NumRenderTargets = 1;
@@ -287,6 +322,12 @@ void Raster_pipeline::CreatePipelineStateObjects() {
     psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
     rtBlend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL ^ D3D12_COLOR_WRITE_ENABLE_ALPHA;
     ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_backgroundPipelineState)));
+
+    // PSO for GI debug rendering
+    psoDesc.VS = vs_gi_debug_bytecode;
+    psoDesc.PS = ps_gi_debug_bytecode;
+    psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+    ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_GIDebugPipelineState)));
 }
 
 void Raster_pipeline::CreateConstantBuffers() {
@@ -312,19 +353,17 @@ void Raster_pipeline::CreateConstantBuffers() {
     cbSize = sizeof(AlignedGIBuffer);
     constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(cbSize);
     ThrowIfFailed(device->CreateCommittedResource(&uploadHeapProperties, D3D12_HEAP_FLAG_NONE, &constantBufferDesc,
-        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_GIDataConstants)));
-    ThrowIfFailed(m_GIDataConstants->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedGIData)));
+        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&m_GISettingsConstants)));
+    ThrowIfFailed(m_GISettingsConstants->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedGIData)));
 }
 
-void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) {
+void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer, UINT width, UINT height) {
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
 
-    UINT width = framebuffer.width();
-    UINT height = framebuffer.height();
-
     m_rasterCB.RenderFrameMips = std::min(GPU_texture::CalculateMipCount(width, height), static_cast<unsigned int>(Kawase_blur_helper::BlurIterations));
     m_rasterCB.FrameSize = {width, height};
+    m_rasterCB.invFrameSize = fvec2{1.0f} / fvec2{m_rasterCB.FrameSize};
 
     resize_render_targets(width, height);
 
@@ -335,20 +374,37 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     commandList->RSSetViewports(1, &m_viewport);
     commandList->RSSetScissorRects(1, &m_scissorRect);
 
+    if (useDiffuseProbe) {
+        m_GI_settings.diffuse = diffuse_irradiance_sh_from_probe;
+    } else {
+        m_GI_settings.diffuse = diffuse_irradiance_sh;
+    }
+
     // Copy the updated scene constant buffer to GPU.
     memcpy(&m_mappedConstantData->constants, &m_rasterCB, sizeof(m_rasterCB));
     auto cbGpuAddress = m_perFrameConstants->GetGPUVirtualAddress();
     // Copy the GI data to constant buffer
-    memcpy(&m_mappedGIData->constants, &m_GI, sizeof(m_GI));
-    auto GIcbGpuAddress = m_GIDataConstants->GetGPUVirtualAddress();
+    memcpy(&m_mappedGIData->constants, &m_GI_settings, sizeof(m_GI_settings));
+    auto GIcbGpuAddress = m_GISettingsConstants->GetGPUVirtualAddress();
 
     commandList->SetGraphicsRootConstantBufferView(GlobalRootSignatureParams::SceneConstantSlot, cbGpuAddress);
-    commandList->SetGraphicsRootConstantBufferView(GlobalRootSignatureParams::GIData, GIcbGpuAddress);
+    commandList->SetGraphicsRootConstantBufferView(GlobalRootSignatureParams::GISettings, GIcbGpuAddress);
     commandList->SetGraphicsRootDescriptorTable(
         GlobalRootSignatureParams::MaterialsBufferSlot, gpu_model.materials_array.gpuHandle);
     commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::DFGTex, DFG_lut.GetSRVHandle());
-    commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::DiffuseLutTex, Diffuse_lut.GetSRVHandle());
-    commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SpecularLutTex, Specular_lut.GetSRVHandle());
+    if (useDiffuseProbe) {
+        commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::DiffuseLutTex, Diffuse_probe.GetSRVHandle());
+    } else {
+        commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::DiffuseLutTex, Diffuse_lut.GetSRVHandle());
+    }
+    if (useReflectionProbe) {
+        commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SpecularLutTex, Reflection_probe.GetSRVHandle());
+    } else {
+        commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SpecularLutTex, Specular_lut.GetSRVHandle());
+    }
+    if ((m_rasterCB.UseGI || GIDebugDraw) && gi_data_handles.gpuHandle.ptr) {
+        commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::GIData, gi_data_handles.gpuHandle);
+    }
 
     const auto& combined_mesh = gpu_model.get_combined_mesh();
 
@@ -416,7 +472,8 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
 
     if (useGBuffer) {
         // Draw opaque objects into Gbuffer
-        commandList->SetPipelineState(m_GbufferPipelineState.Get());
+        commandList->SetPipelineState(
+            m_disableDepthClip ? m_GbufferNoDepthClipPipelineState.Get() : m_GbufferPipelineState.Get());
         for (const auto& element : opaque_objects) {
             draw_object(element);
         }
@@ -485,15 +542,29 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     }
 
     // Draw opaque objects
-    commandList->SetPipelineState(m_pipelineState.Get());
+    commandList->SetPipelineState(m_disableDepthClip ? m_NoDepthClipPipelineState.Get() : m_pipelineState.Get());
     commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &depthHandle);
     commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
     for (const auto& element : opaque_objects) {
         draw_object(element, true);
     }
+    // Draw GI probes as spheres
+    if (GIDebugDraw) {
+        commandList->SetPipelineState(m_GIDebugPipelineState.Get());
+        auto grid = m_GI_settings.grid_dim;
+        uint32_t probeCount = grid.x * grid.y * grid.z;
+        constexpr uint32_t verticesPerSphere = 16 * 8 * 6;
+        commandList->DrawInstanced(verticesPerSphere, probeCount, 0, 0);
+    }
     // Draw background
     commandList->SetPipelineState(m_backgroundPipelineState.Get());
+    if (useReflectionProbe) {
+        commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SpecularLutTex, Specular_lut.GetSRVHandle());
+    }
     commandList->DrawInstanced(3, 1, 0, 0);
+    if (useReflectionProbe) {
+        commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SpecularLutTex, Reflection_probe.GetSRVHandle());
+    }
 
     if (!transmissive_objects.empty()) {
         GPU_texture::copy_texture_mip0_only(m_frame_opaque_only, m_renderTarget,
@@ -532,7 +603,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
         commandList->ResourceBarrier(1, &barrier_uav_to_srv);
 
         commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::FrameTex, m_frame_opaque_only.GetSRVHandle());
-        commandList->SetPipelineState(m_pipelineState.Get());
+        commandList->SetPipelineState(m_disableDepthClip ? m_NoDepthClipPipelineState.Get() : m_pipelineState.Get());
         for (const auto& element : transmissive_objects) {
             draw_object(element, true);
         }
@@ -580,16 +651,25 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     m_rasterCB.viewProjection_prev = m_rasterCB.viewProjection;
 }
 
-void Raster_pipeline::copy_render_target_to_framebuffer(const CPUFrameBuffer& framebuffer) {
+void Raster_pipeline::copy_render_target_to_framebuffer(const GPU_texture& framebuffer) {
     static Copy_helper copy_helper{};
-    const auto& gpu_texture = framebuffer.get_texture_resource();
-    copy_helper.Copy(gpu_texture, m_renderTarget);
+    D3DContext& d3d_ctx = D3DContext::Get();
+    auto commandList = d3d_ctx.m_DXRCommandList;
+
+    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTarget.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    commandList->ResourceBarrier(1, &barrier);
+
+    copy_helper.Copy(framebuffer, m_renderTarget);
+
+    barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTarget.get_gpu_resource().Get(),
+        D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+    commandList->ResourceBarrier(1, &barrier);
 }
 
-void Raster_pipeline::copy_ssr_to_framebuffer(const CPUFrameBuffer& framebuffer) {
+void Raster_pipeline::copy_ssr_to_framebuffer(const GPU_texture& framebuffer) {
     static Copy_helper copy_helper{};
-    const auto& gpu_texture = framebuffer.get_texture_resource();
-    copy_helper.Copy(gpu_texture, m_SSR);
+    copy_helper.Copy(framebuffer, m_SSR);
 }
 
 void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
@@ -654,16 +734,17 @@ void Raster_pipeline::sort_objects_for_rendering(
     const auto& materials = gpu_model.get_materials_cpu_array();
     fvec3 camera_forward = normalize(xyz(m_rasterCB.projectionToWorld * fvec4(0, 0, 0, 1)));
     for (const auto& obj : gpu_model.objects) {
-        fvec3 v = xyz(obj.ModelMatrix[3]) - xyz(m_rasterCB.cameraPosition);
+        fvec3 obj_pos = fvec3(obj.ModelMatrix[0][3], obj.ModelMatrix[1][3], obj.ModelMatrix[2][3]);
+        fvec3 v = obj_pos - xyz(m_rasterCB.cameraPosition);
         const auto& mat = materials[obj.meshIndex];
         float ZDistanceToCamera = dot(camera_forward, v);
         bool alphaBlending = mat.alphaBlending;
         bool transmittance = mat.hasVolume || (mat.transmisionFactor != 0.0f);
 
         glm::fvec3 scale;
-        scale.x = glm::length(glm::fvec3(obj.ModelMatrix[0]));
-        scale.y = glm::length(glm::fvec3(obj.ModelMatrix[1]));
-        scale.z = glm::length(glm::fvec3(obj.ModelMatrix[2]));
+        scale.x = glm::length(fvec3(obj.ModelMatrix[0][0], obj.ModelMatrix[1][0], obj.ModelMatrix[2][0]));
+        scale.y = glm::length(fvec3(obj.ModelMatrix[0][1], obj.ModelMatrix[1][1], obj.ModelMatrix[2][1]));
+        scale.z = glm::length(fvec3(obj.ModelMatrix[0][2], obj.ModelMatrix[1][2], obj.ModelMatrix[2][2]));
         float model_scale = max(max(scale.x,scale.y),scale.z);
 
         if (alphaBlending) {
@@ -715,14 +796,15 @@ void Raster_pipeline::ComputeDFGLut() {
     std::cout << "DFG Lut computed in " << diff.count() << " ms." << '\n';
 }
 
-void Raster_pipeline::ComputeEnvmapLut(const GPU_texture& envmap) {
+void Raster_pipeline::ComputeEnvmapLut(
+    const GPU_texture& envmap, bool is_cubemap, GPU_texture& output_diffuse, GPU_texture& output_specular) {
     auto start = std::chrono::high_resolution_clock::now();
 
-    Diffuse_lut.release_gpu_resource();
-    Specular_lut.release_gpu_resource();
+    output_diffuse.release_gpu_resource();
+    output_specular.release_gpu_resource();
 
-    Diffuse_lut = EnvCube_helper::GetBlankSRVDiffuseTexture();
-    Specular_lut = EnvCube_helper::GetBlankSRVSpecularTexture();
+    output_diffuse = EnvCube_helper::GetBlankSRVDiffuseTexture();
+    output_specular = EnvCube_helper::GetBlankSRVSpecularTexture();
 
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
@@ -733,15 +815,15 @@ void Raster_pipeline::ComputeEnvmapLut(const GPU_texture& envmap) {
     commandList->ResourceBarrier(1, &barrier);
     
     static EnvCube_helper EnvCube_helper{};
-    EnvCube_helper.CreateDiffuseEnvmapCube(envmap);
-    EnvCube_helper.CreateSpecularEnvmapCube(envmap);
+    EnvCube_helper.CreateDiffuseEnvmapCube(envmap, is_cubemap);
+    EnvCube_helper.CreateSpecularEnvmapCube(envmap, is_cubemap);
 
     GPU_texture Diffuse_lut_tmp = std::move(EnvCube_helper.GetDiffuseEnvmapCube());
     GPU_texture Specular_lut_tmp = std::move(EnvCube_helper.GetSpecularEnvmapCube());
     // copy textures from UAV to SRV-only textures
-    GPU_texture::copy_texture(Diffuse_lut, Diffuse_lut_tmp, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+    GPU_texture::copy_texture(output_diffuse, Diffuse_lut_tmp, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS, d3d_ctx.m_DXRCommandList);
-    GPU_texture::copy_texture(Specular_lut, Specular_lut_tmp, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+    GPU_texture::copy_texture(output_specular, Specular_lut_tmp, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS, d3d_ctx.m_DXRCommandList);
 
     d3d_ctx.DispatchDXRCommandList();
@@ -753,14 +835,27 @@ void Raster_pipeline::ComputeEnvmapLut(const GPU_texture& envmap) {
     std::cout << "Diffuse and Specular Lut computed in " << diff.count() << " ms." << '\n';
 }
 
-void Raster_pipeline::ComputeEnvmapSH(const GPU_texture& envmap, bool is_cubemap) {
+SHCoefficients Raster_pipeline::ComputeEnvmapSH(
+    const GPU_texture& envmap, bool is_cubemap, D3D12_RESOURCE_STATES initial_state, bool flip_cubemap_axis) {
     static SphericalHarmonics_helper SH_helper{};
-    auto start = std::chrono::high_resolution_clock::now();
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
+    auto commandList = d3d_ctx.m_DXRCommandList;
+
+    if (initial_state != D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) {
+        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+            envmap.get_gpu_resource().Get(), initial_state, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        commandList->ResourceBarrier(1, &barrier);
+    }
     
     SH_helper.Init();
-    SH_helper.Compute(envmap, is_cubemap);
+    SH_helper.Compute(envmap, is_cubemap, flip_cubemap_axis);
+
+    if (initial_state != D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) {
+        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+            envmap.get_gpu_resource().Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, initial_state);
+        commandList->ResourceBarrier(1, &barrier);
+    }
 
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();
@@ -777,10 +872,7 @@ void Raster_pipeline::ComputeEnvmapSH(const GPU_texture& envmap, bool is_cubemap
     diffuse.L21     = sh_results[7];
     diffuse.L22     = sh_results[8];
 
-    m_GI.diffuse = diffuse;
-
-    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
-    std::cout << "Spherical Harmonics Irradiance computed in " << diff.count() << " ms." << '\n';
+    return diffuse;
 }
 
 void Raster_pipeline::ComputeMipMaps(GPU_texture& texture) { 
@@ -804,6 +896,81 @@ void Raster_pipeline::ComputeMipMaps(GPU_texture& texture) {
     
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();
+}
+
+void Raster_pipeline::SetReflectionProbe(GPU_texture&& reflection_probe, GPU_texture&& diffuse_probe) {
+    Reflection_probe = std::move(reflection_probe);
+    Diffuse_probe = std::move(diffuse_probe);
+    diffuse_irradiance_sh_from_probe = ComputeEnvmapSH(Reflection_probe, true, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+}
+
+void Raster_pipeline::SetGI(std::vector<SHCoefficients>&& sh_probes, BBox bbox, uvec3 dim) {
+    fvec3 bbox_size = bbox.max - bbox.min;
+    fvec3 delta = bbox_size / fvec3{dim};
+
+    m_GI_settings.bbox_min = xyz0(bbox.min);
+    m_GI_settings.bbox_max = xyz0(bbox.max);
+    m_GI_settings.grid_dim = xyz0(dim);
+    m_GI_settings.delta = xyz0(delta);
+    m_GI_settings.inv_delta = xyz0(1.0f / delta);
+
+    // delete old data
+    m_GIData.Reset();
+
+    ComPtr<ID3D12Resource2> gi_uploadBuffer;
+
+    uint32_t probeCount = sh_probes.size();
+    const UINT BufferSize = sizeof(SHCoefficients) * probeCount;
+
+    const D3D12_HEAP_PROPERTIES def_props{
+        .Type = D3D12_HEAP_TYPE_DEFAULT,
+        .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
+        .CreationNodeMask = 1,
+        .VisibleNodeMask = 1,
+    };
+
+    const D3D12_HEAP_PROPERTIES upload_props{
+        .Type = D3D12_HEAP_TYPE_UPLOAD,
+        .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
+        .CreationNodeMask = 1,
+        .VisibleNodeMask = 1,
+    };
+
+    const D3D12_RESOURCE_DESC upload_desc{
+        .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
+        .Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+        .Width = BufferSize,
+        .Height = 1,
+        .DepthOrArraySize = 1,
+        .MipLevels = 1,
+        .Format = DXGI_FORMAT_UNKNOWN,
+        .SampleDesc = {1, 0},
+        .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+        .Flags = D3D12_RESOURCE_FLAG_NONE,
+    };
+
+    D3DContext& d3d_ctx = D3DContext::Get();
+
+    ThrowIfFailed(d3d_ctx.m_d3dDevice->CreateCommittedResource(
+        &def_props, D3D12_HEAP_FLAG_NONE, &upload_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&m_GIData)));
+    CreateBufferSRV(d3d_ctx, m_GIData, probeCount, sizeof(SHCoefficients), gi_data_handles);
+
+    ThrowIfFailed(d3d_ctx.m_d3dDevice->CreateCommittedResource(&upload_props, D3D12_HEAP_FLAG_NONE, &upload_desc,
+        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&gi_uploadBuffer)));
+
+    void* pDataBegin;
+    ThrowIfFailed(gi_uploadBuffer->Map(0, nullptr, &pDataBegin));
+    memcpy(pDataBegin, sh_probes.data(), BufferSize);
+    gi_uploadBuffer->Unmap(0, nullptr);
+
+    d3d_ctx.InitCopyCommandList();
+
+    d3d_ctx.m_CopyCommandList->CopyBufferRegion(m_GIData.Get(), 0, gi_uploadBuffer.Get(), 0, BufferSize);
+
+    d3d_ctx.DispatchCopyCommandList();
+    d3d_ctx.WaitForPendingCopy();
 }
 
 }

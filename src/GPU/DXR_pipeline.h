@@ -45,7 +45,7 @@ class IRender_pipeline {
     virtual void SetRenderingSettings(const RenderSettings& render_settings, fvec3 origin, const fmat4x4& NDC2WorldMatrix,
         const fmat4x4& ViewMatrix, const fmat4x4& ProjectionMatrix, fvec2 subpixelOffset, unsigned int frameID, int iteration,
         float invIterationCount) = 0;
-    virtual void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) = 0;
+    virtual void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer, UINT width, UINT height) = 0;
     virtual void OnModelLoad(GPU_model& gpu_model) = 0;
     virtual void OnEnvmapLoad(GPU_texture& envmap) = 0;
 };
@@ -60,7 +60,7 @@ class DXR_pipeline : public IRender_pipeline {
         const fmat4x4& ViewMatrix, const fmat4x4& ProjectionMatrix, fvec2 subpixelOffset, unsigned int frameID, int iteration,
         float invIterationCount) override;
 
-    void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const CPUFrameBuffer& framebuffer) override;
+    void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer, UINT width, UINT height) override;
 
     void OnModelLoad(GPU_model& gpu_model) override;
 

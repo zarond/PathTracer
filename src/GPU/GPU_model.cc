@@ -1,5 +1,4 @@
 #include "GPU_model.h"
-#include "GPU_model.h"
 
 #include "../d3d_context.h"
 
@@ -27,13 +26,6 @@ D3D12_SHADER_RESOURCE_VIEW_DESC CreateSRVDescription(UINT numElements, UINT elem
     return srvDesc;
 }
 
-void CreateBufferSRV(D3DContext& d3d_ctx, const ComPtr<ID3D12Resource>& buffer, UINT numElements, UINT elementSize,
-    D3D_Handle_Pair& handles) {
-    d3d_ctx.m_SrvDescHeapAlloc.Alloc(&handles.cpuHandle, &handles.gpuHandle);
-    const auto srvDesc = CreateSRVDescription(numElements, elementSize);
-    d3d_ctx.m_d3dDevice->CreateShaderResourceView(buffer.Get(), &srvDesc, handles.cpuHandle);
-}
-
 bool isTrue(TEXTURE_TRAITS a) { return a != TEXTURE_TRAITS::None; }
 bool isHDR(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::HDR) != TEXTURE_TRAITS::None; }
 bool isSRGB(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::sRGB) != TEXTURE_TRAITS::None; }
@@ -49,6 +41,13 @@ bool AllocateMips(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::AllocateMips) 
 namespace app {
 
 using namespace glm;
+
+void CreateBufferSRV(
+    D3DContext& d3d_ctx, const ComPtr<ID3D12Resource>& buffer, UINT numElements, UINT elementSize, D3D_Handle_Pair& handles) {
+    d3d_ctx.m_SrvDescHeapAlloc.Alloc(&handles.cpuHandle, &handles.gpuHandle);
+    const auto srvDesc = CreateSRVDescription(numElements, elementSize);
+    d3d_ctx.m_d3dDevice->CreateShaderResourceView(buffer.Get(), &srvDesc, handles.cpuHandle);
+}
 
 inline void ThrowIfFailed(HRESULT hr) {
     if (FAILED(hr)) {
@@ -366,9 +365,9 @@ GPU_Material::GPU_Material(const Material& mat, const std::vector<int>& texture_
 }
 
 GPU_object_info::GPU_object_info(const Object& obj) :
-    ModelMatrix(obj.ModelMatrix),
-    ModelMatrix_prev(obj.ModelMatrix),
-    NormalMatrix(obj.NormalMatrix),
+    ModelMatrix(transpose(obj.ModelMatrix)),
+    ModelMatrix_prev(ModelMatrix),
+    NormalMatrix(transpose(obj.NormalMatrix)),
     meshIndex(obj.meshIndex) {}
 
 GPU_model::GPU_model(const Model& cpu_model, bool raytracing_support) {
@@ -469,7 +468,7 @@ void GPU_model::create_top_level_AS(const Model& cpu_model) {
         const auto& Mat = obj.ModelMatrix;
         for (int r = 0; r < 3; ++r) {
             for (int c = 0; c < 4; ++c) {
-                inst.Transform[r][c] = Mat[c][r];
+                inst.Transform[r][c] = Mat[r][c];
             }
         }
         const auto& cpu_mesh = cpu_model.meshes[obj.meshIndex];
@@ -804,8 +803,8 @@ void GPU_model::update_transforms(const Model& model, bool updateTLAS) {
         auto& obj = objects[i];
         const auto& obj_new = model.objects[i];
         obj.ModelMatrix_prev = obj.ModelMatrix;
-        obj.ModelMatrix = obj_new.ModelMatrix;
-        obj.NormalMatrix = obj_new.NormalMatrix;
+        obj.ModelMatrix = transpose(obj_new.ModelMatrix);
+        obj.NormalMatrix = transpose(obj_new.NormalMatrix);
         obj.meshIndex = obj_new.meshIndex;
     }
     if (!updateTLAS) return;
@@ -830,7 +829,7 @@ void GPU_model::update_transforms(const Model& model, bool updateTLAS) {
         const auto& Mat = obj.ModelMatrix;
         for (int r = 0; r < 3; ++r) {
             for (int c = 0; c < 4; ++c) {
-                inst.Transform[r][c] = Mat[c][r];
+                inst.Transform[r][c] = Mat[r][c];
             }
         }
     }
@@ -1264,6 +1263,40 @@ void GPU_texture::copy_texture_mip0_only(GPU_texture& dst, GPU_texture& src,
     CD3DX12_TEXTURE_COPY_LOCATION dstLocation = {gpuDst.Get(), 0};
     CD3DX12_TEXTURE_COPY_LOCATION srcLocation = {gpuSrc.Get(), 0};
     commandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, nullptr);
+
+    D3D12_RESOURCE_BARRIER from_barriers[2] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuDst.Get(), D3D12_RESOURCE_STATE_COPY_DEST, dst_state),
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuSrc.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, src_state),
+    };
+    commandList->ResourceBarrier(2, from_barriers);
+}
+void GPU_texture::copy_texture_to_cubemap_side(GPU_texture& dst, GPU_texture& src, D3D12_RESOURCE_STATES dst_state,
+    D3D12_RESOURCE_STATES src_state, int face_idx, ComPtr<ID3D12GraphicsCommandList4>& commandList) {
+    const auto& gpuDst = dst.get_gpu_resource();
+    const auto& gpuSrc = src.get_gpu_resource();
+    int mipLevels = dst.mipLevels;
+
+    D3D12_RESOURCE_BARRIER to_barriers[2] = {
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuDst.Get(), dst_state, D3D12_RESOURCE_STATE_COMMON),
+        CD3DX12_RESOURCE_BARRIER::Transition(gpuSrc.Get(), src_state, D3D12_RESOURCE_STATE_COPY_SOURCE),
+    };
+    commandList->ResourceBarrier(2, to_barriers);
+
+    for (int i = 0; i < mipLevels; ++i) {
+        // For a standard 2D texture, subresource index is just srcMipIndex.
+        UINT srcSubresource = i;
+        // For a Cubemap array, Subresource = MipSlice + (ArraySlice * MipLevels)
+        UINT dstSubresource = D3D12CalcSubresource(i,  // MipSlice
+            face_idx,                                  // ArraySlice (0 to 5)
+            0,                                         // PlaneSlice (0 for standard color formats)
+            mipLevels,                                 // MipLevels
+            6                                          // ArraySize (6 faces for a Cubemap)
+        );
+
+        CD3DX12_TEXTURE_COPY_LOCATION dstLocation{gpuDst.Get(), dstSubresource};
+        CD3DX12_TEXTURE_COPY_LOCATION srcLocation{gpuSrc.Get(), srcSubresource};
+        commandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, nullptr);
+    }
 
     D3D12_RESOURCE_BARRIER from_barriers[2] = {
         CD3DX12_RESOURCE_BARRIER::Transition(gpuDst.Get(), D3D12_RESOURCE_STATE_COPY_DEST, dst_state),

@@ -691,6 +691,39 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
     ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x * 0.5f);
     auto render_settings = viewer.get_render_settings();
     bool raster_settings_changed = false;
+    static bool light_probe_computed = false;
+    static bool gi_computed = false;
+    static int gi_grid_size = 4;
+    if (viewer.get_rendering_state() == RenderingState::Idle) {
+        ImGui::SliderInt("GI grid size", &gi_grid_size, 1, 32);
+        if (ImGui::Button("Compute light probe")) {
+            viewer.render_lighting_probe();
+            light_probe_computed = true;
+            render_settings.useReflectionProbe = true;
+            raster_settings_changed = true;
+        }
+        if (ImGui::Button("Compute GI") && gi_grid_size > 0) {
+            viewer.render_GI(gi_grid_size);
+            gi_computed = true;
+            render_settings.useGI = true;
+            raster_settings_changed = true;
+        }
+    } else {
+        ImGui::Text("Stop rendering process to compute light probe");
+    }
+    if (light_probe_computed) {
+        raster_settings_changed |= ImGui::Checkbox("Use diffuse probe", &render_settings.useDiffuseProbe);
+        raster_settings_changed |= ImGui::Checkbox("Use reflection probe", &render_settings.useReflectionProbe);
+    }
+    if (gi_computed) {
+        raster_settings_changed |= ImGui::Checkbox("Use GI", &render_settings.useGI);
+        raster_settings_changed |= ImGui::SliderFloat("Probes Visibility weighting strength", &render_settings.probeVisibilityFilterStrength,
+            0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
+        HelpTooltip("Simple Normal-Based Backface Cull / Half-Space Filtering Visibility function");
+        raster_settings_changed |= ImGui::Checkbox("Draw GI Probes", &render_settings.GIDebugDraw);
+    }
+    ImGui::Separator();
+
     raster_settings_changed |= ImGui::Checkbox("Diffuse - use Spherical Harmonics", &render_settings.DiffuseUseSphericalHarmonics);
     raster_settings_changed |= ImGui::SliderFloat(
         "GTAO strength", &render_settings.GTAOStrength, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
@@ -734,6 +767,9 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
         "Specular AA Variance", &render_settings.specular_aa_variance, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
     raster_settings_changed |= ImGui::SliderFloat(
         "Specular AA Threshold", &render_settings.specular_aa_threshold, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
+    // For testing only:
+    // raster_settings_changed |= ImGui::Checkbox("Disable depth clip", &render_settings.disableDepthClip);
+    // HelpTooltip("Draw opaque G-buffer objects with depth clip disabled (mainly for light probe rendering)");
     if (raster_settings_changed) {
         viewer.set_render_settings(render_settings);
     }

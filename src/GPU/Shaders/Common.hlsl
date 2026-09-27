@@ -34,6 +34,7 @@ struct RasterConstantBuffer {
     float4 cameraPosition;
     float2 subpixel_offset;
     int2 FrameSize;
+    float2 invFrameSize;
     float envmap_rotation_sin;
     float envmap_rotation_cos;
 
@@ -45,15 +46,17 @@ struct RasterConstantBuffer {
     float TexturesAOStrength;
     int SSREnabled;
     int DiffuseUseSphericalHarmonics;
+    int UseGI;
+    float probeVisibilityFilterStrength;
     int specular_aa_enabled;
     float specular_aa_variance;
     float specular_aa_threshold;
 };
 
 struct RasterPerDrawData {
-    float4x4 modelMatrix;
-	float4x4 modelMatrix_prev;
-    float4x4 normalMatrix;
+    row_major float3x4 modelMatrix;
+	row_major float3x4 modelMatrix_prev;
+    row_major float3x4 normalMatrix;
     int meshID;
     float modelScale;
     int UseAOTexture;
@@ -72,8 +75,13 @@ struct SHCoefficients {
     float4 L22;
 };
 
-struct GIData {
-    SHCoefficients diffuse;
+struct GISettings {
+    float4 bbox_min;  // world space bounding box of the GI probe grid
+    float4 bbox_max;
+    uint4 grid_dim;  // number of probes in each dimension (x, y, z)
+    float4 delta;
+    float4 inv_delta;
+    SHCoefficients diffuse; // one global sh probe
 };
 
 struct Material {

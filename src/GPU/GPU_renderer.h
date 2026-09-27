@@ -60,6 +60,9 @@ class GPURenderer : public IRenderer {
     RenderPipelineMode get_active_pipeline_mode() const;
     void set_active_pipeline_mode(RenderPipelineMode mode);
 
+    void compute_lighting_probe();
+    void compute_GI(BBox bbox, int longest_dimension_N, bool expand_bbox = false);
+
   private:
     const Model* model_ref_ = nullptr;
     const CPUTexture<hdr_pixel>* envmap_ref_ = nullptr;
@@ -84,6 +87,8 @@ class GPURenderer : public IRenderer {
 
     void OnEnvmapLoad();
     void OnModelLoad();
+
+    GPU_texture render_cubemap(const UINT cubemap_size, bool need_mips, fvec3 origin);
 
     unsigned int frameID_ = 0;
 };

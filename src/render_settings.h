@@ -33,6 +33,12 @@ struct RenderSettings {
     bool SSRParallaxReprojection = true;
     bool ReprojectionDebugMode = false;
     bool DiffuseUseSphericalHarmonics = false;
+    bool useDiffuseProbe = false;
+    bool useReflectionProbe = false;
+    bool useGI = false;
+    float probeVisibilityFilterStrength = 0.0f;
+    bool GIDebugDraw = false;
+    bool disableDepthClip = false;  // draw opaque objects with depth clip disabled (mainly for light probe rendering)
     bool specular_aa_enabled = true;
     float specular_aa_variance = 0.15f;
     float specular_aa_threshold = 0.2f;

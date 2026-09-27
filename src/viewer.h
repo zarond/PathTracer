@@ -111,6 +111,11 @@ class Viewer {
     void rewind_animation();
     void apply_rest_pose();
 
+#ifdef WINDOWS_SPECIFIC  
+    void render_lighting_probe();
+    void render_GI(int grid_size);
+#endif
+
   private:
     Model model_;
     CPUTexture<hdr_pixel> environment_texture_;

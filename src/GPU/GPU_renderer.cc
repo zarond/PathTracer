@@ -16,6 +16,7 @@
 
 #include "../d3d_context.h"
 #include "Raster_pipeline.h"
+#include "Cubemaps_helper.h"
 
 namespace app {
 
@@ -138,7 +139,7 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
     ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};
     d3d_ctx.m_DXRCommandList->SetDescriptorHeaps(1, desc_heap);
 
-    pipeline_->DoRender(*gpu_model_, *gpu_envmap_, framebuffer);
+    pipeline_->DoRender(*gpu_model_, *gpu_envmap_, framebuffer.get_texture_resource(), framebuffer.width(), framebuffer.height());
 
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();
@@ -216,6 +217,208 @@ void GPURenderer::OnModelLoad() {
             pipeline->OnModelLoad(*gpu_model_);
         }
     }
+}
+
+GPU_texture GPURenderer::render_cubemap(const UINT cubemap_size, bool need_mips, fvec3 cubemap_origin) {
+    // Save current state
+    const auto saved_origin = origin_;
+    const auto saved_viewMatrix = viewMatrix_;
+    const auto saved_projectionMatrix = projectionMatrix_;
+    const auto saved_NDC2WorldMatrix = NDC2WorldMatrix_;
+    const auto saved_render_state = render_state_.load();
+    const auto saved_render_settings = render_settings_;
+
+    // Create cubemap textures (6 faces)
+    std::array<GPU_texture, 6> cubemap_textures;
+    auto flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
+    if (need_mips) {
+        flags |= TEXTURE_TRAITS::AllocateMips;
+    }
+    for (int face_idx = 0; face_idx < 6; ++face_idx) {
+        cubemap_textures[face_idx] = GPU_texture{cubemap_size, cubemap_size, flags };
+    }
+
+    // DirectX 12 cubemap face order and their camera directions
+    // Face order: +X, -X, +Y, -Y, +Z, -Z
+    struct CubemapFace {
+        fvec3 forward;   // camera forward direction
+        fvec3 up;        // camera up direction
+    };
+    
+    // Right-handed coordinate system
+    const CubemapFace cubemap_faces[6] = {
+        // +X face (looking right)
+        {fvec3(1.0f, 0.0f, 0.0f), fvec3(0.0f, 1.0f, 0.0f)},
+        // -X face (looking left)
+        {fvec3(-1.0f, 0.0f, 0.0f), fvec3(0.0f, 1.0f, 0.0f)},
+        // +Y face (looking up)
+        {fvec3(0.0f, 1.0f, 0.0f), fvec3(0.0f, 0.0f, 1.0f)},
+        // -Y face (looking down)
+        {fvec3(0.0f, -1.0f, 0.0f), fvec3(0.0f, 0.0f, -1.0f)},
+        // +Z face (looking forward)
+        {fvec3(0.0f, 0.0f, -1.0f), fvec3(0.0f, 1.0f, 0.0f)},
+        // -Z face (looking backward)
+        {fvec3(0.0f, 0.0f, 1.0f),  fvec3(0.0f, 1.0f, 0.0f)}
+    };
+
+    D3DContext& d3d_ctx = D3DContext::Get();
+    ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};
+
+    render_state_ = RenderingState::Rendering;
+    render_settings_.SSREnabled = false;
+    render_settings_.disableDepthClip = true;
+    progress_ = 0.0f;
+
+    // Render each cubemap face
+    for (int face_idx = 0; face_idx < 6; ++face_idx) {
+        d3d_ctx.InitDXRCommandList();
+        d3d_ctx.m_DXRCommandList->SetDescriptorHeaps(1, desc_heap);
+
+        const CubemapFace& face = cubemap_faces[face_idx];
+        auto& cubemap_side = cubemap_textures[face_idx];
+
+        // Set up camera for this face
+        const auto camera = fastgltf::Camera::Perspective{1.0f, glm ::radians(90.0f), 1000.0f, 0.1f};
+        update_camera_transform_state(cubemap_origin, face.forward, face.up, camera);
+
+        // Set rendering settings for this frame
+        glm::fvec2 jitter{0.0f};
+        pipeline_->SetRenderingSettings(render_settings_, origin_, NDC2WorldMatrix_, viewMatrix_, projectionMatrix_, 
+            jitter, ++frameID_, 1, 1.0f);
+
+        // Render to this cubemap face
+        pipeline_->DoRender(*gpu_model_, *gpu_envmap_, cubemap_side, cubemap_size, cubemap_size);
+
+        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(cubemap_side.get_gpu_resource().Get(),
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        d3d_ctx.m_DXRCommandList->ResourceBarrier(1, &barrier);
+
+        // Dispatch and wait for this face to complete before rendering the next one
+        d3d_ctx.DispatchDXRCommandList();
+        d3d_ctx.WaitForPendingDXR();
+
+        progress_ = (face_idx + 1) / 6.0f;
+    }
+
+    // Restore original state
+    origin_ = saved_origin;
+    viewMatrix_ = saved_viewMatrix;
+    projectionMatrix_ = saved_projectionMatrix;
+    NDC2WorldMatrix_ = saved_NDC2WorldMatrix;
+    render_state_ = saved_render_state;
+    render_settings_ = saved_render_settings;
+    progress_ = 0.0f;
+
+    auto cubemap_flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::Cubemap;
+    if (need_mips) {
+        cubemap_flags |= TEXTURE_TRAITS::AllocateMips;
+    }
+    GPU_texture cubemap{cubemap_size, cubemap_size, cubemap_flags};
+    // calculate mip maps for the cubemap texture
+    if (need_mips) {
+        for (int face_idx = 0; face_idx < 6; ++face_idx) {
+            auto& cubemap_side = cubemap_textures[face_idx];
+            Raster_pipeline::ComputeMipMaps(cubemap_side);
+        }    
+    }
+    // copy each cubemap face into the cubemap texture
+    d3d_ctx.InitDXRCommandList();
+    ID3D12DescriptorHeap* copy_desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};
+    d3d_ctx.m_DXRCommandList->SetDescriptorHeaps(1, copy_desc_heap);
+
+    for (int face_idx = 0; face_idx < 6; ++face_idx) {
+        auto& cubemap_side = cubemap_textures[face_idx];
+        GPU_texture::copy_texture_to_cubemap_side(cubemap, cubemap_side, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, face_idx, d3d_ctx.m_DXRCommandList);
+    }
+    d3d_ctx.DispatchDXRCommandList();
+    d3d_ctx.WaitForPendingDXR();
+
+    return cubemap;
+}
+
+void GPURenderer::compute_lighting_probe() {
+    assert(model_ref_);
+    if (model_ref_ == nullptr || envmap_ref_ == nullptr || gpu_model_ == nullptr) {
+        throw std::runtime_error("One of components is nullptr in GPURenderer::render_lighting_probe()");
+    }
+    if (gpu_model_->isEmpty()) {
+        std::cout << "Model has no vertices, skipping rendering" << '\n';
+        render_state_ = RenderingState::Idle;
+        return;
+    }
+
+    GPU_texture cubemap = render_cubemap(EnvCube_helper::Specular_size, true, origin_);
+
+    GPU_texture diffuse_probe;
+    GPU_texture reflection_probe;
+    Raster_pipeline::ComputeEnvmapLut(cubemap, true, diffuse_probe, reflection_probe);
+
+    // apply the reflection probe to the raster pipeline
+    auto raster_pipeline = pipelines_[(int)RenderPipelineMode::RasterPipeline];
+    if (raster_pipeline) {
+        static_cast<Raster_pipeline*>(raster_pipeline.get())
+            ->SetReflectionProbe(std::move(reflection_probe), std::move(diffuse_probe));
+    }
+}
+
+void GPURenderer::compute_GI(BBox bbox, int longest_dimension_N, bool expand_bbox) {
+    assert(model_ref_);
+    if (model_ref_ == nullptr || envmap_ref_ == nullptr || gpu_model_ == nullptr) {
+        throw std::runtime_error("One of components is nullptr in GPURenderer::render_lighting_probe()");
+    }
+    if (gpu_model_->isEmpty()) {
+        std::cout << "Model has no vertices, skipping rendering" << '\n';
+        return;
+    }
+    if (bbox.is_empty()) {
+        std::cout << "Bounding box is empty, skipping rendering" << '\n';
+        return;
+    }
+    auto start = std::chrono::high_resolution_clock::now();
+
+    fvec3 bbox_size = bbox.max - bbox.min;
+    int longest_axis = get_longest_axis(bbox);
+    float main_axis_delta = abs(bbox_size[longest_axis] / static_cast<float>(longest_dimension_N));
+    uvec3 grid_dim = bbox_size / main_axis_delta;
+    grid_dim = glm::max(grid_dim, uvec3{1});
+    grid_dim[longest_axis] = longest_dimension_N;
+    fvec3 delta = bbox_size / fvec3{grid_dim};
+
+    if (expand_bbox) {
+        fvec3 new_distance_edge_probes = bbox_size + delta * 0.5f;  // a little extra space around the probes to avoid clipping
+        bvec3 expand_directions = glm::greaterThan(grid_dim, uvec3{1});
+        delta = glm::mix(delta, new_distance_edge_probes / (fvec3(grid_dim) - fvec3{1.0f}), expand_directions);
+        bbox.min -= delta * 0.5f * fvec3{expand_directions};
+        bbox.max += delta * 0.5f * fvec3{expand_directions};
+        bbox_size = bbox.max - bbox.min;
+    }
+
+    std::vector<SHCoefficients> sh_probes;
+    sh_probes.reserve(grid_dim.x * grid_dim.y * grid_dim.z);
+
+    for (int z = 0; z < grid_dim.z; ++z) {
+        for (int y = 0; y < grid_dim.y; ++y) {
+            for (int x = 0; x < grid_dim.x; ++x) {
+                fvec3 sample_pos = bbox.min + (fvec3{x, y, z} + fvec3{0.5f}) * delta;
+                GPU_texture cubemap = render_cubemap(256, false, sample_pos);
+                const auto sh_probe = Raster_pipeline::ComputeEnvmapSH(
+                    cubemap, true, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, true);
+                sh_probes.push_back(sh_probe);
+            }
+        }
+        std::cout << "Computed GI probes for " << (z + 1) << " out of " << grid_dim.z << " slices." << std::endl;
+    }
+
+    // apply the sh probe grid to the raster pipeline
+    auto raster_pipeline = pipelines_[(int)RenderPipelineMode::RasterPipeline];
+    if (raster_pipeline) {
+        static_cast<Raster_pipeline*>(raster_pipeline.get())
+            ->SetGI(std::move(sh_probes), bbox, grid_dim);
+    }
+
+    auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
+    std::cout << "GI grid computed in " << diff.count() << " ms." << '\n';
 }
 
 }  // namespace app
