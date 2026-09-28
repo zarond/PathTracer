@@ -127,7 +127,7 @@ void CS_SphericalHarmonicsIrradiance(uint3 DTid : SV_DispatchThreadID, uint3 Gid
     const uint lane = WaveGetLaneIndex();
     const uint waveSize = WaveGetLaneCount();
     const uint waveCount = 256 / waveSize; // 256 threads per group, so 8 waves of 32 threads each, or 16 waves of 16 each
-    const uint waveIdx = Gidx / waveSize;
+    const uint waveIdx = Gidx / waveSize; // Determine which wave this thread belongs to, 0-7 for 32 threads, 0-15 for 16 threads
     
     [unroll]
     for (int i = 0; i < 9; ++i) {

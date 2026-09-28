@@ -47,8 +47,14 @@ int main(int argc, char* argv[]) {
         ModelLoader loader{};
         bool success = loader.load_from_file(console_arguments.modelPath);
         if (success) {
-            model = loader.construct_model();
-        } else {
+            try {
+                model = loader.construct_model();
+            } catch (const std::exception& e) {
+                std::cerr << e.what() << '\n';
+                success = false;
+            }
+        } 
+        if (!success) {
             std::cerr << "Failed to load model from " << console_arguments.modelPath << '\n';
             if (console_arguments.noGui) {
                 return 1;

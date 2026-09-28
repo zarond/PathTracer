@@ -107,7 +107,7 @@ ray_with_payload Renderer::generate_camera_ray(
     return ray_with_payload{
         {origin_, direction}, 
         fvec4(1.0f), 
-        static_cast<std::uint8_t>(render_settings_.maxRayBounces), 
+        static_cast<std::uint8_t>(clamp(render_settings_.maxRayBounces, 0u, 255u)), 
         false};
 }
 

@@ -106,7 +106,12 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
 
     program.add_argument("--height").help("window height").scan<'i', int>().required().nargs(1).default_value(600);
 
-    program.parse_args(argc, argv);
+    try {
+        program.parse_args(argc, argv);
+    } catch (const std::exception& err) {
+        std::cerr << "Parsing command line arguments Error: " << err.what() << "\n\n";
+        return args;
+    }
 
     args.modelPath = program.get<std::string>("-f");
     args.environmentPath = program.get<std::string>("-e");
@@ -142,6 +147,8 @@ ConsoleArgs parse_args(int argc, char* argv[], const fs::path& pwd) {
         if (args.environmentPath == "black") args.defaultEnv = DefaultEnvironment::Black;
         else if (args.environmentPath == "white") args.defaultEnv = DefaultEnvironment::White;
         args.environmentPath = "";
+    } else {
+        args.useDefaultEnv = false;
     }
 
 #ifdef WINDOWS_SPECIFIC

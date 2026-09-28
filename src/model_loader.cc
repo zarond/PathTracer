@@ -166,7 +166,8 @@ Model ModelLoader::construct_model() const {
             auto* normalIt = primitive.findAttribute("NORMAL");
             auto* uvIt = primitive.findAttribute("TEXCOORD_0");
             auto* tangentIt = primitive.findAttribute("TANGENT");
-            assert(normalIt != primitive.attributes.end());
+            if (normalIt == primitive.attributes.end())
+                throw std::runtime_error("Meshes without normals are not supported.");
             bool has_uv = (uvIt != primitive.attributes.end());
 
             // Load material index
@@ -184,7 +185,7 @@ Model ModelLoader::construct_model() const {
             {
                 auto& positionAccessor = asset_.accessors[positionIt->accessorIndex];
                 auto& normalAccessor = asset_.accessors[normalIt->accessorIndex];
-                auto& uvAccessor = asset_.accessors[uvIt->accessorIndex];
+                auto& uvAccessor = asset_.accessors[has_uv ? uvIt->accessorIndex : 0];
                 if (!positionAccessor.bufferViewIndex.has_value())
                     throw std::runtime_error("Malformed GLTF: No positions.");
                 if (!normalAccessor.bufferViewIndex.has_value())

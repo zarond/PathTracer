@@ -21,11 +21,12 @@ bool DXDebugLayer::Init() {
 void DXDebugLayer::SetBreakOnSeverity(ID3D12Device& device) {
 #ifdef DX12_ENABLE_DEBUG_LAYER
     ID3D12InfoQueue* pInfoQueue = nullptr;
-    device.QueryInterface(IID_PPV_ARGS(&pInfoQueue));
-    // pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
-    // pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
-    // pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
-    pInfoQueue->Release();
+    if (SUCCEEDED(device.QueryInterface(IID_PPV_ARGS(&pInfoQueue)))) {
+        // pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
+        // pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, true);
+        // pInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_WARNING, true);
+        pInfoQueue->Release();
+    }
 #endif
 }
 

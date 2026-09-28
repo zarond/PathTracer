@@ -74,7 +74,10 @@ CPUTexture<sdr_pixel>::CPUTexture(const fastgltf::Image& image, const fastgltf::
                                           data_ = from_raw_data(data, width_, height_);
                                           stbi_image_free(data);
                                       },
-                                      [](const auto& arg) {}},
+                                      [](const auto& arg) {
+                                          throw std::runtime_error("Unable to load image from memory");
+                                      }
+                           },
                            buffer.data);
                    },
                },

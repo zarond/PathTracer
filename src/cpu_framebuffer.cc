@@ -67,7 +67,7 @@ void CPUFrameBuffer::save_to_file(const std::filesystem::path& filePath, bool fr
     data_source = data_;
 #endif
     int ret = 0;
-    if (filePath.extension() == ".png") {
+    if (filePath.extension() == ".png" || filePath.extension() == ".PNG") {
         std::vector<unsigned char> rawData;
         rawData.reserve(width_ * height_ * 4);
         std::for_each(data_source.begin(), data_source.end(), [&rawData](const auto& pixel) {
@@ -86,7 +86,7 @@ void CPUFrameBuffer::save_to_file(const std::filesystem::path& filePath, bool fr
         ret = stbi_write_hdr(filePath.string().c_str(), width_, height_, 4, rawData.data());
     }
     if (ret == 0) {
-        throw std::runtime_error("Failed to save image to " + filePath.string());
+        std::cout << "Failed to save image to " + filePath.string() << std::endl;
     }
 }
 

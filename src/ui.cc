@@ -560,11 +560,20 @@ static void GeneralRenderSettingsUI(Viewer& viewer, ConsoleArgs& console_argumen
             ModelLoader loader{};
             bool success = loader.load_from_file(filepath);
             if (success) {
-                Model new_model = loader.construct_model();
-                viewer.load_model(std::move(new_model));
-                viewer.snap_to_camera();
-                console_arguments.modelPath = filepath;
-            } else {
+                Model new_model;
+                try {
+                    new_model = loader.construct_model();
+                } catch (const std::exception& e) {
+                    std::cerr << e.what() << '\n';
+                    success = false;
+                }
+                if (success) {
+                    viewer.load_model(std::move(new_model));
+                    viewer.snap_to_camera();
+                    console_arguments.modelPath = filepath;
+                } 
+            }
+            if (!success) {
                 std::cout << "Failed to load model from " << filepath << '\n';
             }
         } else if (filepath.empty()) {
@@ -615,6 +624,8 @@ static void GeneralRenderSettingsUI(Viewer& viewer, ConsoleArgs& console_argumen
             deferredDeletes.emplace_back(framebuffer.get_gpu_resource());
             deferredDeletes.emplace_back(framebuffer.get_tonemapped_texture_resource().get_gpu_resource());
             deferredDeletes.emplace_back(framebuffer.get_gpu_upload_resource());
+            console_arguments.windowWidth = glm::clamp(console_arguments.windowWidth, 1u, 8192u);
+            console_arguments.windowHeight = glm::clamp(console_arguments.windowHeight, 1u, 8192u);
             viewer.resize_window(ivec2(console_arguments.windowWidth, console_arguments.windowHeight), true);
             viewer.snap_to_camera(false);
             viewer.clear_framebuffer_black();
@@ -778,11 +789,15 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
 static void AnimationsUI(Viewer& viewer) {
     // Display animation list and controls
     const auto& model = viewer.get_model();
-    if (model.animations.empty()) {
-        ImGui::Text("No animations in model");
-    } else {
+    static int selected_animation = 0;
+    const int animations_size = model.animations.size();
+    const bool has_animations = !model.animations.empty();
+    if (selected_animation >= animations_size) {
+        selected_animation = 0;
+    }
+    if (has_animations) {
         // Show animation name and duration
-        const auto& animation = model.animations[model.animations.size() > 0 ? 0 : 0];
+        const auto& animation = model.animations[selected_animation];
         ImGui::Text("Animation: %s", animation.name.c_str());
         ImGui::Text("Duration: %.2f seconds", animation.duration);
 
@@ -805,9 +820,8 @@ static void AnimationsUI(Viewer& viewer) {
         }
 
         // Animation selection dropdown
-        static int selected_animation = 0;
-        if (ImGui::BeginCombo("##animation_select", model.animations[selected_animation].name.c_str())) {
-            for (int i = 0; i < static_cast<int>(model.animations.size()); ++i) {
+        if (ImGui::BeginCombo("##animation_select", animation.name.c_str())) {
+            for (int i = 0; i < animations_size; ++i) {
                 bool is_selected = (selected_animation == i);
                 if (ImGui::Selectable(model.animations[i].name.c_str(), is_selected)) {
                     selected_animation = i;
@@ -819,6 +833,8 @@ static void AnimationsUI(Viewer& viewer) {
             }
             ImGui::EndCombo();
         }
+    } else {
+        ImGui::Text("No animations in model");
     }
     ImGui::Separator();
     if (!viewer.get_animation_playing() && ImGui::Button("Apply rest pose")) {

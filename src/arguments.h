@@ -26,7 +26,7 @@ struct ConsoleArgs {
     fs::path modelPath;
     fs::path environmentPath;
     fs::path outputPath;
-    bool useDefaultEnv = false;
+    bool useDefaultEnv = true;
     DefaultEnvironment defaultEnv = DefaultEnvironment::White;
 
     RayProgramMode programMode = RayProgramMode::RayCaster;
