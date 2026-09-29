@@ -33,23 +33,43 @@ namespace app {
 using namespace glm;
 
 ComPtr<ID3D12RootSignature> DXR_pipeline::m_raytracingGlobalRootSignature{};
-ComPtr<ID3D12RootSignature> DXR_pipeline::m_raytracingLocalRootSignature{};
+ComPtr<ID3D12RootSignature> DXR_pipeline::m_raytracingLocalRootSignature{}; // unused in the program, keep for reference sake
 ComPtr<ID3D12StateObject> DXR_pipeline::m_dxrStateObjectRayCaster{};
 ComPtr<ID3D12StateObject> DXR_pipeline::m_dxrStateObjectAmbientOcclusion{};
 ComPtr<ID3D12StateObject> DXR_pipeline::m_dxrStateObjectPBR{};
 
+ComPtr<ID3D12Resource> DXR_pipeline::m_rayGenShaderTable{};
+ComPtr<ID3D12Resource> DXR_pipeline::m_RC_missShaderTable{};
+ComPtr<ID3D12Resource> DXR_pipeline::m_RC_hitGroupShaderTable{};
+ComPtr<ID3D12Resource> DXR_pipeline::m_AO_missShaderTable{};
+ComPtr<ID3D12Resource> DXR_pipeline::m_AO_hitGroupShaderTable{};
+ComPtr<ID3D12Resource> DXR_pipeline::m_PBR_missShaderTable{};
+ComPtr<ID3D12Resource> DXR_pipeline::m_PBR_hitGroupShaderTable{};
+ComPtr<ID3D12StateObjectProperties> DXR_pipeline::m_rtStateObjectProps{};
+
 DXR_pipeline::DXR_pipeline() {
-    if (!m_raytracingGlobalRootSignature || !m_raytracingLocalRootSignature || !m_dxrStateObjectRayCaster ||
-        !m_dxrStateObjectAmbientOcclusion || !m_dxrStateObjectPBR) {
+    if (!m_raytracingGlobalRootSignature || 
+        // !m_raytracingLocalRootSignature || // unused in the program, keep for reference sake
+        !m_dxrStateObjectRayCaster ||
+        !m_dxrStateObjectAmbientOcclusion || 
+        !m_dxrStateObjectPBR ||
+        !m_rayGenShaderTable ||
+        !m_RC_missShaderTable || 
+        !m_RC_hitGroupShaderTable || 
+        !m_AO_missShaderTable || 
+        !m_AO_hitGroupShaderTable ||
+        !m_PBR_missShaderTable || 
+        !m_PBR_hitGroupShaderTable || 
+        !m_rtStateObjectProps) {
         Reload();
     }
     CreateConstantBuffers();
-    BuildAllShaderTables();
 }
 
 void DXR_pipeline::Reload() {
     CreateRootSignatures();
     CreateRaytracingPipelines();
+    BuildAllShaderTables();
 }
 
 DXR_pipeline::~DXR_pipeline() { release_gpu_resources(); }
@@ -103,7 +123,8 @@ void DXR_pipeline::CreateRootSignatures() {
         rootParameters[LocalRootSignatureParams::ViewportConstantSlot].InitAsConstants(SizeOfInUint32(m_rayGenCB), 1);
         CD3DX12_ROOT_SIGNATURE_DESC localRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters);
         localRootSignatureDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
-        SerializeAndCreateRootSignature(localRootSignatureDesc, &m_raytracingLocalRootSignature);
+        // SerializeAndCreateRootSignature(localRootSignatureDesc, &m_raytracingLocalRootSignature); // local root signature is
+        // unused in the program, keep for reference sake
     }
 }
 
@@ -189,7 +210,7 @@ void DXR_pipeline::CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const
     shaderConfig->Config(payloadSize, attributeSize);
 
     // Local root signature and shader association
-    CreateLocalRootSignatureSubobjects(&raytracingPipeline);
+    // CreateLocalRootSignatureSubobjects(&raytracingPipeline); // local root signature is unused in the program
     // This is a root signature that enables a shader to have unique arguments that come from shader tables.
 
     // Global root signature
@@ -217,15 +238,15 @@ void DXR_pipeline::CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const
 }
 
 void DXR_pipeline::BuildAllShaderTables() {
-    BuildShaderTables(c_closestHitRCShaderName, c_missEnvmapShaderName, m_dxrStateObjectRayCaster, m_RC_missShaderTable,
+    BuildShaderTables(c_missEnvmapShaderName, m_dxrStateObjectRayCaster, m_RC_missShaderTable,
         m_RC_hitGroupShaderTable);      // RayCaster
-    BuildShaderTables(c_closestHitAOShaderName, c_missAOShaderName, m_dxrStateObjectAmbientOcclusion, m_AO_missShaderTable,
+    BuildShaderTables(c_missAOShaderName, m_dxrStateObjectAmbientOcclusion, m_AO_missShaderTable,
         m_AO_hitGroupShaderTable);      // AO
-    BuildShaderTables(c_closestHitAOShaderName, c_missEnvmapShaderName, m_dxrStateObjectPBR, m_PBR_missShaderTable,
+    BuildShaderTables(c_missEnvmapShaderName, m_dxrStateObjectPBR, m_PBR_missShaderTable,
         m_PBR_hitGroupShaderTable);     // PBR
 }
 
-void DXR_pipeline::BuildShaderTables(const wchar_t* c_closestHitShaderName, const wchar_t* c_missShaderName,
+void DXR_pipeline::BuildShaderTables(const wchar_t* c_missShaderName,
     ComPtr<ID3D12StateObject>& m_dxrStateObject, ComPtr<ID3D12Resource>& m_missShaderTable,
     ComPtr<ID3D12Resource>& m_hitGroupShaderTable) {
     D3DContext& d3d_ctx = D3DContext::Get();
@@ -244,24 +265,27 @@ void DXR_pipeline::BuildShaderTables(const wchar_t* c_closestHitShaderName, cons
     // Get shader identifiers.
     UINT shaderIdentifierSize;
     {
-        ComPtr<ID3D12StateObjectProperties> stateObjectProperties;
-        ThrowIfFailed(m_dxrStateObject.As(&stateObjectProperties));
-        GetShaderIdentifiers(stateObjectProperties.Get());
+        ThrowIfFailed(m_dxrStateObject.As(&m_rtStateObjectProps));
+        GetShaderIdentifiers(m_rtStateObjectProps.Get());
         shaderIdentifierSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
     }
 
     // Ray gen shader table
     {
+        /*
         struct RootArguments {
             RayGenConstantBuffer cb;
         } rootArguments;
         rootArguments.cb = m_rayGenCB;
+        */
 
         UINT numShaderRecords = 1;
-        UINT shaderRecordSize = shaderIdentifierSize + sizeof(rootArguments);
+        // UINT shaderRecordSize = shaderIdentifierSize + sizeof(rootArguments); // local root signature is unused in the program
+        UINT shaderRecordSize = shaderIdentifierSize;
         ShaderTable rayGenShaderTable(device.Get(), numShaderRecords, shaderRecordSize, L"RayGenShaderTable");
-        rayGenShaderTable.push_back(
-            ShaderRecord(rayGenShaderIdentifier, shaderIdentifierSize, &rootArguments, sizeof(rootArguments)));
+        //rayGenShaderTable.push_back(
+        //    ShaderRecord(rayGenShaderIdentifier, shaderIdentifierSize, &rootArguments, sizeof(rootArguments)));
+        rayGenShaderTable.push_back(ShaderRecord(rayGenShaderIdentifier, shaderIdentifierSize));
         m_rayGenShaderTable = rayGenShaderTable.GetResource();
     }
 

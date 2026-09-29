@@ -914,8 +914,11 @@ void Raster_pipeline::SetGI(std::vector<SHCoefficients>&& sh_probes, BBox bbox, 
     m_GI_settings.delta = xyz0(delta);
     m_GI_settings.inv_delta = xyz0(1.0f / delta);
 
+    D3DContext& d3d_ctx = D3DContext::Get();
+
     // delete old data
     m_GIData.Reset();
+    d3d_ctx.m_SrvDescHeapAlloc.Free(gi_data_handles.cpuHandle, gi_data_handles.gpuHandle);
 
     ComPtr<ID3D12Resource2> gi_uploadBuffer;
 
@@ -950,8 +953,6 @@ void Raster_pipeline::SetGI(std::vector<SHCoefficients>&& sh_probes, BBox bbox, 
         .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
         .Flags = D3D12_RESOURCE_FLAG_NONE,
     };
-
-    D3DContext& d3d_ctx = D3DContext::Get();
 
     ThrowIfFailed(d3d_ctx.m_d3dDevice->CreateCommittedResource(
         &def_props, D3D12_HEAP_FLAG_NONE, &upload_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&m_GIData)));

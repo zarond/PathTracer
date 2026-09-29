@@ -71,7 +71,7 @@ class DXR_pipeline : public IRender_pipeline {
   private:
     // Root signatures
     static ComPtr<ID3D12RootSignature> m_raytracingGlobalRootSignature;
-    static ComPtr<ID3D12RootSignature> m_raytracingLocalRootSignature;
+    static ComPtr<ID3D12RootSignature> m_raytracingLocalRootSignature;  // unused in the program, keep for reference sake
 
     // Create root signatures for the shaders.
     static void CreateRootSignatures();
@@ -84,9 +84,9 @@ class DXR_pipeline : public IRender_pipeline {
         const wchar_t* c_closestHitShaderName, const wchar_t* c_missShaderName, ComPtr<ID3D12StateObject>& m_dxrStateObject,
         UINT maxRecursionDepth);
 
-    void BuildAllShaderTables();
+    static void BuildAllShaderTables();
 
-    void BuildShaderTables(const wchar_t* c_closestHitShaderName, const wchar_t* c_missShaderName,
+    static void BuildShaderTables(const wchar_t* c_missShaderName,
         ComPtr<ID3D12StateObject>& m_dxrStateObject, ComPtr<ID3D12Resource>& m_missShaderTable,
         ComPtr<ID3D12Resource>& m_hitGroupShaderTable);
 
@@ -114,19 +114,19 @@ class DXR_pipeline : public IRender_pipeline {
     ComPtr<ID3D12Resource> m_perFrameConstants;
 
     // Shader table for RayGen (common)
-    ComPtr<ID3D12Resource> m_rayGenShaderTable;
+    static ComPtr<ID3D12Resource> m_rayGenShaderTable;
 
     // Shader tables RC
-    ComPtr<ID3D12Resource> m_RC_missShaderTable;
-    ComPtr<ID3D12Resource> m_RC_hitGroupShaderTable;
+    static ComPtr<ID3D12Resource> m_RC_missShaderTable;
+    static ComPtr<ID3D12Resource> m_RC_hitGroupShaderTable;
 
     // Shader tables AO
-    ComPtr<ID3D12Resource> m_AO_missShaderTable;
-    ComPtr<ID3D12Resource> m_AO_hitGroupShaderTable;
+    static ComPtr<ID3D12Resource> m_AO_missShaderTable;
+    static ComPtr<ID3D12Resource> m_AO_hitGroupShaderTable;
 
     // Shader tables PBR
-    ComPtr<ID3D12Resource> m_PBR_missShaderTable;
-    ComPtr<ID3D12Resource> m_PBR_hitGroupShaderTable;
+    static ComPtr<ID3D12Resource> m_PBR_missShaderTable;
+    static ComPtr<ID3D12Resource> m_PBR_hitGroupShaderTable;
 
     // Ray tracing pipeline states
     static ComPtr<ID3D12StateObject> m_dxrStateObjectRayCaster;
@@ -137,7 +137,7 @@ class DXR_pipeline : public IRender_pipeline {
 
     // Ray tracing pipeline state properties, retaining the shader identifiers
     // to use in the Shader Binding Table
-    ComPtr<ID3D12StateObjectProperties> m_rtStateObjectProps;
+    static ComPtr<ID3D12StateObjectProperties> m_rtStateObjectProps;
 
     void release_gpu_resources();
 };

@@ -693,9 +693,9 @@ void GPU_model::prepare_combined_vertex_index_buffers(const Model& cpu_model) {
     d3d_ctx.WaitForPendingCopy();
 
     // Create SRV for 3 buffers: combined vertices, combined indices, and indices offsets
-    CreateBufferSRV(d3d_ctx, combinedMesh.indexBuffer, totalIndexCount, 0, combined_mesh_indices);
+    CreateBufferSRV(d3d_ctx, combinedMesh.indexBuffer, totalIndexCount, sizeof(uint32_t), combined_mesh_indices);
     CreateBufferSRV(d3d_ctx, combinedMesh.vertexBuffer, totalVertexCount, sizeof(vertex), combined_mesh_vertices);
-    CreateBufferSRV(d3d_ctx, MeshIndicesOffsets, meshesCount, 0, combined_mesh_offsets);
+    CreateBufferSRV(d3d_ctx, MeshIndicesOffsets, meshesCount, sizeof(uint32_t), combined_mesh_offsets);
 }
 
 void GPU_model::prepare_materials_array_buffer(const Model& cpu_model) {
