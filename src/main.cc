@@ -189,12 +189,7 @@ int main(int argc, char* argv[]) {
     {
         start = std::chrono::high_resolution_clock::now();
 
-        d3d_ctx.InitDXRCommandList();
-
         viewer.init_GPU_renderer();
-
-        d3d_ctx.DispatchDXRCommandList();
-        d3d_ctx.WaitForPendingDXR();
 
         diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
         std::cout << "GPU renderer initialized in " << diff.count() << " ms." << '\n';

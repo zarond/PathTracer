@@ -776,6 +776,8 @@ void Raster_pipeline::sort_objects_for_rendering(
 void Raster_pipeline::ComputeDFGLut() {
     auto start = std::chrono::high_resolution_clock::now();
     D3DContext& d3d_ctx = D3DContext::Get();
+    d3d_ctx.InitDXRCommandList();
+
     DFG_lut.release_gpu_resource();
     DFG_lut = DFG_Lut_helper::GetBlankSRVTexture();
 
@@ -787,10 +789,8 @@ void Raster_pipeline::ComputeDFGLut() {
     GPU_texture::copy_texture(DFG_lut, DFG_lut_tmp, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
         D3D12_RESOURCE_STATE_UNORDERED_ACCESS, d3d_ctx.m_DXRCommandList);
 
-    d3d_ctx.DispatchDXRCommandList(); // WARNING: this assumes that command list is open and ready at this point
+    d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();
-
-    d3d_ctx.InitDXRCommandList();
 
     auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start);
     std::cout << "DFG Lut computed in " << diff.count() << " ms." << '\n';
