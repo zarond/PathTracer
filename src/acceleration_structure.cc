@@ -419,7 +419,7 @@ BVH_AS::BVH_AS(const Model& model, int max_triangles_per_leaf) {
 }
 
 BVH_AS::MeshBVHData::MeshBVHData(const Mesh& mesh, bool double_sided, unsigned int max_triangles_per_leaf)
-    : doubleSided(double_sided), maxTrianglesPerLeaf(max_triangles_per_leaf) {
+    : doubleSided(double_sided), maxTrianglesPerLeaf(std::max(1u, max_triangles_per_leaf)) {
     nodes.reserve(2 * mesh.indices.size() / (3 * maxTrianglesPerLeaf));  // upper bound
 
     data_storage.reserve(mesh.indices.size() / 3);
@@ -445,19 +445,13 @@ void BVH_AS::MeshBVHData::parse(std::span<MeshBVHNode::triangle> triangles_span,
         nodes[node_id] = new_node;
     }
 
-    if (triangles_span.size() <= maxTrianglesPerLeaf) {
-        nodes[node_id].payload = triangles_span;
-        return;
-    }
-
-    assert(!bbox.is_empty());
-
     auto central_it = split_triangles(triangles_span, bbox);
 
-    if (central_it == triangles_span.end()) {  // no good split found
+    if (central_it == triangles_span.end()) {  // no good split found or num_triangles <= maxTrianglesPerLeaf
         nodes[node_id].payload = triangles_span;
         return;
     }
+    assert(!bbox.is_empty());
 
     auto left_tris = std::span<MeshBVHNode::triangle>(triangles_span.begin(), central_it);
     auto right_tris = std::span<MeshBVHNode::triangle>(central_it, triangles_span.end());
@@ -477,7 +471,11 @@ void BVH_AS::MeshBVHData::parse(std::span<MeshBVHNode::triangle> triangles_span,
 
 std::span<BVH_AS::MeshBVHNode::triangle>::iterator BVH_AS::MeshBVHData::split_triangles(
     std::span<MeshBVHNode::triangle> triangles_span, const BBox& bbox) noexcept {
-    float parent_weight = SurfaceAreaHeuristic(bbox, triangles_span.size());
+    if (triangles_span.size() <= maxTrianglesPerLeaf) {
+        return triangles_span.end();
+    }
+
+    const float parent_weight = SurfaceAreaHeuristic(bbox, triangles_span.size());
 
     float best_cost = parent_weight;
 
@@ -491,7 +489,7 @@ std::span<BVH_AS::MeshBVHNode::triangle>::iterator BVH_AS::MeshBVHData::split_tr
     auto bbox_dim_scale = N_bins * 1.0f / bbox_dim;
 
     int best_axis = get_longest_axis(bbox);
-    float best_center;
+    float best_center = bbox.min[best_axis] + 0.5f * bbox_dim[best_axis];
 
     for (int axis = 0; axis < 3; ++axis) {
         std::array<bins, N_bins> bins_;
@@ -533,11 +531,6 @@ std::span<BVH_AS::MeshBVHNode::triangle>::iterator BVH_AS::MeshBVHData::split_tr
         }
     }
 
-    if (best_cost == parent_weight) {
-        best_axis = get_longest_axis(bbox);
-        best_center = bbox.min[best_axis] + 0.5f * bbox_dim[best_axis];
-    }
-
     auto central_it =
         std::partition(triangles_span.begin(), triangles_span.end(), [best_center, best_axis](const MeshBVHNode::triangle& tri) {
             float centroid = (tri.p1[best_axis] + tri.p2[best_axis] + tri.p3[best_axis]) / 3.0f;
@@ -546,20 +539,14 @@ std::span<BVH_AS::MeshBVHNode::triangle>::iterator BVH_AS::MeshBVHData::split_tr
 
     bool bad_split = (central_it == triangles_span.begin() || central_it == triangles_span.end());
 
-    if ((best_cost != parent_weight) && !bad_split) return central_it;
-
-    if (triangles_span.size() <= maxTrianglesPerLeaf) {
-        return triangles_span.end();
-    }
-
     if (bad_split) {
-        std::sort(triangles_span.begin(), triangles_span.end(),
+        size_t mid = triangles_span.size() / 2;
+        std::nth_element(triangles_span.begin(), triangles_span.begin() + mid, triangles_span.end(),
             [best_axis](const MeshBVHNode::triangle& a, const MeshBVHNode::triangle& b) {
                 float centroid_a = (a.p1[best_axis] + a.p2[best_axis] + a.p3[best_axis]);
                 float centroid_b = (b.p1[best_axis] + b.p2[best_axis] + b.p3[best_axis]);
                 return centroid_a < centroid_b;
             });
-        size_t mid = triangles_span.size() / 2;
         central_it = triangles_span.begin() + mid;
     }
     return central_it;
