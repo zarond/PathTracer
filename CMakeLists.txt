@@ -5,7 +5,7 @@ project(PathTracer VERSION 1.0
                    LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED True)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(ON_WINDOWS_DEFAULT OFF)
 if(WIN32)
@@ -207,23 +207,23 @@ add_library(quickhull STATIC
 )
 target_include_directories(quickhull PUBLIC ${LIBS_DIR}/quickhull)
 
-set(FASTGLTF_COMPILE_AS_CPP20 True)
-#set(FASTGLTF_USE_CUSTOM_SMALLVECTOR True)
+set(FASTGLTF_COMPILE_AS_CPP20 ON)
+#set(FASTGLTF_USE_CUSTOM_SMALLVECTOR ON)
 add_subdirectory(${LIBS_DIR}/fastgltf)
 
 # add ASAN for builds if ASAN option is enabled
 if(ASAN)
-    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        target_compile_options(${PROJECT_NAME} PRIVATE /fsanitize=address)
+        target_compile_options(fastgltf PRIVATE /fsanitize=address)
+        target_compile_options(quickhull PRIVATE /fsanitize=address)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(${PROJECT_NAME} PRIVATE -fsanitize=address -fno-omit-frame-pointer)
         target_link_options(${PROJECT_NAME} PRIVATE -fsanitize=address)
         target_compile_options(fastgltf PRIVATE -fsanitize=address -fno-omit-frame-pointer)
         target_link_options(fastgltf PRIVATE -fsanitize=address)
         target_compile_options(quickhull PRIVATE -fsanitize=address -fno-omit-frame-pointer)
         target_link_options(quickhull PRIVATE -fsanitize=address)
-    elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-        target_compile_options(${PROJECT_NAME} PRIVATE /fsanitize=address)
-        target_compile_options(fastgltf PRIVATE /fsanitize=address)
-        target_compile_options(quickhull PRIVATE /fsanitize=address)
     endif()
 endif()
 
@@ -232,12 +232,15 @@ add_library(mikktspace STATIC
 )
 target_include_directories(mikktspace PUBLIC ${LIBS_DIR}/MikkTSpace)
 
-set(GLM_ENABLE_CXX_20 True)
+set(GLM_ENABLE_CXX_20 ON) # redundant
 
-if(APPLE AND CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
-    set(GLM_ENABLE_SIMD_NEON "Enable ARM NEON optimizations" True)
-else()
-    set(GLM_ENABLE_SIMD_AVX2 "Enable AVX2 optimizations" True)
+# Force AVX2 SIMD instruction set for the application target. Unused now.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|x86|i[3-6]86)$")
+    if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        #target_compile_options(${PROJECT_NAME} PRIVATE /arch:AVX2)
+    else()
+        #target_compile_options(${PROJECT_NAME} PRIVATE -mavx2)
+    endif()
 endif()
 
 add_subdirectory(${LIBS_DIR}/glm)
@@ -263,7 +266,7 @@ if((CMAKE_BUILD_TYPE STREQUAL "Debug") AND ON_WINDOWS)
 endif()
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
-    #GLM_FORCE_MESSAGES
+    GLM_FORCE_MESSAGES
     GLM_FORCE_INTRINSICS
     #GLM_FORCE_INLINE 
     GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
@@ -273,9 +276,14 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 set(TEST_SOURCES
     tests/test_main.cc
 )
+set(BUILD_GMOCK OFF)
+set(INSTALL_GTEST OFF)
+
 enable_testing()
 add_subdirectory("${LIBS_DIR}/googletest")
 add_executable(my_tests ${TEST_SOURCES})
+
+add_dependencies(my_tests PathTracer)
 
 target_link_libraries(my_tests
     PRIVATE
@@ -289,10 +297,10 @@ gtest_discover_tests(my_tests WORKING_DIRECTORY $<TARGET_FILE_DIR:PathTracer>)
 # copy example assets to build dir
 add_custom_command(
     TARGET  ${PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_SOURCE_DIR}/example/scene.glb
             $<TARGET_FILE_DIR:PathTracer>/scene.glb
-    COMMAND ${CMAKE_COMMAND} -E copy
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_SOURCE_DIR}/example/farmland_overcast_1k.hdr
             $<TARGET_FILE_DIR:PathTracer>/farmland_overcast_1k.hdr
     COMMAND ${CMAKE_COMMAND} -E echo "Copying scene file and HDR from /example to $<TARGET_FILE_DIR:PathTracer>"
