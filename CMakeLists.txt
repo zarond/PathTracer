@@ -7,6 +7,14 @@ project(PathTracer VERSION 1.0
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+get_property(is_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+
+# For Single-config generators: set Release as Default if no build type is specified 
+# Ignore for Multi-config generators
+if(NOT CMAKE_BUILD_TYPE AND NOT is_multi_config)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build configuration" FORCE)
+endif()
+
 set(ON_WINDOWS_DEFAULT OFF)
 if(WIN32)
     set(ON_WINDOWS_DEFAULT ON)
@@ -103,10 +111,15 @@ if(ON_WINDOWS)
         message(FATAL_ERROR "DXC compiler 'dxc' not found. Install DXC or add it to PATH.")
     endif()
 
-    # Determine flags based on build type at configure-time
+    # Shader flags. Empty for Release build 
     set(DXC_FLAGS "")
 
-    if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    # Single-config generators: each build gets their own .dxil output with repsective shader flags
+    # Multi-config generators: all configurations share the same .dxil output, 
+    # so the debug info is embedded there unconditionally 
+    if(is_multi_config)
+        set(DXC_FLAGS -Zi -Qembed_debug)
+    elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
         # Debug: Full info, no optimizations
         set(DXC_FLAGS -Zi -Qembed_debug -Od)
     elseif(CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
@@ -171,9 +184,10 @@ endif()
 # Warning options for compiler
 #target_compile_options(${PROJECT_NAME} PRIVATE -Wall)
 
-# only works for Visual Studio Generators
+# Debugging under Visual Studio generators: run from the directory holding the
+# executable, where shaders and assets are copied post-build.
 set_target_properties(${PROJECT_NAME} PROPERTIES
-    VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    VS_DEBUGGER_WORKING_DIRECTORY $<TARGET_FILE_DIR:${PROJECT_NAME}>
 )
 #target_compile_definitions(${PROJECT_NAME} PRIVATE 
 #    UNICODE
@@ -254,19 +268,16 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     quickhull
 )
 if(ON_WINDOWS)
-    target_link_libraries(${PROJECT_NAME} PRIVATE 
-        imgui 
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        imgui
         d3d12
         dxgi
+        dxguid
     )
 endif()
 
-if((CMAKE_BUILD_TYPE STREQUAL "Debug") AND ON_WINDOWS)
-    target_link_libraries(${PROJECT_NAME} PRIVATE dxguid)
-endif()
-
 target_compile_definitions(${PROJECT_NAME} PRIVATE
-    GLM_FORCE_MESSAGES
+    #GLM_FORCE_MESSAGES
     GLM_FORCE_INTRINSICS
     #GLM_FORCE_INLINE 
     GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
