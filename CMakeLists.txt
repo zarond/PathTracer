@@ -223,6 +223,14 @@ target_include_directories(quickhull PUBLIC ${LIBS_DIR}/quickhull)
 
 set(FASTGLTF_COMPILE_AS_CPP20 ON)
 #set(FASTGLTF_USE_CUSTOM_SMALLVECTOR ON)
+
+# Forbid fastgltf's find_package(simdjson) so it always compiles its own bundled
+# single-header simdjson with the project's compiler. Otherwise, on systems where
+# a simdjson install exists (e.g. Homebrew on macOS CI), fastgltf links a dylib
+# built by AppleClang/libc++ into this GNU/libstdc++ build; the mixed C++ runtimes
+# corrupt the heap on the first simdjson call (fastgltf::initialiseCrc) and the
+# process dies with SIGABRT. Ubuntu/Windows already take the bundled path.
+set(CMAKE_DISABLE_FIND_PACKAGE_simdjson ON)
 add_subdirectory(${LIBS_DIR}/fastgltf)
 
 # add ASAN for builds if ASAN option is enabled
