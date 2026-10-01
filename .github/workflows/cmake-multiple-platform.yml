@@ -53,3 +53,22 @@ jobs:
       # Execute tests defined by the CMake configuration.
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest -C ${{env.BUILD_TYPE}} --output-on-failure --debug
+
+    - name: Dump macOS crash reports
+      # SampleTest.Rendering crashes with SIGABRT on macOS; the .ips crash
+      # report holds the crashing stack. See ~/Library/Logs/DiagnosticReports.
+      if: failure() && runner.os == 'macOS'
+      run: |
+        echo "--- dynamic libraries of the crashed binary ---"
+        otool -L "${{github.workspace}}/build/PathTracer" || true
+        reports="$HOME/Library/Logs/DiagnosticReports"
+        newest=$(ls -t "$reports"/PathTracer*.ips 2>/dev/null | head -2)
+        if [ -z "$newest" ]; then
+          echo "No PathTracer crash reports found; newest reports in $reports:"
+          ls -t "$reports" 2>/dev/null | head -5
+        else
+          for f in $newest; do
+            echo "=== $f ==="
+            cat "$f"
+          done
+        fi
