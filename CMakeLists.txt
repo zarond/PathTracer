@@ -93,6 +93,7 @@ if(ON_WINDOWS)
         src/GPU/Copy_helper.cc
         src/GPU/Tonemapping_helper.cc
         src/GPU/SphericalHarmonics_helper.cc
+        src/GPU/PSO_helper.cc
         src/GPU/Reload_shader.cc
     )
 endif()

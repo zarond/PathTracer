@@ -266,7 +266,7 @@ float3 sampleDiffuseIBL(float3 normal, float3 pos) {
 }
 
 [shader("pixel")]
-float4 PS_Main(PSInput input) : SV_TARGET {
+float4 PS_Main(PSInput input, bool isFrontFace : SV_IsFrontFace) : SV_TARGET {
     Material mat = Materials[DrawData.meshID];
     float2 uv = input.uv.xy;
     float4 albedo_color = sample_albedo_filtered(mat, uv, ASampler);
@@ -316,6 +316,10 @@ float4 PS_Main(PSInput input) : SV_TARGET {
 
     float3x3 TBN = construct_TBN(T, B, N);
     N = has_normal_map ? normalize(normal_map_sample_to_world(normal_map_color, TBN)) : TBN[2]; // new normal after normal mapping
+        
+    if (!isFrontFace) {
+        N *= -1;
+    }
 
     float roughness = ORM.y;
     if (g_rasterCB.specular_aa_enabled) {
@@ -450,7 +454,7 @@ GBInput VS_Gbuffer(float4 position : POSITION, float4 normal : NORMAL, float4 ta
 }
 
 [shader("pixel")] 
-GBOutput PS_Gbuffer(GBInput input) : SV_TARGET {
+GBOutput PS_Gbuffer(GBInput input, bool isFrontFace : SV_IsFrontFace) : SV_TARGET {
     Material mat = Materials[DrawData.meshID];
     float2 uv = input.uv.xy;
     float alpha = sample_albedo_filtered(mat, uv, ASampler).w;
@@ -466,7 +470,10 @@ GBOutput PS_Gbuffer(GBInput input) : SV_TARGET {
 
     float3x3 TBN = construct_TBN(T, B, N);
     N = has_normal_map ? normalize(normal_map_sample_to_world(normal_map_color, TBN))
-                       : TBN[2];  // new normal after normal mapping
+                       : TBN[2];  // new normal after normal mapping     
+    if (!isFrontFace) {
+        N *= -1;
+    }
 
     float roughness = sample_occlusion_roughness_metallic_filtered(mat, uv, ASampler).g;
     if (g_rasterCB.specular_aa_enabled) {

@@ -16,6 +16,7 @@
 #include "Kawase_blur_helper.h"
 #include "GTAO_helper.h"
 #include "SSR_helper.h"
+#include "PSO_helper.h"
 
 namespace app {
 
@@ -92,6 +93,7 @@ struct DrawableSortingInfo {
     const GPU_object_info* object;
     float modelScale;
     float ZDistanceToCamera;
+    bool backfaceCulling;
     bool alphaBlending;
     bool transmittance;
 };
@@ -167,13 +169,7 @@ class Raster_pipeline : public IRender_pipeline {
     CD3DX12_VIEWPORT m_viewport;
     CD3DX12_RECT m_scissorRect;
     static ComPtr<ID3D12RootSignature> m_rootSignature;
-    static ComPtr<ID3D12PipelineState> m_pipelineState;
-    static ComPtr<ID3D12PipelineState> m_NoDepthClipPipelineState;
-    static ComPtr<ID3D12PipelineState> m_alphaBlendingPipelineState;
-    static ComPtr<ID3D12PipelineState> m_backgroundPipelineState;
-    static ComPtr<ID3D12PipelineState> m_GbufferPipelineState;
-    static ComPtr<ID3D12PipelineState> m_GbufferNoDepthClipPipelineState;
-    static ComPtr<ID3D12PipelineState> m_GIDebugPipelineState;
+    static PSO_helper m_PSO_helper;
     
     Kawase_blur_helper m_blur_helper{};
     Kawase_blur_helper m_bloom_helper{};

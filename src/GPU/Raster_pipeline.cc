@@ -35,23 +35,26 @@ enum Value : int {
 };
 }
 
+namespace RenderShaders {
+enum Value : unsigned int {
+    Main = 0,
+    Background,
+    GBuffer,
+    GIDebug,
+
+    Count
+};
+}
+
 namespace app {
 
 using namespace glm;
 
 ComPtr<ID3D12RootSignature> Raster_pipeline::m_rootSignature{};
-ComPtr<ID3D12PipelineState> Raster_pipeline::m_pipelineState{};
-ComPtr<ID3D12PipelineState> Raster_pipeline::m_NoDepthClipPipelineState{};
-ComPtr<ID3D12PipelineState> Raster_pipeline::m_alphaBlendingPipelineState{};
-ComPtr<ID3D12PipelineState> Raster_pipeline::m_backgroundPipelineState{};
-ComPtr<ID3D12PipelineState> Raster_pipeline::m_GbufferPipelineState{};
-ComPtr<ID3D12PipelineState> Raster_pipeline::m_GbufferNoDepthClipPipelineState{};
-ComPtr<ID3D12PipelineState> Raster_pipeline::m_GIDebugPipelineState{};
+PSO_helper Raster_pipeline::m_PSO_helper{};
 
 Raster_pipeline::Raster_pipeline() {
-    if (!m_rootSignature || !m_pipelineState || !m_NoDepthClipPipelineState
-        || !m_alphaBlendingPipelineState || !m_backgroundPipelineState ||
-        !m_GbufferPipelineState || !m_GbufferNoDepthClipPipelineState || !m_GIDebugPipelineState) {
+    if (!m_rootSignature || !m_PSO_helper.is_initialized()) {
         Reload();
     }
     CreateConstantBuffers();
@@ -97,13 +100,7 @@ Raster_pipeline::~Raster_pipeline() { release_gpu_resources(); }
 void Raster_pipeline::release_gpu_resources() {
     m_rootSignature.Reset();
 
-    m_pipelineState.Reset();
-    m_NoDepthClipPipelineState.Reset();
-    m_alphaBlendingPipelineState.Reset();
-    m_backgroundPipelineState.Reset();
-    m_GbufferPipelineState.Reset();
-    m_GbufferNoDepthClipPipelineState.Reset();
-    m_GIDebugPipelineState.Reset();
+    m_PSO_helper.release_gpu_resources();
 
     m_perFrameConstants->Unmap(0, nullptr);
     m_GISettingsConstants->Unmap(0, nullptr);
@@ -237,97 +234,65 @@ void Raster_pipeline::CreateRootSignatures() {
 }
 
 void Raster_pipeline::CreatePipelineStateObjects() {
-    auto [vs_shaderBlob, vs_bytecode] = LoadShader(c_vs_file_name);
-    auto [ps_shaderBlob, ps_bytecode] = LoadShader(c_ps_file_name);
-    auto [vs_background_shaderBlob, vs_background_bytecode] = LoadShader(c_vs_background_file_name);
-    auto [ps_background_shaderBlob, ps_background_bytecode] = LoadShader(c_ps_background_file_name);
-    auto [vs_gbuff_shaderBlob, vs_gbuff_bytecode] = LoadShader(c_vs_gbuff_file_name);
-    auto [ps_gbuff_shaderBlob, ps_gbuff_bytecode] = LoadShader(c_ps_gbuff_file_name);
-    auto [vs_gi_debug_shaderBlob, vs_gi_debug_bytecode] = LoadShader(c_vs_gi_debug_file_name);
-    auto [ps_gi_debug_shaderBlob, ps_gi_debug_bytecode] = LoadShader(c_ps_gi_debug_file_name);
-
-    D3DContext& d3d_ctx = D3DContext::Get();
-    auto device = d3d_ctx.m_d3dDevice;
-
     D3D12_INPUT_ELEMENT_DESC inputElementDescs[] = {
         {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         {"NORMAL", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         {"TANGENT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16*2, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
         {"TEXCOORD", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 16*3, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}};
 
-    // Describe and create the graphics pipeline state object (PSO).
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-    D3D12_RENDER_TARGET_BLEND_DESC& rtBlend = psoDesc.BlendState.RenderTarget[0];
-    psoDesc.InputLayout = {inputElementDescs, _countof(inputElementDescs)};
-    psoDesc.pRootSignature = m_rootSignature.Get();
-    psoDesc.VS = vs_bytecode;
-    psoDesc.PS = ps_bytecode;
-    psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-    psoDesc.RasterizerState.FrontCounterClockwise = TRUE;
-    psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-    rtBlend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL ^ D3D12_COLOR_WRITE_ENABLE_ALPHA;
-    psoDesc.DepthStencilState.DepthEnable = TRUE;
-    psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-    psoDesc.DepthStencilState.StencilEnable = FALSE;
-    psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
-    psoDesc.SampleMask = UINT_MAX;
-    psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    psoDesc.NumRenderTargets = 1;
-    psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
-    psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-    psoDesc.SampleDesc.Count = 1;
-    ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState)));
+    auto vs_file_names = std::array<const wchar_t*, RenderShaders::Count>{
+        c_vs_file_name, 
+        c_vs_background_file_name, 
+        c_vs_gbuff_file_name, 
+        c_vs_gi_debug_file_name
+    };
+    auto ps_file_names = std::array<const wchar_t*, RenderShaders::Count>{
+        c_ps_file_name, 
+        c_ps_background_file_name, 
+        c_ps_gbuff_file_name, 
+        c_ps_gi_debug_file_name
+    };
+    auto use_input_layout = std::array<bool, RenderShaders::Count>{
+        true, false, true, true
+    };
+    auto rt_write_mask = std::array<UINT8, RenderShaders::Count>{
+        D3D12_COLOR_WRITE_ENABLE_ALL ^ D3D12_COLOR_WRITE_ENABLE_ALPHA,
+        D3D12_COLOR_WRITE_ENABLE_ALL ^ D3D12_COLOR_WRITE_ENABLE_ALPHA,
+        D3D12_COLOR_WRITE_ENABLE_ALL,
+        D3D12_COLOR_WRITE_ENABLE_ALL ^ D3D12_COLOR_WRITE_ENABLE_ALPHA,
+    };
+    auto depth_write_mask = std::array<D3D12_DEPTH_WRITE_MASK, RenderShaders::Count>{
+        D3D12_DEPTH_WRITE_MASK_ALL,
+        D3D12_DEPTH_WRITE_MASK_ZERO,
+        D3D12_DEPTH_WRITE_MASK_ALL,
+        D3D12_DEPTH_WRITE_MASK_ALL
+    };
+    auto rt_num = std::array<int, RenderShaders::Count>{1,1,3,1};
 
-    // Same as opaque PSO but with depth clip disabled (for light probe rendering)
-    psoDesc.RasterizerState.DepthClipEnable = FALSE;
-    ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_NoDepthClipPipelineState)));
-    psoDesc.RasterizerState.DepthClipEnable = TRUE;
+    bool success = m_PSO_helper.init(RenderShaders::Count, vs_file_names, ps_file_names, m_rootSignature, 
+        inputElementDescs, use_input_layout, rt_write_mask, depth_write_mask, rt_num);
 
-    // PSO for G-buffer rendering
-    psoDesc.VS = vs_gbuff_bytecode;
-    psoDesc.PS = ps_gbuff_bytecode;
-    rtBlend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-    psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-    psoDesc.NumRenderTargets = 3;  // second render target for Velocity Buffer, third for material ID
-    psoDesc.RTVFormats[1] = DXGI_FORMAT_R16G16B16A16_FLOAT;
-    psoDesc.RTVFormats[2] = DXGI_FORMAT_R8_UINT;
-    ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_GbufferPipelineState)));
+    if (!success) {
+        throw std::runtime_error("Failed to initialize PSO helper");
+    }
 
-    // Same as G-buffer PSO but with depth clip disabled (for light probe rendering)
-    psoDesc.RasterizerState.DepthClipEnable = FALSE;
-    ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_GbufferNoDepthClipPipelineState)));
-    psoDesc.RasterizerState.DepthClipEnable = TRUE;
-
-    // PSO for alpha blending
-    psoDesc.NumRenderTargets = 1;
-    psoDesc.RTVFormats[1] = DXGI_FORMAT_UNKNOWN;
-    psoDesc.RTVFormats[2] = DXGI_FORMAT_UNKNOWN;
-    psoDesc.VS = vs_bytecode;
-    psoDesc.PS = ps_bytecode;
-    psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
-    rtBlend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL ^ D3D12_COLOR_WRITE_ENABLE_ALPHA;
-    rtBlend.BlendEnable = TRUE;
-    rtBlend.SrcBlend = D3D12_BLEND_SRC_ALPHA;
-    rtBlend.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
-    rtBlend.BlendOp = D3D12_BLEND_OP_ADD;
-    rtBlend.SrcBlendAlpha = D3D12_BLEND_ZERO;
-    rtBlend.DestBlendAlpha = D3D12_BLEND_ONE;
-    rtBlend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
-    ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_alphaBlendingPipelineState)));
-
-    // PSO for background rendering
-    psoDesc.InputLayout = {nullptr, 0};
-    psoDesc.VS = vs_background_bytecode;
-    psoDesc.PS = ps_background_bytecode;
-    psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-    rtBlend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL ^ D3D12_COLOR_WRITE_ENABLE_ALPHA;
-    ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_backgroundPipelineState)));
-
-    // PSO for GI debug rendering
-    psoDesc.VS = vs_gi_debug_bytecode;
-    psoDesc.PS = ps_gi_debug_bytecode;
-    psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-    ThrowIfFailed(device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_GIDebugPipelineState)));
+    // Preallocate most used PSO variants
+    PSO_variant_key key{
+        .original_PSO_index = RenderShaders::Main,
+        .backface_culling = true,
+        .depth_clipping = true,
+        .alpha_blending = false,
+    };
+    m_PSO_helper.preallocate_pipeline_state(key);
+    key.alpha_blending = true;
+    m_PSO_helper.preallocate_pipeline_state(key);
+    key.original_PSO_index = RenderShaders::Background;
+    key.alpha_blending = false;
+    m_PSO_helper.preallocate_pipeline_state(key);
+    key.original_PSO_index = RenderShaders::GBuffer;
+    m_PSO_helper.preallocate_pipeline_state(key);
+    key.original_PSO_index = RenderShaders::GIDebug;
+    m_PSO_helper.preallocate_pipeline_state(key);
 }
 
 void Raster_pipeline::CreateConstantBuffers() {
@@ -453,13 +418,20 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     std::span<const DrawableSortingInfo> blend_objects{m_sortedDrawables.begin() + offset, m_sortedDrawables.end()};
 
     // draw mesh lambda
-    auto draw_object = [&](const DrawableSortingInfo element, bool UseAOTexture = false) {
+    auto draw_object = [&](const DrawableSortingInfo element, unsigned int original_PSO_index, bool UseAOTexture = false) {
         const auto& obj = *element.object;
         index_count = gpu_model.indicesSizes[obj.meshIndex];
         UINT baseIndexLocation = gpu_model.indicesOffsets[obj.meshIndex];
         RasterPerDrawData draw_data{obj.ModelMatrix, obj.ModelMatrix_prev, obj.NormalMatrix, obj.meshIndex, element.modelScale, UseAOTexture};
         constexpr int drawDataSizeInInt = sizeof(RasterPerDrawData) / 4;
         commandList->SetGraphicsRoot32BitConstants(GlobalRootSignatureParams::RootConstants, drawDataSizeInInt, &draw_data, 0);
+        PSO_variant_key key{
+            .original_PSO_index = original_PSO_index,
+            .backface_culling = element.backfaceCulling,
+            .depth_clipping = !m_disableDepthClip,
+            .alpha_blending = element.alphaBlending,
+        };
+        m_PSO_helper.set_pipeline_state(commandList, key);
         commandList->DrawIndexedInstanced(index_count, 1, baseIndexLocation, 0, 0);
      };
 
@@ -470,12 +442,12 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
 
     bool CalculateRenderTargetBluredMips = (UseSSR && m_SSR_helper.UsePrefiltering);
 
+    m_PSO_helper.invalidate_last_used_key();  // ensure PSO is set on first draw call
+
     if (useGBuffer) {
         // Draw opaque objects into Gbuffer
-        commandList->SetPipelineState(
-            m_disableDepthClip ? m_GbufferNoDepthClipPipelineState.Get() : m_GbufferPipelineState.Get());
         for (const auto& element : opaque_objects) {
-            draw_object(element);
+            draw_object(element, RenderShaders::GBuffer);
         }
 
         if (!transmissive_objects.empty()) {
@@ -484,11 +456,11 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
         }
 
         for (const auto& element : transmissive_objects) {
-            draw_object(element);
+            draw_object(element, RenderShaders::GBuffer);
         }
         if (DrawAOMode) {  // draw all other object as well to match DXR AO mode
             for (const auto& element : blend_objects) {
-                draw_object(element);
+                draw_object(element, RenderShaders::GBuffer);
             }
         }
         // Copy depth buffer to a UAV texture and generate mips for hierarchical depth
@@ -541,23 +513,26 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
         depthHandle = m_depthTexture_opaque_only.GetDSVHandle();
     }
 
+    m_PSO_helper.invalidate_last_used_key(); // ensure PSO will be set after compute shader calls
+
     // Draw opaque objects
-    commandList->SetPipelineState(m_disableDepthClip ? m_NoDepthClipPipelineState.Get() : m_pipelineState.Get());
     commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &depthHandle);
     commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
     for (const auto& element : opaque_objects) {
-        draw_object(element, true);
+        draw_object(element, RenderShaders::Main, true);
     }
     // Draw GI probes as spheres
     if (GIDebugDraw) {
-        commandList->SetPipelineState(m_GIDebugPipelineState.Get());
+        PSO_variant_key key{.original_PSO_index = RenderShaders::GIDebug};
+        m_PSO_helper.set_pipeline_state(commandList, key);
         auto grid = m_GI_settings.grid_dim;
         uint32_t probeCount = grid.x * grid.y * grid.z;
         constexpr uint32_t verticesPerSphere = 16 * 8 * 6;
         commandList->DrawInstanced(verticesPerSphere, probeCount, 0, 0);
     }
     // Draw background
-    commandList->SetPipelineState(m_backgroundPipelineState.Get());
+    PSO_variant_key key{.original_PSO_index = RenderShaders::Background};
+    m_PSO_helper.set_pipeline_state(commandList, key);
     if (useReflectionProbe) {
         commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SpecularLutTex, Specular_lut.GetSRVHandle());
     }
@@ -603,9 +578,11 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
         commandList->ResourceBarrier(1, &barrier_uav_to_srv);
 
         commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::FrameTex, m_frame_opaque_only.GetSRVHandle());
-        commandList->SetPipelineState(m_disableDepthClip ? m_NoDepthClipPipelineState.Get() : m_pipelineState.Get());
+
+        m_PSO_helper.invalidate_last_used_key();  // ensure PSO will be set after compute shader calls
+
         for (const auto& element : transmissive_objects) {
-            draw_object(element, true);
+            draw_object(element, RenderShaders::Main, true);
         }
 
         const auto barrier_srv_to_uav = CD3DX12_RESOURCE_BARRIER::Transition(m_frame_opaque_only.get_gpu_resource().Get(),
@@ -614,9 +591,8 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     }
 
     // Draw objects with alpha blending
-    commandList->SetPipelineState(m_alphaBlendingPipelineState.Get());
     for (const auto& element : blend_objects) {
-        draw_object(element);
+        draw_object(element, RenderShaders::Main);
     }
 
     barrier_material_ids = CD3DX12_RESOURCE_BARRIER::Transition(
@@ -738,6 +714,7 @@ void Raster_pipeline::sort_objects_for_rendering(
         fvec3 v = obj_pos - xyz(m_rasterCB.cameraPosition);
         const auto& mat = materials[obj.meshIndex];
         float ZDistanceToCamera = dot(camera_forward, v);
+        bool backfaceCulling = (mat.doubleSided == 0);
         bool alphaBlending = mat.alphaBlending;
         bool transmittance = mat.hasVolume || (mat.transmisionFactor != 0.0f);
 
@@ -756,7 +733,7 @@ void Raster_pipeline::sort_objects_for_rendering(
             num_opaque_objects++;
         }
 
-        m_sortedDrawables.emplace_back(&obj, model_scale, ZDistanceToCamera, alphaBlending, transmittance);
+        m_sortedDrawables.emplace_back(&obj, model_scale, ZDistanceToCamera, backfaceCulling, alphaBlending, transmittance);
     }
     std::sort(m_sortedDrawables.begin(), m_sortedDrawables.end(), [](const DrawableSortingInfo& a, const DrawableSortingInfo& b) {
         if (a.alphaBlending != b.alphaBlending) {
