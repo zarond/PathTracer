@@ -16,6 +16,7 @@ struct PSO_variant_key {
     unsigned int original_PSO_index = 0;
     bool backface_culling = true;
     bool depth_clipping = true;
+    bool reverse_winding = false;
     bool alpha_blending = false;
 
     auto operator<=>(const PSO_variant_key&) const = default;
@@ -57,7 +58,7 @@ class PSO_helper {
     std::vector<std::pair<ComPtr<ID3DBlob>, D3D12_SHADER_BYTECODE>> m_vs_bytecode;
     std::vector<std::pair<ComPtr<ID3DBlob>, D3D12_SHADER_BYTECODE>> m_ps_bytecode;
 
-    PSO_variant_key last_used_key{~0u, false, false, false};
+    PSO_variant_key last_used_key{~0u, false, false, false, false};
 
     void create_PSO_variant(const PSO_variant_key key, ComPtr<ID3D12PipelineState>& pipelineState);
 

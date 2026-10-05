@@ -281,6 +281,7 @@ void Raster_pipeline::CreatePipelineStateObjects() {
         .original_PSO_index = RenderShaders::Main,
         .backface_culling = true,
         .depth_clipping = true,
+        .reverse_winding = false,
         .alpha_blending = false,
     };
     m_PSO_helper.preallocate_pipeline_state(key);
@@ -425,10 +426,12 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
         RasterPerDrawData draw_data{obj.ModelMatrix, obj.ModelMatrix_prev, obj.NormalMatrix, obj.meshIndex, element.modelScale, UseAOTexture};
         constexpr int drawDataSizeInInt = sizeof(RasterPerDrawData) / 4;
         commandList->SetGraphicsRoot32BitConstants(GlobalRootSignatureParams::RootConstants, drawDataSizeInInt, &draw_data, 0);
+        bool useReverseWinding = (glm::determinant(glm::mat3(obj.ModelMatrix)) < 0.0f);
         PSO_variant_key key{
             .original_PSO_index = original_PSO_index,
             .backface_culling = element.backfaceCulling,
             .depth_clipping = !m_disableDepthClip,
+            .reverse_winding = useReverseWinding,
             .alpha_blending = element.alphaBlending,
         };
         m_PSO_helper.set_pipeline_state(commandList, key);

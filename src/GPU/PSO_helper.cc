@@ -149,6 +149,7 @@ void PSO_helper::create_PSO_variant(const PSO_variant_key key, ComPtr<ID3D12Pipe
     psoDesc.VS = m_vs_bytecode[key.original_PSO_index].second;
     psoDesc.PS = m_ps_bytecode[key.original_PSO_index].second;
     psoDesc.RasterizerState.CullMode = key.backface_culling ? D3D12_CULL_MODE_BACK : D3D12_CULL_MODE_NONE;
+    psoDesc.RasterizerState.FrontCounterClockwise = key.reverse_winding ? FALSE : TRUE;
     psoDesc.RasterizerState.DepthClipEnable = key.depth_clipping ? TRUE : FALSE;
     if (key.alpha_blending) {
         psoDesc.DepthStencilState.DepthWriteMask =
