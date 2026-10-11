@@ -1,4 +1,7 @@
+#pragma once
+
 static const float PI = 3.14159265359f;
+static const float inv_PI = 0.31830988618f;
 static const float GOLDEN_RATIO = 1.618034f;
 static const float kEpsilon5 = 1e-5f;
 static const float kEpsilon = 1e-8f;
@@ -36,7 +39,7 @@ float3 importanceSampleGGX(float2 xi, float a) {
 float D_GGX(float NoH, float linear_roughness) {
     float a = NoH * linear_roughness;
     float k = linear_roughness / (1.0f - NoH * NoH + a * a);
-    return k * k * (1.0f / PI);
+    return k * k * inv_PI;
 }
 float G1(float NdW, float k) { return 1.0f / (NdW * (1.0f - k) + k); }
 

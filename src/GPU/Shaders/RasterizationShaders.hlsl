@@ -1,5 +1,6 @@
 #include "BRDF.hlsl"
 #include "Common.hlsl"
+#include "PunctualLights.hlsl"
 #include "Material_IDS.hlsl"
 
 // Constant Buffer
@@ -46,6 +47,9 @@ ConstantBuffer<GISettings> g_GI_settings : register(b2);
     
 // GI data buffers
 StructuredBuffer<SHCoefficients> g_GI_data : register(t1, space0);
+    
+// Scene Lights data buffers
+StructuredBuffer<Light> Lights : register(t2, space0);
 
 struct PSInput {
     float4 ndc_position : SV_POSITION;
@@ -122,7 +126,8 @@ float3 sampleBackgroundAndIBL(float3 ws_pos, float3 refract_dir, float t_roughne
 }
 
 float3 calculateTransmittedLight(float3 ws_pos, float4 ndc_position, float3 v, float3 N, const Material mat, float3 Fresnel, float linear_roughness,
-    float transmission, float thickness, float2x2 envmap_rotation_matrix) 
+    float transmission, float thickness, float2x2 envmap_rotation_matrix, 
+    inout float3 attenuation, inout float3 refracted_v) 
 {
     if (transmission == 0.0f) return 0.0f;
     float t_roughness = sqrt(transmission_roughness(linear_roughness, mat.ior));
@@ -135,9 +140,10 @@ float3 calculateTransmittedLight(float3 ws_pos, float4 ndc_position, float3 v, f
     RefractResult refraction = SimulateRefraction(ws_pos, v, N, mat.ior, thickness); 
     if (any(refraction.dir != 0.0f)) {
         float3 refractedIBL = sampleBackgroundAndIBL(refraction.pos, refraction.dir, t_roughness, envmap_rotation_matrix);
-        float3 attenuation = min(exp(-mat.attenuationFactor.rgb * refraction.dist), 1.0f);  // Volume absorption
+        attenuation = min(exp(-mat.attenuationFactor.rgb * refraction.dist), 1.0f);  // Volume absorption
         transmitted_light = (1.0f - Fresnel) * attenuation * refractedIBL;
     }
+    refracted_v = refraction.dir;
     return transmitted_light;
 }
     
@@ -322,6 +328,7 @@ float4 PS_Main(PSInput input, bool isFrontFace : SV_IsFrontFace) : SV_TARGET {
     }
 
     float roughness = ORM.y;
+    float original_roughness = roughness;
     if (g_rasterCB.specular_aa_enabled) {
         roughness = SpecularAntialiasing(roughness, N, g_rasterCB.specular_aa_variance, g_rasterCB.specular_aa_threshold);
     }
@@ -347,8 +354,10 @@ float4 PS_Main(PSInput input, bool isFrontFace : SV_IsFrontFace) : SV_TARGET {
     }
     transmission_thickness.g *= DrawData.modelScale;
     float transmission = transmission_thickness.r;
+    float3 transmission_attenuation = 1.0f;
+    float3 refracted_v = -v;
     float3 transmissionIBL = calculateTransmittedLight(input.world_position.xyz, input.ndc_position, v, N, mat, Fresnel,
-        linear_roughness, transmission, transmission_thickness.g, envmap_rotation_matrix).rgb;
+        linear_roughness, transmission, transmission_thickness.g, envmap_rotation_matrix, transmission_attenuation, refracted_v);
 
     float3 DiffuseSampleDir = N;
     DiffuseSampleDir.xz = mul(envmap_rotation_matrix, DiffuseSampleDir.xz);  // enmap rotation
@@ -365,6 +374,17 @@ float4 PS_Main(PSInput input, bool isFrontFace : SV_IsFrontFace) : SV_TARGET {
 
     float3 diffuse_light = diffuse_color * lerp(AO * diffuseIBL, transmissionIBL, transmission);
     float3 final_light = lerp(diffuse_light, specularIBL, Fresnel) + emissive;
+    
+    for (uint i = 0; i < g_rasterCB.lightsCount; ++i) {
+        MaterialParams mat_params;
+        mat_params.diffuse_color = diffuse_color * (1.0f - transmission);
+        mat_params.linear_roughness = linear_roughness;
+        mat_params.f0 = f0;
+        mat_params.transmission_roughness = transmission_roughness(original_roughness * original_roughness, mat.ior); // roughness without specular antialiasing for transmission
+        mat_params.transmission_attenuation = diffuse_color * transmission * transmission_attenuation;
+        final_light += compute_punctual_light_contribution(
+            input.world_position.xyz, N, v, refracted_v, mat_params, Lights[i]);
+    }
 
     return float4(final_light, alpha);
 }

@@ -300,6 +300,46 @@ static void MaterialsSettingsUI(Viewer& viewer) {
     }
 }
 
+static void LightsSettingsUI(Viewer& viewer) {
+    auto& model = viewer.get_model();
+    const int lights_size = model.lights.size();
+    static int current_light_index = 0;
+    if (current_light_index >= lights_size) {
+        current_light_index = 0;
+    }
+    bool settings_changed = false;
+    imgui_combo("Choose Light:", model.lights_names, current_light_index);
+    Light& current_light = model.lights[current_light_index];
+    const Light& original_light = viewer.get_lights_backup()[current_light_index];
+
+    settings_changed |= imgui_combo("Light type:", std::array{"Directional", "Spot", "Point"}, current_light.type);
+    settings_changed |=
+        ImGui::ColorEdit3("Light Color", reinterpret_cast<float*>(&current_light.color), ImGuiColorEditFlags_Float);
+    settings_changed |=
+        ImGui::SliderFloat("Light Intensity", &current_light.intensity, 0.0f, 10000.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
+    if (current_light.type != fastgltf::LightType::Directional) {
+        settings_changed |= ImGui::Checkbox("Use Range", &current_light.use_range);
+        if (current_light.use_range) {
+            settings_changed |=
+                ImGui::SliderFloat("Light Range", &current_light.range, 0.0f, 10000.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
+        }
+    }
+    if (current_light.type == fastgltf::LightType::Spot) {
+        settings_changed |= 
+            ImGui::SliderAngle("Spot Inner Cone Angle", &current_light.innerConeAngle, 0.0f, 90.0f, "%.1f");
+        settings_changed |=
+            ImGui::SliderAngle("Spot Outer Cone Angle", &current_light.outerConeAngle, 0.0f, 90.0f, "%.1f");
+        current_light.innerConeAngle = glm::clamp(current_light.innerConeAngle, 0.0f, current_light.outerConeAngle);
+    }
+    if (ImGui::Button("Reset to original light settings")) {
+        current_light = original_light;
+        settings_changed = true;
+    }
+    if (settings_changed) {
+        viewer.set_lights_updated();
+    }
+}
+
 void RenderedImageUI(Viewer& viewer, const bool hardware_ray_tracing_support) {
     // Show window with image
     ImGuiIO& io = ImGui::GetIO();
@@ -854,10 +894,14 @@ void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector
 
     ImGui::Separator();
     static bool show_material_settings = false;
+    static bool show_light_settings = false;
     static bool show_animations = false;
-    if (ImGui::TreeNode("Materials")) {
+    if (ImGui::TreeNode("Materials and Lights")) {
         if (ImGui::Button("Edit Materials")) {
             show_material_settings = true;
+        }
+        if (ImGui::Button("Edit Lights")) {
+            show_light_settings = true;
         }
         ImGui::TreePop();
     }
@@ -896,6 +940,12 @@ void OptionsWindowUI(Viewer& viewer, ConsoleArgs& console_arguments, std::vector
     if (show_material_settings) {
         ImGui::Begin("Materials Options", &show_material_settings, ImGuiWindowFlags_AlwaysAutoResize);
         MaterialsSettingsUI(viewer);
+        ImGui::End();
+    }
+    // Show lights settings window
+    if (show_light_settings) {
+        ImGui::Begin("Lights Options", &show_light_settings, ImGuiWindowFlags_AlwaysAutoResize);
+        LightsSettingsUI(viewer);
         ImGui::End();
     }
     // Show animation options window

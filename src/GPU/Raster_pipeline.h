@@ -43,6 +43,7 @@ struct RasterConstantBuffer {
     float envmap_rotation_sin;
     float envmap_rotation_cos;
     
+    int lightsCount;
     unsigned int frameID;
     int albedoOnlyMode;
     int SpecularLutMips;

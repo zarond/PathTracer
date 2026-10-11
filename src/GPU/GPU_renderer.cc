@@ -186,6 +186,7 @@ void GPURenderer::update_transforms() {
     if (model_ref_ && gpu_model_) {
         bool updateTLAS = (active_pipeline_mode_ == RenderPipelineMode::DXRPipeline);
         gpu_model_->update_transforms(*model_ref_, updateTLAS);
+        gpu_model_->update_lights_array_buffer(*model_ref_);
     }
 }
 

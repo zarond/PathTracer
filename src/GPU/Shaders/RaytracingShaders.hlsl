@@ -454,7 +454,7 @@ void MissEnvmap(inout HitInfo payload : SV_RayPayload) {
     // compared to Blender, envmap is rotated 180 degrees around Y (Blender's Z) axis, but same as SP
     float y_rotation = g_rayGenCB.envmapRotation;
     float3 dir = WorldRayDirection();
-    float2 uv = float2(atan2(-dir.z, -dir.x) + y_rotation, -2.0f * asin(dir.y)) * (1.0f / PI);
+    float2 uv = float2(atan2(-dir.z, -dir.x) + y_rotation, -2.0f * asin(dir.y)) * inv_PI;
     uv = uv * 0.5f + 0.5f;
 
     payload.color += payload.absorption * EnvMap.SampleLevel(EnvMapSampler, uv, 0).rgb;

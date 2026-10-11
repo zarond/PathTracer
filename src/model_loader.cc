@@ -57,14 +57,21 @@ bool ModelLoader::load_from_file(const std::filesystem::path& path) {
 
 Model ModelLoader::construct_model() const {
     Model model{};
+    model.lights.reserve(asset_.lights.size());
     model.materials.reserve(asset_.materials.size() + 1);
     model.meshes.reserve(asset_.meshes.size());
     model.objects.reserve(asset_.nodes.size());
     model.images.reserve(asset_.images.size());
     model.materials_names.reserve(asset_.materials.size() + 1);
+    model.lights_names.reserve(asset_.lights.size());
 
     for (const auto& image : asset_.images) {
         model.images.emplace_back(image, asset_);
+    }
+
+    for (const auto& light : asset_.lights) {
+        model.lights.emplace_back(light);
+        model.lights_names.emplace_back(light.name);
     }
 
     TangentSpaceHelper tangent_space_helper;
@@ -235,6 +242,9 @@ Model ModelLoader::construct_model() const {
             if (node.cameraIndex.has_value()) {
                 model.cameras.emplace_back(std::bit_cast<fmat4>(matrix), asset_.cameras[*node.cameraIndex].camera, node_index);
             }
+            if (node.lightIndex.has_value()) {
+                model.light_instances.emplace_back(std::bit_cast<fmat4>(matrix), *node.lightIndex, node_index);
+            }
         });
 
     model.nodes_transforms.reserve(asset_.nodes.size());
@@ -280,6 +290,22 @@ void Model::update_objects() {
         auto node_id = camera.nodeIndex;
         camera.ModelMatrix = travel_upstream(node_id);
     }
+    for (auto& light : light_instances) {
+        auto node_id = light.nodeIndex;
+        light.ModelMatrix = travel_upstream(node_id);
+    }
+}
+
+Light::Light(const fastgltf::Light& gltf_light) {
+    color = fvec3{gltf_light.color.x(), gltf_light.color.y(), gltf_light.color.z()};
+    intensity = gltf_light.intensity;
+    range = gltf_light.range.value_or(0.0f);
+
+    type = gltf_light.type;
+    use_range = gltf_light.range.has_value();
+
+    innerConeAngle = gltf_light.innerConeAngle.value_or(0.0f);
+    outerConeAngle = gltf_light.outerConeAngle.value_or(glm::quarter_pi<float>());
 }
 
 Animation::Animation(const fastgltf::Animation& gltf_animation, const fastgltf::Asset& asset) {

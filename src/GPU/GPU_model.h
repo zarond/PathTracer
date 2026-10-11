@@ -85,6 +85,13 @@ struct GPU_Material {  // enforce packing rules on CPU Material data
     GPU_Material(const Material& mat, const std::vector<int>& texture_id_conversion_table, int default_texture);
 };
 
+struct GPU_Light {
+    fvec4 color_intensity;
+    fvec4 position_range;
+    fvec4 direction_type;
+    fvec4 inner_outerConeAngleCos;
+};
+
 enum class TEXTURE_TRAITS : uint16_t {
     None            = 0,
     HDR             = 1 << 0,
@@ -189,6 +196,7 @@ class GPU_model {
     D3D_Handle_Pair combined_mesh_offsets{};
 
     D3D_Handle_Pair materials_array{};
+    D3D_Handle_Pair lights_array{};
 
     std::vector<uint32_t> indicesOffsets;
     std::vector<uint32_t> indicesSizes;
@@ -201,6 +209,10 @@ class GPU_model {
 
     void update_materials_array_buffer(const Model& cpu_model);
     const std::vector<GPU_Material>& get_materials_cpu_array() const;
+
+    void update_lights_array_buffer(const Model& cpu_model);
+    const std::vector<GPU_Light>& get_lights_cpu_array() const;
+    int get_lights_count() const;
 
     void update_transforms(const Model& model, bool updateTLAS);
 
@@ -225,13 +237,16 @@ class GPU_model {
     GPU_mesh combinedMesh;
     ComPtr<ID3D12Resource> MeshIndicesOffsets;
     ComPtr<ID3D12Resource> MaterialsArray;
+    ComPtr<ID3D12Resource> LightsArray;
     std::vector<GPU_Material> MaterialsCPUArray;
+    std::vector<GPU_Light> LightsCPUArray;
     std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;
 
     bool isEmpty_ = true;
 
     void prepare_combined_vertex_index_buffers(const Model& cpu_model);
     void prepare_materials_array_buffer(const Model& cpu_model);
+    void prepare_lights_array_buffer(const Model& cpu_model);
     void prepare_textures_array_buffer(const Model& cpu_model);
     void release_gpu_resource();
 };

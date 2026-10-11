@@ -4,6 +4,7 @@
 
 #include <bit>
 #include <directx/d3dx12.h>
+#include <glm/gtc/constants.hpp>
 
 namespace {
 
@@ -35,6 +36,37 @@ bool isDepth(TEXTURE_TRAITS a) { return (a & (TEXTURE_TRAITS::Depth | TEXTURE_TR
 bool isDepthWithSRV(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::DepthWithSRV) != TEXTURE_TRAITS::None; }
 bool isUAV(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::UAV) != TEXTURE_TRAITS::None; }
 bool AllocateMips(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::AllocateMips) != TEXTURE_TRAITS::None; }
+
+float photometric_to_radiometric_irradiance(float lux) { return lux / 683.0f; }
+
+float photometric_to_radiometric_intensity(float candela) { return candela / (683.0f * 0.25f / glm::pi<float>()); }
+
+// converts intensity from Lux and Candela (as in KHR_lights_punctual) to Watts/M^2 and Watts/Sr to use in shader
+float photometric_to_radiometric_units(const fastgltf::Light& light) {
+    if (light.type == fastgltf::LightType::Directional) {
+        return photometric_to_radiometric_irradiance(light.intensity);
+    } else if (light.type == fastgltf::LightType::Point || light.type == fastgltf::LightType::Spot) {
+        return photometric_to_radiometric_intensity(light.intensity);
+    }
+    return 0.0;
+}
+
+GPU_Light make_light(const Light& light, const fmat4x4& transform) {
+    GPU_Light out_light;
+    //float intensity = photometric_to_radiometric_units(light_params);
+    float intensity = photometric_to_radiometric_irradiance(light.intensity); // to skip spherical area influence conversion in shader
+    out_light.color_intensity = {light.color.x, light.color.y, light.color.z, intensity};
+    float range = (light.use_range && light.type != fastgltf::LightType::Directional) ? light.range : -1.0f;
+    out_light.position_range = {transform[3][0], transform[3][1], transform[3][2], range};
+    auto direction = glm::normalize(transform[2]);
+    out_light.direction_type = {direction.x, direction.y, direction.z, static_cast<float>(light.type)};
+    out_light.inner_outerConeAngleCos = {
+        std::cos(light.innerConeAngle),
+        std::cos(light.outerConeAngle),
+        0.0f, 0.0f
+    };
+    return out_light;
+}
 
 }  // namespace
 
@@ -391,6 +423,7 @@ GPU_model::GPU_model(const Model& cpu_model, bool raytracing_support) {
     prepare_combined_vertex_index_buffers(cpu_model);
     prepare_textures_array_buffer(cpu_model);
     prepare_materials_array_buffer(cpu_model);
+    prepare_lights_array_buffer(cpu_model);
     isEmpty_ = false;
 }
 
@@ -436,6 +469,7 @@ void GPU_model::release_gpu_resource() {
     instancesUploadBuffer.Reset();
     //instancesBuffer.Reset();
     MaterialsArray.Reset();
+    LightsArray.Reset();
 
     if (isEmpty_) return;
 
@@ -443,6 +477,7 @@ void GPU_model::release_gpu_resource() {
     d3d_ctx.m_SrvDescHeapAlloc.Free(combined_mesh_vertices.cpuHandle, combined_mesh_vertices.gpuHandle);
     d3d_ctx.m_SrvDescHeapAlloc.Free(combined_mesh_offsets.cpuHandle, combined_mesh_offsets.gpuHandle);
     d3d_ctx.m_SrvDescHeapAlloc.Free(materials_array.cpuHandle, materials_array.gpuHandle);
+    d3d_ctx.m_SrvDescHeapAlloc.Free(lights_array.cpuHandle, lights_array.gpuHandle);
 };
 
 bool GPU_model::isEmpty() const { return isEmpty_; }
@@ -740,6 +775,41 @@ void GPU_model::prepare_materials_array_buffer(const Model& cpu_model) {
     update_materials_array_buffer(cpu_model);
 }
 
+void GPU_model::prepare_lights_array_buffer(const Model& cpu_model) {
+    D3DContext& d3d_ctx = D3DContext::Get();
+    const auto& heap_alloc = d3d_ctx.m_SrvDescHeapAlloc;
+
+    uint32_t lightCount = max(cpu_model.light_instances.size(), size_t(1));
+    const UINT BufferSize = sizeof(GPU_Light) * lightCount;
+
+    const D3D12_HEAP_PROPERTIES def_props{
+        .Type = D3D12_HEAP_TYPE_DEFAULT,
+        .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
+        .CreationNodeMask = 1,
+        .VisibleNodeMask = 1,
+    };
+
+    const D3D12_RESOURCE_DESC upload_desc{
+        .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
+        .Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+        .Width = BufferSize,
+        .Height = 1,
+        .DepthOrArraySize = 1,
+        .MipLevels = 1,
+        .Format = DXGI_FORMAT_UNKNOWN,
+        .SampleDesc = {1, 0},
+        .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+        .Flags = D3D12_RESOURCE_FLAG_NONE,
+    };
+
+    ThrowIfFailed(d3d_ctx.m_d3dDevice->CreateCommittedResource(
+        &def_props, D3D12_HEAP_FLAG_NONE, &upload_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&LightsArray)));
+    CreateBufferSRV(d3d_ctx, LightsArray, lightCount, sizeof(GPU_Light), lights_array);
+
+    update_lights_array_buffer(cpu_model);
+}
+
 void GPU_model::update_materials_array_buffer(const Model& cpu_model) {
     // I pack materials differently than in CPU for ease of use in shader.
     // Here, I index material by meshID, that might lead to some redundant data
@@ -796,6 +866,69 @@ void GPU_model::update_materials_array_buffer(const Model& cpu_model) {
 }
 
 const std::vector<GPU_Material>& GPU_model::get_materials_cpu_array() const { return MaterialsCPUArray; }
+
+void GPU_model::update_lights_array_buffer(const Model& cpu_model) {
+    uint32_t lightCount = cpu_model.light_instances.size();
+
+    LightsCPUArray.clear();
+    LightsCPUArray.reserve(lightCount);
+
+    if (lightCount == 0) return;
+
+    for (const auto& light_instance : cpu_model.light_instances) {
+        const auto& light = cpu_model.lights[light_instance.lightIndex];
+        const auto& matrix = light_instance.ModelMatrix;
+        GPU_Light gpu_light = make_light(light, matrix);
+        LightsCPUArray.emplace_back(gpu_light);
+    }
+
+    D3DContext& d3d_ctx = D3DContext::Get();
+    d3d_ctx.InitCopyCommandList();
+
+    ComPtr<ID3D12Resource2> light_uploadBuffer; // todo: keep and reuse
+
+    const UINT BufferSize = sizeof(GPU_Light) * lightCount;
+
+    const D3D12_HEAP_PROPERTIES upload_props{
+        .Type = D3D12_HEAP_TYPE_UPLOAD,
+        .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
+        .CreationNodeMask = 1,
+        .VisibleNodeMask = 1,
+    };
+
+    const D3D12_RESOURCE_DESC upload_desc{
+        .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
+        .Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+        .Width = BufferSize,
+        .Height = 1,
+        .DepthOrArraySize = 1,
+        .MipLevels = 1,
+        .Format = DXGI_FORMAT_UNKNOWN,
+        .SampleDesc = {1, 0},
+        .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+        .Flags = D3D12_RESOURCE_FLAG_NONE,
+    };
+
+    ThrowIfFailed(d3d_ctx.m_d3dDevice->CreateCommittedResource(&upload_props, D3D12_HEAP_FLAG_NONE, &upload_desc,
+        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&light_uploadBuffer)));
+
+    void* pDataBegin;
+    ThrowIfFailed(light_uploadBuffer->Map(0, nullptr, &pDataBegin));
+    memcpy(pDataBegin, LightsCPUArray.data(), BufferSize);
+    light_uploadBuffer->Unmap(0, nullptr);
+
+    d3d_ctx.m_CopyCommandList->CopyBufferRegion(LightsArray.Get(), 0, light_uploadBuffer.Get(), 0, BufferSize);
+
+    d3d_ctx.DispatchCopyCommandList();
+    d3d_ctx.WaitForPendingCopy();
+}
+
+const std::vector<GPU_Light>& GPU_model::get_lights_cpu_array() const { return LightsCPUArray; }
+
+int GPU_model::get_lights_count() const {
+    return static_cast<int>(LightsCPUArray.size());
+}
 
 void GPU_model::update_transforms(const Model& model, bool updateTLAS) {
     // copy new transforms and keep previous matrix for reprojections

@@ -30,6 +30,7 @@ enum Value : int {
     RootConstants,
     GISettings,
     GIData,
+    LightsData,
 
     Count
 };
@@ -184,6 +185,7 @@ void Raster_pipeline::CreateRootSignatures() {
     ranges[9].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1);      // 10 per draw constants buffer.
     ranges[10].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2);      // 11 GI settings constants buffer.
     ranges[11].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);      // 12 GI data buffer.
+    ranges[12].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);      // 13 Lights data buffer.
 
     D3D12_STATIC_SAMPLER_DESC default_sampler = {};  // Default static sampler.
     default_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -225,6 +227,7 @@ void Raster_pipeline::CreateRootSignatures() {
     rootParameters[GlobalRootSignatureParams::RootConstants].InitAsConstants(sizeof(RasterPerDrawData) / 4, 1);
     rootParameters[GlobalRootSignatureParams::GISettings].InitAsConstantBufferView(2);
     rootParameters[GlobalRootSignatureParams::GIData].InitAsDescriptorTable(1, &ranges[11]);
+    rootParameters[GlobalRootSignatureParams::LightsData].InitAsDescriptorTable(1, &ranges[12]);
 
     auto flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT 
         | D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
@@ -330,6 +333,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     m_rasterCB.RenderFrameMips = std::min(GPU_texture::CalculateMipCount(width, height), static_cast<unsigned int>(Kawase_blur_helper::BlurIterations));
     m_rasterCB.FrameSize = {width, height};
     m_rasterCB.invFrameSize = fvec2{1.0f} / fvec2{m_rasterCB.FrameSize};
+    m_rasterCB.lightsCount = gpu_model.get_lights_count();
 
     resize_render_targets(width, height);
 
@@ -370,6 +374,9 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     }
     if ((m_rasterCB.UseGI || GIDebugDraw) && gi_data_handles.gpuHandle.ptr) {
         commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::GIData, gi_data_handles.gpuHandle);
+    }
+    if (gpu_model.lights_array.gpuHandle.ptr) {
+        commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::LightsData, gpu_model.lights_array.gpuHandle);
     }
 
     const auto& combined_mesh = gpu_model.get_combined_mesh();
