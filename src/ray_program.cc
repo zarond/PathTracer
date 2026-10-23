@@ -60,7 +60,7 @@ float V_SmithGGXCorrelated(float NoV, float NoL, float a) {  // a is alpha_linea
     float a2 = a * a;
     float GGXV = NoL * sqrt((-NoV * a2 + NoV) * NoV + a2);
     float GGXL = NoV * sqrt((-NoL * a2 + NoL) * NoL + a2);
-    return 2.0f / (GGXV + GGXL);  // should be 0.5f / (GGXV + GGXL);
+    return 0.5f / (GGXV + GGXL);
 }
 float G1(float NdW, float k) { return 1.0f / (NdW * (1.0f - k) + k); }
 // Schlick - Smith visibility term
@@ -68,7 +68,7 @@ float G1(float NdW, float k) { return 1.0f / (NdW * (1.0f - k) + k); }
 float V_Schlick(float NoL, float NoV, float Roughness)  // Roughness is perceptual roughness
 {
     float k = max(Roughness * Roughness * 0.5f, kEpsilon5);
-    return G1(NoL, k) * G1(NoV, k);  // should be G1*G1 / 4.0;
+    return G1(NoL, k) * G1(NoV, k) / 4.0f;
 }
 fvec3 Tangent2World(fvec3 v, fvec3 T, fvec3 B, fvec3 N) { return T * v.x + B * v.y + N * v.z; }
 fvec3 Tangent2World(fvec3 v, const fmat3x3& TBN) { return TBN * v; }
@@ -398,7 +398,7 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
             float NdM = clamp(dot(N, m), kEpsilon, 1.0f);
             float VdH = clamp(dot((!exiting_volume) ? v : -v, h), 0.0f, 1.0f);
 
-            auto brdf = (fvec3(1.0f) - F) * (G * VdH * LdN / NdM);
+            auto brdf = (fvec3(1.0f) - F) * (4.0f * G * VdH * LdN / NdM);
             brdf = min(brdf, fvec3(kMaxBRDF));                               // clamp to avoid fireflies
             auto new_pos = point.position - new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
             auto new_payload = diffuse_color * transmission * attenuation * brdf * ray_.payload * alpha;
@@ -416,7 +416,7 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
 
             auto G = V_SmithGGXCorrelated(VdN, LdN, linear_roughness);
             // auto G = V_Schlick(LdN, VdN, roughness);
-            auto brdf = F * (G * LdN * LdH / NdH);
+            auto brdf = F * (4.0f * G * LdN * LdH / NdH);
             brdf = min(brdf, fvec3(kMaxBRDF));                               // clamp to avoid fireflies
             auto new_pos = point.position + new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
             auto new_payload = attenuation * brdf * ray_.payload * alpha;

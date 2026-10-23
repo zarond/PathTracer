@@ -307,6 +307,10 @@ static void LightsSettingsUI(Viewer& viewer) {
     if (current_light_index >= lights_size) {
         current_light_index = 0;
     }
+    if (lights_size == 0) {
+        ImGui::Text("No lights in the scene.");
+        return;
+    }
     bool settings_changed = false;
     imgui_combo("Choose Light:", model.lights_names, current_light_index);
     Light& current_light = model.lights[current_light_index];

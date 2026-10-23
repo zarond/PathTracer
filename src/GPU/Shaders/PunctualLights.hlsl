@@ -50,7 +50,7 @@ LightRay convert_to_light_ray(const float3 pos, const Light light) {
     float ray_pl_sq_magnitude = dot(ray_pl,ray_pl);
     float ray_pl_magnitude_inv = rsqrt(ray_pl_sq_magnitude);
         
-    light_ray.direction = ray_pl * ray_pl_magnitude_inv;
+    light_ray.direction = (ray_pl_sq_magnitude > 0)? ray_pl * ray_pl_magnitude_inv : float3(0.0f, 0.0f, 0.0f);
         
     float falloff = 1.0f / max(ray_pl_sq_magnitude, MIN_POINT_LIGHT_DISTANCE_SQUARED); // square distance fallof
         

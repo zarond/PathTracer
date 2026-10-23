@@ -66,14 +66,14 @@ float V_SmithGGXCorrelated(float NoV, float NoL, float a) {  // a is alpha_linea
     float a2 = a * a;
     float GGXV = NoL * sqrt((-NoV * a2 + NoV) * NoV + a2);
     float GGXL = NoV * sqrt((-NoL * a2 + NoL) * NoL + a2);
-    return 2.0f / (GGXV + GGXL);  // should be 0.5f / (GGXV + GGXL);
+    return 0.5f / (GGXV + GGXL);
 }
 // Schlick - Smith visibility term
 // [ http://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf ]
 float V_Schlick(float NoL, float NoV, float Roughness)  // Roughness is perceptual roughness
 {
     float k = max(Roughness * Roughness * 0.5f, kEpsilon5);
-    return G1(NoL, k) * G1(NoV, k);  // should be G1*G1 / 4.0;
+    return G1(NoL, k) * G1(NoV, k) / 4.0f;
 }
 float pow2(float x) { return x * x; }
 float pow5(float x) {

@@ -398,7 +398,7 @@ void ClosestHitPBR(inout HitInfo payload, Attributes attr) {
             float NdM = clamp(dot(N, m), kEpsilon, 1.0f);
             float VdH = clamp(dot((!exiting_volume) ? v : -v, h), 0.0f, 1.0f);
 
-            float3 brdf = (1.0f - F) * (G * VdH * LdN / NdM);
+            float3 brdf = (1.0f - F) * (4.0f * G * VdH * LdN / NdM);
             brdf = min(brdf, kMaxBRDF);                                       // clamp to avoid fireflies
             float3 new_pos = worldPosition - new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
 
@@ -425,7 +425,7 @@ void ClosestHitPBR(inout HitInfo payload, Attributes attr) {
 
             float G = V_SmithGGXCorrelated(VdN, LdN, linear_roughness);
             // auto G = V_Schlick(LdN, VdN, roughness);
-            float3 brdf = F * (G * LdN * LdH / NdH);
+            float3 brdf = F * (4.0f * G * LdN * LdH / NdH);
             brdf = min(brdf, kMaxBRDF);                                       // clamp to avoid fireflies
             float3 new_pos = worldPosition + new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
             float3 next_payload_absorption = old_payload_absorption * attenuation * brdf * alpha;

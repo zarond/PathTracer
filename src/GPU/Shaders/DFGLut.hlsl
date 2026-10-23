@@ -32,7 +32,7 @@ void CS_DFG_Lut(uint3 DTid : SV_DispatchThreadID) {
         const float NoM = saturate(m.z);
         if (LoN > 0) {
             const float G = V_SmithGGXCorrelated(NoV, LoN, linear_roughness);
-            const float visibility = G * LoN * VoM / NoM;
+            const float visibility = 4.0f * G * LoN * VoM / NoM;
             const float F = pow5(1.0f - VoM);
             result.x += visibility * (1.0f - F);
             result.y += visibility * F;
