@@ -222,7 +222,7 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
     float sampleDepth = centerDepth;
     int mip = 0;
     for (int i = 0; i < STEPS; ++i) {
-        if (any(sampleUV < 0.0f | sampleUV > 1.0f)) break;
+        if (any(sampleUV <= 0.0f | sampleUV >= 1.0f)) break;
         sampleDepth = Depth.SampleLevel(PointSampler, sampleUV.xy, mip);
         if (IsPotentialHit(sampleUV, sampleDepth)) {
             if (mip == 0) {
