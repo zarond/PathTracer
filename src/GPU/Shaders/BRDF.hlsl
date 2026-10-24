@@ -41,14 +41,21 @@ float D_GGX(float NoH, float linear_roughness) {
     float k = linear_roughness / (1.0f - NoH * NoH + a * a);
     return k * k * inv_PI;
 }
-float G1(float NdW, float k) { return 1.0f / (NdW * (1.0f - k) + k); }
+float G1(float NdW, float k) { return 1.0f / (NdW * (1.0f - k) + k); } // Schlick's G1 function
+
+float G1_GGX_Smith(float NoV, float a) {
+    float a2 = a * a;
+    return (NoV <= 0.0f) ? 0.0f
+        : 2.0f * NoV / (NoV + sqrt((-NoV * a2 + NoV) * NoV + a2));
+}
 
 float PDF_of_importanceSampleGGX(float NoH, float LoH, float a) { 
     return D_GGX(NoH, a) * NoH / (4.0f * LoH); 
 }
 float PDF_of_importanceSampleGGXVNDF(float NoH, float VoN, float a) { 
-    float k = max(a * 0.5f, kEpsilon5);
-    return D_GGX(NoH, a) * G1(VoN, k) / (4.0f * VoN); 
+    // return D_GGX(NoH, a) * G1_GGX_Smith(VoN, a) / (4.0f * VoN);
+    float a2 = a * a;
+    return D_GGX(NoH, a) * 0.5f / (VoN + sqrt((-VoN * a2 + VoN) * VoN + a2)); // simplified in-place
 }
 float3 fresnel_schlick(float3 f0, float3 f90, float cos_nv) {
     float x = 1.0f - cos_nv;
