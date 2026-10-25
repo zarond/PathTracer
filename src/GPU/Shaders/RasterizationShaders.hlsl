@@ -38,6 +38,9 @@ SamplerState ASampler : register(s1, space1);
 
 // DFG sampler
 SamplerState DFGSampler : register(s2, space1);
+    
+// Shadow map sampler
+SamplerState ShadowSampler : register(s3, space1);
 
 // Per draw call data
 ConstantBuffer<RasterPerDrawData> DrawData : register(b1);
@@ -50,6 +53,9 @@ StructuredBuffer<SHCoefficients> g_GI_data : register(t1, space0);
     
 // Scene Lights data buffers
 StructuredBuffer<Light> Lights : register(t2, space0);
+    
+// Scene Shadow Mapping data buffers
+StructuredBuffer<ShadowMappingInfo> Shadows : register(t3, space0);
 
 struct PSInput {
     float4 ndc_position : SV_POSITION;
@@ -383,7 +389,7 @@ float4 PS_Main(PSInput input, bool isFrontFace : SV_IsFrontFace) : SV_TARGET {
         mat_params.transmission_roughness = transmission_roughness(original_roughness * original_roughness, mat.ior); // roughness without specular antialiasing for transmission
         mat_params.transmission_attenuation = diffuse_color * transmission * transmission_attenuation;
         final_light += compute_punctual_light_contribution(
-            input.world_position.xyz, N, v, refracted_v, mat_params, Lights[i]);
+            input.world_position.xyz, N, v, refracted_v, mat_params, Lights[i], Shadows[i], ShadowSampler);
     }
 
     return float4(final_light, alpha);

@@ -31,6 +31,7 @@ enum Value : int {
     GISettings,
     GIData,
     LightsData,
+    ShadowMappingData,
 
     Count
 };
@@ -186,6 +187,7 @@ void Raster_pipeline::CreateRootSignatures() {
     ranges[10].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2);      // 11 GI settings constants buffer.
     ranges[11].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);      // 12 GI data buffer.
     ranges[12].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);      // 13 Lights data buffer.
+    ranges[13].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);      // 14 Shadow mapping data buffer.
 
     D3D12_STATIC_SAMPLER_DESC default_sampler = {};  // Default static sampler.
     default_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -212,7 +214,17 @@ void Raster_pipeline::CreateRootSignatures() {
     dfg_sampler.RegisterSpace = 1;
     dfg_sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-    D3D12_STATIC_SAMPLER_DESC samplers[] = {default_sampler, anisotropic_sampler, dfg_sampler};
+    D3D12_STATIC_SAMPLER_DESC shadow_sampler = {};
+    shadow_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+    shadow_sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    shadow_sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    shadow_sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    shadow_sampler.MaxLOD = D3D12_FLOAT32_MAX;
+    shadow_sampler.ShaderRegister = 3;
+    shadow_sampler.RegisterSpace = 1;
+    shadow_sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+    D3D12_STATIC_SAMPLER_DESC samplers[] = {default_sampler, anisotropic_sampler, dfg_sampler, shadow_sampler};
 
     CD3DX12_ROOT_PARAMETER rootParameters[GlobalRootSignatureParams::Count];
     rootParameters[GlobalRootSignatureParams::SceneConstantSlot].InitAsConstantBufferView(0);
@@ -228,10 +240,11 @@ void Raster_pipeline::CreateRootSignatures() {
     rootParameters[GlobalRootSignatureParams::GISettings].InitAsConstantBufferView(2);
     rootParameters[GlobalRootSignatureParams::GIData].InitAsDescriptorTable(1, &ranges[11]);
     rootParameters[GlobalRootSignatureParams::LightsData].InitAsDescriptorTable(1, &ranges[12]);
+    rootParameters[GlobalRootSignatureParams::ShadowMappingData].InitAsDescriptorTable(1, &ranges[13]);
 
     auto flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT 
         | D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
-    rootSignatureDesc.Init(ARRAYSIZE(rootParameters), rootParameters, 3, samplers, flags);
+    rootSignatureDesc.Init(ARRAYSIZE(rootParameters), rootParameters, 4, samplers, flags);
 
     SerializeAndCreateRootSignature(rootSignatureDesc, &m_rootSignature);
 }
@@ -330,6 +343,9 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
 
+    // Shadow mapping passes for each light in the scene
+    m_shadow_mapping_helper.CreateShadowMaps(gpu_model, Shadow_mapping_helper::ShadowMapSizeDefault, BBox{fvec3{-10.0}, fvec3{10.0f}});
+
     m_rasterCB.RenderFrameMips = std::min(GPU_texture::CalculateMipCount(width, height), static_cast<unsigned int>(Kawase_blur_helper::BlurIterations));
     m_rasterCB.FrameSize = {width, height};
     m_rasterCB.invFrameSize = fvec2{1.0f} / fvec2{m_rasterCB.FrameSize};
@@ -337,8 +353,8 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
 
     resize_render_targets(width, height);
 
-    m_viewport = CD3DX12_VIEWPORT{0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)},
-    m_scissorRect = CD3DX12_RECT{0, 0, static_cast<LONG>(width), static_cast<LONG>(height)},
+    m_viewport = CD3DX12_VIEWPORT{0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)};
+    m_scissorRect = CD3DX12_RECT{0, 0, static_cast<LONG>(width), static_cast<LONG>(height)};
 
     commandList->SetGraphicsRootSignature(m_rootSignature.Get());
     commandList->RSSetViewports(1, &m_viewport);
@@ -378,6 +394,11 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     if (gpu_model.lights_array.gpuHandle.ptr) {
         commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::LightsData, gpu_model.lights_array.gpuHandle);
     }
+    const auto shadow_mapping_info_handle =  m_shadow_mapping_helper.GetShadowMappingInfoGPUHandle();
+    if (shadow_mapping_info_handle.ptr) {
+        commandList->SetGraphicsRootDescriptorTable(
+            GlobalRootSignatureParams::ShadowMappingData, shadow_mapping_info_handle);
+    }
 
     const auto& combined_mesh = gpu_model.get_combined_mesh();
 
@@ -416,7 +437,13 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     int num_transmissive_objects;
     int num_alpha_blended_objects;
     int offset = 0;
-    sort_objects_for_rendering(gpu_model, num_opaque_objects, num_transmissive_objects, num_alpha_blended_objects);
+    fvec3 camera_forward = normalize(xyz(m_rasterCB.projectionToWorld * fvec4(0, 0, 0, 1)));
+    sort_objects_for_rendering(
+        m_sortedDrawables, 
+        camera_forward,
+        xyz(m_rasterCB.cameraPosition), 
+        gpu_model, num_opaque_objects, num_transmissive_objects, num_alpha_blended_objects
+    );
     std::span<const DrawableSortingInfo> opaque_objects{
         m_sortedDrawables.begin(), m_sortedDrawables.begin() + num_opaque_objects};
     offset += num_opaque_objects;
@@ -708,56 +735,6 @@ void Raster_pipeline::resize_render_targets(int new_width, int new_height) {
     m_VelocityBuffer.release_gpu_resource();
     flags = TEXTURE_TRAITS::RenderTarget;
     m_VelocityBuffer = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R16G16B16A16_FLOAT};
-}
-
-void Raster_pipeline::sort_objects_for_rendering(
-    const GPU_model& gpu_model, int& num_opaque_objects, int& num_transmissive_objects, int& num_alpha_blended_objects) {
-    num_opaque_objects = 0;
-    num_transmissive_objects = 0;
-    num_alpha_blended_objects = 0;
-    m_sortedDrawables.clear();
-    m_sortedDrawables.reserve(gpu_model.objects.size());
-    const auto& materials = gpu_model.get_materials_cpu_array();
-    fvec3 camera_forward = normalize(xyz(m_rasterCB.projectionToWorld * fvec4(0, 0, 0, 1)));
-    for (const auto& obj : gpu_model.objects) {
-        fvec3 obj_pos = fvec3(obj.ModelMatrix[0][3], obj.ModelMatrix[1][3], obj.ModelMatrix[2][3]);
-        fvec3 v = obj_pos - xyz(m_rasterCB.cameraPosition);
-        const auto& mat = materials[obj.meshIndex];
-        float ZDistanceToCamera = dot(camera_forward, v);
-        bool backfaceCulling = (mat.doubleSided == 0);
-        bool alphaBlending = mat.alphaBlending;
-        bool transmittance = mat.hasVolume || (mat.transmisionFactor != 0.0f);
-
-        glm::fvec3 scale;
-        scale.x = glm::length(fvec3(obj.ModelMatrix[0][0], obj.ModelMatrix[1][0], obj.ModelMatrix[2][0]));
-        scale.y = glm::length(fvec3(obj.ModelMatrix[0][1], obj.ModelMatrix[1][1], obj.ModelMatrix[2][1]));
-        scale.z = glm::length(fvec3(obj.ModelMatrix[0][2], obj.ModelMatrix[1][2], obj.ModelMatrix[2][2]));
-        float model_scale = max(max(scale.x,scale.y),scale.z);
-
-        if (alphaBlending) {
-            num_alpha_blended_objects++;
-        } else if (transmittance) {
-            num_transmissive_objects++;
-        }
-        else {
-            num_opaque_objects++;
-        }
-
-        m_sortedDrawables.emplace_back(&obj, model_scale, ZDistanceToCamera, backfaceCulling, alphaBlending, transmittance);
-    }
-    std::sort(m_sortedDrawables.begin(), m_sortedDrawables.end(), [](const DrawableSortingInfo& a, const DrawableSortingInfo& b) {
-        if (a.alphaBlending != b.alphaBlending) {
-            return !a.alphaBlending;  // opaque first
-        }
-        if (a.transmittance != b.transmittance) {
-            return !a.transmittance;  // without transmittance first
-        }
-        if (!a.alphaBlending) {
-            return a.ZDistanceToCamera < b.ZDistanceToCamera;  // front to back for opaque objects
-        } else {
-            return a.ZDistanceToCamera > b.ZDistanceToCamera;  // back to front for alpha blended objects
-        }
-    });
 }
 
 void Raster_pipeline::ComputeDFGLut() {

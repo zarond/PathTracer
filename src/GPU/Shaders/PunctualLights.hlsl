@@ -23,6 +23,41 @@ struct LightRay {
     float3 color;
     float3 direction;
 };
+    
+float compute_shadowing(const ShadowMappingInfo shadow_info, const float3 pos, const float3 n, 
+    const SamplerState Sampler) 
+{
+    Texture2D<float4> shadowTex = ResourceDescriptorHeap[shadow_info.shadowMapTextureIndex_type_padding.x];
+    int light_type = shadow_info.shadowMapTextureIndex_type_padding.y;
+    
+    float4 ls_ndc = mul(shadow_info.viewProjection, float4(pos, 1.0f));
+        
+    bool in_frustum = ls_ndc.w > 0.0f
+        && abs(ls_ndc.x) <= ls_ndc.w
+        && abs(ls_ndc.y) <= ls_ndc.w
+        && ls_ndc.z >= 0.0f
+        && ls_ndc.z <= ls_ndc.w;
+
+    if (!in_frustum) return 1.0f;
+
+    ls_ndc /= ls_ndc.w;
+    float2 uv = ls_ndc.xy * float2(0.5f, -0.5f) + 0.5f;
+    
+    float4 shadow_sample = shadowTex.SampleLevel(Sampler, uv, 0);
+    float3 vec = pos - shadow_info.origin.xyz;
+    float vec_length;
+    if (light_type == LightType::Directional) {
+        vec_length = dot(vec, shadow_info.direction.xyz);
+    } else {
+        vec_length = length(vec);
+    }
+        
+    if (light_type == LightType::Point) return 1.0f; // TODO: do cubemap shadows
+        
+    const float bias = 0.01f; // TODO: adaptive bias, proper VS shadow maps
+    if (vec_length > shadow_sample.x + bias) return 0.0f;
+    return 1.0f;
+}
 
 float3 lambertian_BRDF(float3 diffuseColor) {
     return diffuseColor * inv_PI;
@@ -60,7 +95,7 @@ LightRay convert_to_light_ray(const float3 pos, const Light light) {
         falloff *= factor; // or factor * factor for smoother falloff?
     }
     if (light_type == LightType::Spot) {    // spotlight falloff
-        falloff *= spot_attenuation(light.direction_type.xyz, light_ray.direction, light.inner_outerConeAngleCos);
+        falloff *= spot_attenuation(light.direction_type.xyz, light_ray.direction, light.inner_outerConeAngleCos.xy);
     }
     
     light_ray.color *= falloff;
@@ -112,19 +147,23 @@ float3 directional_lighting(const float3 pos, const float3 n, const float3 v, fl
 }
 
 float3 compute_punctual_light_contribution(const float3 pos, const float3 n, const float3 v, const float3 refracted_v, 
-    MaterialParams mat_params, const Light light) 
+    MaterialParams mat_params, const Light light, const ShadowMappingInfo shadow_info, const SamplerState Sampler) 
 {
     LightRay light_ray = convert_to_light_ray(pos, light);
         
-    bool has_transmission = any(mat_params.transmission_attenuation > 0.0f);
+    bool has_transmission = any(mat_params.transmission_attenuation > 0.0f) && any(refracted_v != 0.0f);
     if (!has_transmission) {
         light_ray.color = (dot(n, light_ray.direction) > 0) ? light_ray.color : 0.0f; // facing attenuation for opaque materials
     }
     if (all(light_ray.color == 0.0f)) {
         return 0.0f; // early exit if light is not contributing
     }
+    float shadowing_factor = compute_shadowing(shadow_info, pos, n, Sampler);
+    if (shadowing_factor == 0.0f) { // ??? what about if it has transmission?
+        return 0.0f; // early exit if fully in shadow
+    }
         
     float3 Radiance = directional_lighting(pos, n, v, refracted_v, mat_params, light_ray, has_transmission);
-    return Radiance;
+    return Radiance * shadowing_factor;
 }
     

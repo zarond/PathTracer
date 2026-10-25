@@ -306,6 +306,7 @@ Light::Light(const fastgltf::Light& gltf_light) {
 
     innerConeAngle = gltf_light.innerConeAngle.value_or(0.0f);
     outerConeAngle = gltf_light.outerConeAngle.value_or(glm::quarter_pi<float>());
+    innerConeAngle = min(innerConeAngle, outerConeAngle);
 }
 
 Animation::Animation(const fastgltf::Animation& gltf_animation, const fastgltf::Asset& asset) {

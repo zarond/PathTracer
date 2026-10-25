@@ -37,9 +37,9 @@ bool isDepthWithSRV(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::DepthWithSRV
 bool isUAV(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::UAV) != TEXTURE_TRAITS::None; }
 bool AllocateMips(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::AllocateMips) != TEXTURE_TRAITS::None; }
 
-float photometric_to_radiometric_irradiance(float lux) { return lux / 683.0f; }
+float photometric_to_radiometric_irradiance(float lux) { return lux / 683.0f; } // lx -> W/m^2
 
-float photometric_to_radiometric_intensity(float candela) { return candela / (683.0f * 0.25f / glm::pi<float>()); }
+float photometric_to_radiometric_intensity(float candela) { return candela / (683.0f * 0.25f / glm::pi<float>()); } // candela -> W/sr
 
 // converts intensity from Lux and Candela (as in KHR_lights_punctual) to Watts/M^2 and Watts/Sr to use in shader
 float photometric_to_radiometric_units(const fastgltf::Light& light) {

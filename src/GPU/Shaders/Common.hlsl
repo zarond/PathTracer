@@ -123,6 +123,13 @@ struct Light {
     float4 inner_outerConeAngleCos;
 };
 
+struct ShadowMappingInfo {
+    float4x4 viewProjection;
+    float4 origin;
+    float4 direction;
+    int4 shadowMapTextureIndex_type_padding;
+};
+
 typedef BuiltInTriangleIntersectionAttributes Attributes;
 
 struct vertex {  // I am using float4 because of the memory alignement on the CPU side, I know it's not ideal
