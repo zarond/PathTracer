@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <limits>
 #include <glm/glm.hpp>
 #include <numbers>
 
@@ -29,8 +30,8 @@ struct ray_volume_hit_info {
 struct BBox {
     fvec3 min, max;
 
-    BBox() noexcept;
-    constexpr BBox(const fvec3& min_, const fvec3& max_) noexcept;
+    inline BBox() noexcept : min(std::numeric_limits<float>::max()), max(std::numeric_limits<float>::lowest()) {}
+    constexpr BBox(const fvec3& min_, const fvec3& max_) noexcept : min(min_), max(max_) {}
 
     bool is_empty() const noexcept;
     void expand(const fvec3& ws_point) noexcept;
