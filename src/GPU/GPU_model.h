@@ -205,6 +205,8 @@ class GPU_model {
 
     std::vector<GPU_texture> textures;
 
+    BBox scene_bounds{};
+
     bool isEmpty() const;
 
     void update_materials_array_buffer(const Model& cpu_model);

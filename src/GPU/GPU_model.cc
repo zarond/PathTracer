@@ -424,6 +424,7 @@ GPU_model::GPU_model(const Model& cpu_model, bool raytracing_support) {
     prepare_textures_array_buffer(cpu_model);
     prepare_materials_array_buffer(cpu_model);
     prepare_lights_array_buffer(cpu_model);
+    scene_bounds = cpu_model.scene_bounds;
     isEmpty_ = false;
 }
 

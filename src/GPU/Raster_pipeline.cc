@@ -345,7 +345,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     auto commandList = d3d_ctx.m_DXRCommandList;
 
     // Shadow mapping passes for each light in the scene
-    m_shadow_mapping_helper.CreateShadowMaps(gpu_model, Shadow_mapping_helper::ShadowMapSizeDefault, BBox{fvec3{-10.0}, fvec3{10.0f}});
+    m_shadow_mapping_helper.CreateShadowMaps(gpu_model, Shadow_mapping_helper::ShadowMapSizeDefault);
 
     m_rasterCB.RenderFrameMips = std::min(GPU_texture::CalculateMipCount(width, height), static_cast<unsigned int>(Kawase_blur_helper::BlurIterations));
     m_rasterCB.FrameSize = {width, height};

@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "cpu_texture.h"
+#include "bounding_volumes.h"
 
 namespace app {
 
@@ -142,6 +143,7 @@ struct Model {
     NodeTree nodes_transforms;              // current transforms
     NodeTree nodes_original_transforms;     // "rest" transforms
     std::vector<Animation> animations;
+    BBox scene_bounds{};
 
     Model() = default;
     Model(Model&&) noexcept = default;

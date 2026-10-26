@@ -213,7 +213,7 @@ void Shadow_mapping_helper::update_shadow_mapping_info_array_buffer() {
     commandList->CopyBufferRegion(shadowMappingInfoArray.Get(), 0, shadow_uploadBuffer.Get(), 0, BufferSize);
 }
 
-void Shadow_mapping_helper::CreateShadowMaps(const GPU_model& gpu_model, UINT size, const BBox& sceneBBox) {
+void Shadow_mapping_helper::CreateShadowMaps(const GPU_model& gpu_model, UINT size) {
     resize_shadow_maps(size, gpu_model.get_lights_count());
 
     int shadow_map_count = static_cast<int>(m_shadowMaps.size());
@@ -226,7 +226,7 @@ void Shadow_mapping_helper::CreateShadowMaps(const GPU_model& gpu_model, UINT si
         
         auto& info = m_shadowMappingInfo[i];
         float far_plane = 0.0f;
-        calculate_shadow_mapping_info(Light, sceneBBox, ShadowMap, ShadowSize, BiasMultiplier, info, far_plane);
+        calculate_shadow_mapping_info(Light, gpu_model.scene_bounds, ShadowMap, ShadowSize, BiasMultiplier, info, far_plane);
         CreateShadowMap(gpu_model, info, ShadowMap, size, far_plane);
     }
 

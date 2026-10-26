@@ -17,6 +17,10 @@ namespace app {
 
 using namespace glm;
 
+// forward declare function from acceleration_structure.cc 
+// to avoid including whole header and circular dependency
+DOP object_to_ws_dop(const Object& obj, const Mesh& mesh) noexcept;  
+
 bool ModelLoader::load_from_file(const std::filesystem::path& path) {
     if (!std::filesystem::exists(path)) {
         std::cerr << "Failed to find " << path << '\n';
@@ -265,6 +269,16 @@ Model ModelLoader::construct_model() const {
     model.animations.reserve(asset_.animations.size());
     for (const auto& animation : asset_.animations) {
         model.animations.emplace_back(animation, asset_);
+    }
+
+    // Calculate static scene bounds on model load
+    {
+        DOP dop{};
+        for (const auto& obj : model.objects) {
+            const auto& mesh = model.meshes[obj.meshIndex];
+            dop.expand(object_to_ws_dop(obj, mesh));
+        }
+        model.scene_bounds = dop.to_bbox();
     }
 
     return model;

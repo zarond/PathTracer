@@ -19,52 +19,7 @@ using glm::fvec2;
 using glm::fvec3;
 using glm::fvec4;
 
-struct BBox {
-    fvec3 min, max;
-
-    BBox() noexcept;
-    constexpr BBox(const fvec3& min_, const fvec3& max_) noexcept;
-
-    bool is_empty() const noexcept;
-    void expand(const fvec3& ws_point) noexcept;
-    void expand(const BBox& bbox) noexcept;
-
-    ray_volume_hit_info ray_volume_intersection(const ray& ray) const noexcept;
-    ray_volume_hit_info ray_volume_intersection(const ray& ray, fvec3 ray_direction_inv) const noexcept;
-
-    float surface_area() const noexcept;
-};
-
 BBox object_to_ws_bbox(const Object& obj, const Mesh& mesh) noexcept;
-int get_longest_axis(const BBox& bbox) noexcept;
-
-struct DOP {
-    DOP() noexcept;
-    DOP(const fvec3& point) noexcept;
-
-    bool is_empty() const noexcept;
-    void expand(const fvec3& ws_point) noexcept;
-    void expand(const DOP& dop) noexcept;
-    BBox to_bbox() const noexcept;
-
-    ray_volume_hit_info ray_volume_intersection(const ray& ray) const noexcept;
-    ray_volume_hit_info ray_volume_intersection(const std::array<fvec2, 7>& projections) const noexcept;
-
-  private:
-    std::array<fvec2, 7> min_max;
-    constexpr static auto inv_sqrt3 = std::numbers::inv_sqrt3_v<float>;
-
-  public:
-    static inline std::array<fvec3, 7> axises{
-        fvec3{1.0f, 0.0f, 0.0f},
-        fvec3{0.0f, 1.0f, 0.0f},
-        fvec3{0.0f, 0.0f, 1.0f},
-        fvec3{inv_sqrt3, inv_sqrt3, inv_sqrt3},
-        fvec3{inv_sqrt3, inv_sqrt3, -inv_sqrt3},
-        fvec3{inv_sqrt3, -inv_sqrt3, inv_sqrt3},
-        fvec3{-inv_sqrt3, inv_sqrt3, inv_sqrt3},
-    };
-};
 
 DOP object_to_ws_dop(const Object& obj, const Mesh& mesh) noexcept;
 DOP vertices_to_ws_dop(const fmat4x4& mat, std::span<const fvec3> vertices) noexcept;

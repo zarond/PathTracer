@@ -68,6 +68,7 @@ set(APP_SOURCES
     src/compute_tangents.cc
     src/viewer.cc
     src/ray_program.cc
+    src/bounding_volumes.cc
     src/acceleration_structure.cc
     src/renderer.cc
     src/render_settings.cc

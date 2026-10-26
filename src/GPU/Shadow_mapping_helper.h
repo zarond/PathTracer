@@ -27,7 +27,7 @@ class Shadow_mapping_helper {
     Shadow_mapping_helper();
     ~Shadow_mapping_helper();
 
-    void CreateShadowMaps(const GPU_model& gpu_model, UINT size, const BBox& sceneBBox);
+    void CreateShadowMaps(const GPU_model& gpu_model, UINT size);
 
     const std::vector<ShadowMappingInfo>& GetShadowMappingInfo() const;
     D3D12_GPU_DESCRIPTOR_HANDLE GetShadowMappingInfoGPUHandle() const;
