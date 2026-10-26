@@ -1,14 +1,13 @@
 #pragma once
 
-#include <array>
 #include <cstdint>
 #include <glm/fwd.hpp>
 #include <limits>
-#include <numbers>
 #include <span>
 #include <variant>
 #include <vector>
 
+#include "bounding_volumes.h"
 #include "model_loader.h"
 #include "ray_program.h"
 

@@ -1,6 +1,7 @@
 #include "acceleration_structure.h"
 
 #include <algorithm>
+#include <span>
 #include <cassert>
 #include <chrono>
 #include <cmath>
