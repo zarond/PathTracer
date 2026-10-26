@@ -39,6 +39,8 @@ set(SHADER_SOURCES
     PS_Gbuffer          RasterizationShaders.hlsl   ps_6_6
     VS_GI_Debug         RasterizationShaders.hlsl   vs_6_6
     PS_GI_Debug         RasterizationShaders.hlsl   ps_6_6
+    VS_Shadows          ShadowMapping.hlsl          vs_6_6
+    PS_Shadows          ShadowMapping.hlsl          ps_6_6
     CS_DFG_Lut          DFGLut.hlsl                 cs_6_6
     CS_Diffuse_Lut      CubemapsLut.hlsl            cs_6_6
     CS_Specular_Lut     CubemapsLut.hlsl            cs_6_6
@@ -66,6 +68,7 @@ set(APP_SOURCES
     src/compute_tangents.cc
     src/viewer.cc
     src/ray_program.cc
+    src/bounding_volumes.cc
     src/acceleration_structure.cc
     src/renderer.cc
     src/render_settings.cc
@@ -94,6 +97,8 @@ if(ON_WINDOWS)
         src/GPU/Tonemapping_helper.cc
         src/GPU/SphericalHarmonics_helper.cc
         src/GPU/PSO_helper.cc
+        src/GPU/Shadow_mapping_helper.cc
+        src/GPU/Drawables.cc
         src/GPU/Reload_shader.cc
     )
 endif()

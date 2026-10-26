@@ -42,6 +42,7 @@ struct RenderSettings {
     bool specular_aa_enabled = true;
     float specular_aa_variance = 0.15f;
     float specular_aa_threshold = 0.2f;
+    float shadow_bias_multiplier = 0.0f;
 
     RenderSettings() = default;
     explicit RenderSettings(const ConsoleArgs& args);

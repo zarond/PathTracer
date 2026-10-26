@@ -17,6 +17,8 @@
 #include "GTAO_helper.h"
 #include "SSR_helper.h"
 #include "PSO_helper.h"
+#include "Shadow_mapping_helper.h"
+#include "Drawables.h"
 
 namespace app {
 
@@ -43,6 +45,7 @@ struct RasterConstantBuffer {
     float envmap_rotation_sin;
     float envmap_rotation_cos;
     
+    int lightsCount;
     unsigned int frameID;
     int albedoOnlyMode;
     int SpecularLutMips;
@@ -87,15 +90,6 @@ struct GISettings {
     fvec4 delta;
     fvec4 inv_delta;
     SHCoefficients diffuse; // one global sh probe
-};
-
-struct DrawableSortingInfo {
-    const GPU_object_info* object;
-    float modelScale;
-    float ZDistanceToCamera;
-    bool backfaceCulling;
-    bool alphaBlending;
-    bool transmittance;
 };
 
 class Raster_pipeline : public IRender_pipeline {
@@ -175,6 +169,7 @@ class Raster_pipeline : public IRender_pipeline {
     Kawase_blur_helper m_bloom_helper{};
     GTAO_helper m_GTAO_helper{};
     SSR_helper m_SSR_helper{};
+    Shadow_mapping_helper m_shadow_mapping_helper{};
 
     // additional render targets
     GPU_texture m_renderTarget;
@@ -206,8 +201,6 @@ class Raster_pipeline : public IRender_pipeline {
     SHCoefficients diffuse_irradiance_sh_from_probe;  // precomputed irradiance SH coefficients from Reflection_probe
 
     std::vector<DrawableSortingInfo> m_sortedDrawables;  // reusable vector for sorting drawables every frame
-    void sort_objects_for_rendering(
-        const GPU_model& gpu_model, int& num_opaque_objects, int& num_transmissive_objects, int& num_alpha_blended_objects);
 
     UINT64 currentWidth = 0;
     UINT currentHeight = 0;

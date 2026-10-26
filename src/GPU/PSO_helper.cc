@@ -14,7 +14,8 @@ bool PSO_helper::init(
     std::span<const bool> use_input_layout,
     std::span<const UINT8> rt_write_mask, 
     std::span<const D3D12_DEPTH_WRITE_MASK> depth_write_mask,
-    std::span<const int> rt_num
+    std::span<const int> rt_num,
+    bool use_float32_rt
 ) {
     if (Number_of_original_PSOs == 0 ||
         vs_file_names.size() != Number_of_original_PSOs || 
@@ -50,7 +51,8 @@ bool PSO_helper::init(
         m_vs_bytecode.emplace_back(vs_shaderBlob, vs_bytecode);
         m_ps_bytecode.emplace_back(ps_shaderBlob, ps_bytecode);
         m_starting_psoDesc.emplace_back(
-            create_starting_psoDesc(rootSignature, use_input, rt_write, depth_write, rt_count));
+            create_starting_psoDesc(rootSignature, use_input, rt_write, depth_write, rt_count, use_float32_rt)
+        );
     }
 
     m_Number_of_original_PSOs = Number_of_original_PSOs;
@@ -62,7 +64,8 @@ D3D12_GRAPHICS_PIPELINE_STATE_DESC PSO_helper::create_starting_psoDesc(
     bool use_input_layout, 
     UINT8 rt_write_mask,
     D3D12_DEPTH_WRITE_MASK depth_write_mask, 
-    int rt_num) 
+    int rt_num,
+    bool use_float32_rt) 
 {
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
 
@@ -84,9 +87,9 @@ D3D12_GRAPHICS_PIPELINE_STATE_DESC PSO_helper::create_starting_psoDesc(
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     psoDesc.NumRenderTargets = rt_num;
     // WARNING: The following formats are hardcoded and may need to be adjusted based on the specific render targets
-    psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    psoDesc.RTVFormats[0] = use_float32_rt ? DXGI_FORMAT_R32G32B32A32_FLOAT : DXGI_FORMAT_R16G16B16A16_FLOAT;
     if (rt_num >= 2) { // second render target for Velocity Buffer
-        psoDesc.RTVFormats[1] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        psoDesc.RTVFormats[1] = use_float32_rt ? DXGI_FORMAT_R32G32B32A32_FLOAT : DXGI_FORMAT_R16G16B16A16_FLOAT;
     }
     if (rt_num >= 3) { // third for material ID
         psoDesc.RTVFormats[2] = DXGI_FORMAT_R8_UINT;

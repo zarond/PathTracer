@@ -186,6 +186,7 @@ void GPURenderer::update_transforms() {
     if (model_ref_ && gpu_model_) {
         bool updateTLAS = (active_pipeline_mode_ == RenderPipelineMode::DXRPipeline);
         gpu_model_->update_transforms(*model_ref_, updateTLAS);
+        gpu_model_->update_lights_array_buffer(*model_ref_);
     }
 }
 
@@ -378,7 +379,7 @@ void GPURenderer::compute_GI(BBox bbox, int longest_dimension_N, bool expand_bbo
     auto start = std::chrono::high_resolution_clock::now();
 
     fvec3 bbox_size = bbox.max - bbox.min;
-    int longest_axis = get_longest_axis(bbox);
+    int longest_axis = bbox.get_longest_axis();
     float main_axis_delta = abs(bbox_size[longest_axis] / static_cast<float>(longest_dimension_N));
     uvec3 grid_dim = bbox_size / main_axis_delta;
     grid_dim = glm::max(grid_dim, uvec3{1});

@@ -34,7 +34,8 @@ class PSO_helper {
         std::span<const bool> use_input_layout,
         std::span<const UINT8> rt_write_mask,
         std::span<const D3D12_DEPTH_WRITE_MASK> depth_write_mask,
-        std::span<const int> rt_num
+        std::span<const int> rt_num,
+        bool use_float32_rt = false
     );
 
     void set_pipeline_state(ComPtr<ID3D12GraphicsCommandList4> commandList, const PSO_variant_key key);
@@ -67,7 +68,8 @@ class PSO_helper {
         bool use_input_layout, 
         UINT8 rt_write_mask,
         D3D12_DEPTH_WRITE_MASK depth_write_mask,
-        int rt_num
+        int rt_num,
+        bool use_float32_rt
     );
 };
 

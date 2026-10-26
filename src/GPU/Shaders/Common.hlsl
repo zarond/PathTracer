@@ -1,3 +1,5 @@
+#pragma once
+
 // Hit information, aka ray payload
 // Note that the payload should be kept as small as possible,
 // and that its size must be declared in the corresponding
@@ -38,6 +40,7 @@ struct RasterConstantBuffer {
     float envmap_rotation_sin;
     float envmap_rotation_cos;
 
+    int lightsCount;
     unsigned int frameID;
     int albedoOnlyMode;
     int SpecularLutMips;
@@ -111,6 +114,21 @@ struct Material {
     int thicknessTextureIndex;
     float thicknessFactor;
     float padding;
+};
+
+struct Light {
+    float4 color_intensity;
+    float4 position_range;
+    float4 direction_type;
+    float4 inner_outerConeAngleCos;
+};
+
+struct ShadowMappingInfo {
+    float4x4 viewProjection;
+    float4 origin;
+    float4 direction;
+    int2 shadowMapTextureIndex_type;
+    float2 texel_size_padding;
 };
 
 typedef BuiltInTriangleIntersectionAttributes Attributes;
