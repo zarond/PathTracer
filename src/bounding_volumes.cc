@@ -6,7 +6,7 @@
 namespace app {
 
 BBox::BBox() noexcept : min(std::numeric_limits<float>::max()), max(std::numeric_limits<float>::lowest()) {}
-constexpr BBox::BBox(const fvec3& min_, const fvec3& max_) noexcept : min(min_), max(max_) {}
+inline constexpr BBox::BBox(const fvec3& min_, const fvec3& max_) noexcept : min(min_), max(max_) {}
 
 bool BBox::is_empty() const noexcept { return max.x < min.x || max.y < min.y || max.z < min.z; }
 void BBox::expand(const fvec3& ws_point) noexcept {
