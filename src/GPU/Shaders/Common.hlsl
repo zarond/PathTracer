@@ -127,7 +127,8 @@ struct ShadowMappingInfo {
     float4x4 viewProjection;
     float4 origin;
     float4 direction;
-    int4 shadowMapTextureIndex_type_padding;
+    int2 shadowMapTextureIndex_type;
+    float2 texel_size_padding;
 };
 
 typedef BuiltInTriangleIntersectionAttributes Attributes;

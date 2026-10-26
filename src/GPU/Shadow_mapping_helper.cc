@@ -35,7 +35,9 @@ int find_texture_id(const GPU_texture& texture) {
     return heap_alloc.GetIndex(texture.GetSRVHandle());
 }
 
-void calculate_shadow_mapping_info(const GPU_Light& light, const BBox& sceneBBox, const GPU_texture& ShadowMap, ShadowMappingInfo& out_info) {
+void calculate_shadow_mapping_info(const GPU_Light& light, const BBox& sceneBBox, const GPU_texture& ShadowMap, UINT ShadowSize,
+    float BiasMultiplier, ShadowMappingInfo& out_info, float& out_far_plane) 
+{
     fastgltf::LightType type = static_cast<fastgltf::LightType>(light.direction_type.w);
     fmat4x4 viewMat{};
     fmat4x4 projectionMat{};
@@ -45,14 +47,17 @@ void calculate_shadow_mapping_info(const GPU_Light& light, const BBox& sceneBBox
     auto radius = glm::length(dim * 0.5f);
     auto direction = xyz(-light.direction_type);
     auto up = (glm::abs(direction.y) < 0.999f) ? fvec3{0, 1, 0} : fvec3{1, 0, 0};
+    float texel_size = 1.0f / static_cast<float>(ShadowSize);
     if (type == fastgltf::LightType::Directional) {
         auto origin = scene_center - direction * radius;
         viewMat = glm::lookAt(scene_center - direction * radius, scene_center, up);
         float near_plane = 0.0f;
         float far_plane = 2.0f * radius;
         projectionMat = glm::orthoRH_ZO(-radius, radius, -radius, radius, near_plane, far_plane);
+        texel_size *= 2.0f * radius;
         out_info.origin = xyz1(origin);
         out_info.direction = xyz0(direction);
+        out_far_plane = far_plane;
     } else if (type == fastgltf::LightType::Spot) {
         auto eye = xyz(light.position_range);
         viewMat = glm::lookAt(eye, eye + direction, up);
@@ -67,14 +72,17 @@ void calculate_shadow_mapping_info(const GPU_Light& light, const BBox& sceneBBox
         constexpr auto angle_limit = 3.1415926f * 80.0f / 180.f; // 80 degrees in radians
         float yfov = 2.0f * glm::min(std::acos(light.inner_outerConeAngleCos.y), angle_limit);
         projectionMat = glm::perspectiveRH_ZO(yfov, 1.0f, near_plane, far_plane);
+        texel_size *= 2.0f * std::tan(yfov * 0.5f);
         out_info.origin = xyz1(eye);
         out_info.direction = xyz0(direction);
+        out_far_plane = far_plane;
     } else if (type == fastgltf::LightType::Point) {
         // TODO: think of the way to point light shadows
     }
 
     out_info.viewProjection = projectionMat * viewMat;
-    out_info.shadowMapTextureIndex_type_padding = glm::ivec4(find_texture_id(ShadowMap), type, 0, 0);
+    out_info.shadowMapTextureIndex_type = glm::ivec4(find_texture_id(ShadowMap), type, 0, 0);
+    out_info.texel_size_padding = fvec2{texel_size * BiasMultiplier, 0};
 }
 
 }
@@ -217,15 +225,16 @@ void Shadow_mapping_helper::CreateShadowMaps(const GPU_model& gpu_model, UINT si
         const auto& ShadowMap = m_shadowMaps[i];
         
         auto& info = m_shadowMappingInfo[i];
-        calculate_shadow_mapping_info(Light, sceneBBox, ShadowMap, info);
-        CreateShadowMap(gpu_model, info, ShadowMap, size);
+        float far_plane = 0.0f;
+        calculate_shadow_mapping_info(Light, sceneBBox, ShadowMap, ShadowSize, BiasMultiplier, info, far_plane);
+        CreateShadowMap(gpu_model, info, ShadowMap, size, far_plane);
     }
 
     update_shadow_mapping_info_array_buffer();
 }
 
 void Shadow_mapping_helper::CreateShadowMap(const GPU_model& gpu_model,
-    const ShadowMappingInfo& shadow, const GPU_texture& shadowMap, UINT size) {
+    const ShadowMappingInfo& shadow, const GPU_texture& shadowMap, UINT size, float far_plane) {
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
 
@@ -244,7 +253,7 @@ void Shadow_mapping_helper::CreateShadowMap(const GPU_model& gpu_model,
         .viewProjection = shadow.viewProjection,
         .lightDirection = shadow.direction,
         .lightPosition = shadow.origin,
-        .isPointLight = (shadow.shadowMapTextureIndex_type_padding.y != int(fastgltf::LightType::Directional)),
+        .isPointLight = (shadow.shadowMapTextureIndex_type.y != int(fastgltf::LightType::Directional)),
     };
     constexpr int ShadowSceneDataSizeInInt = sizeof(ShadowConstantBuffer) / 4;
     commandList->SetGraphicsRoot32BitConstants(
@@ -270,7 +279,7 @@ void Shadow_mapping_helper::CreateShadowMap(const GPU_model& gpu_model,
     auto rtvHandle = shadowMap.GetRTVHandle();
     auto depthHandle = m_depthTexture.GetDSVHandle();
 
-    const float clearColor[] = {0.0f, 0.0f, 0.0f, 1.0f};
+    const float clearColor[] = {far_plane, far_plane * far_plane, 0.0f, 0.0f};
 
     commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &depthHandle);
     commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);

@@ -56,7 +56,6 @@ float4 PS_Shadows(SHInput input) : SV_TARGET {
     Material mat = Materials[DrawData.meshID];
     float2 uv = input.uv.xy;
     float alpha = sample_albedo_filtered(mat, uv, ASampler).w;
-    if (alpha < mat.alpha_cutoff) discard;  // alpha-test in the same shader for simplicity, but it disables early-z optimisation
     float D;
     float3 L = input.world_position.xyz - g_shadowCB.lightPosition.xyz;
     if (g_shadowCB.isPointLight) {
@@ -64,5 +63,7 @@ float4 PS_Shadows(SHInput input) : SV_TARGET {
     } else {
         D = dot(L, g_shadowCB.lightDirection.xyz);
     }
+    D += fwidth( D ); // main slope-based bias
+    if (alpha < mat.alpha_cutoff) discard;  // alpha-test in the same shader for simplicity, but it disables early-z optimisation
     return float4(D, D * D, 0, 0);
 }

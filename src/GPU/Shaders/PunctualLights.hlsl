@@ -27,8 +27,8 @@ struct LightRay {
 float compute_shadowing(const ShadowMappingInfo shadow_info, const float3 pos, const float3 n, 
     const SamplerState Sampler) 
 {
-    Texture2D<float4> shadowTex = ResourceDescriptorHeap[shadow_info.shadowMapTextureIndex_type_padding.x];
-    int light_type = shadow_info.shadowMapTextureIndex_type_padding.y;
+    Texture2D<float4> shadowTex = ResourceDescriptorHeap[shadow_info.shadowMapTextureIndex_type.x];
+    int light_type = shadow_info.shadowMapTextureIndex_type.y;
     
     float4 ls_ndc = mul(shadow_info.viewProjection, float4(pos, 1.0f));
         
@@ -39,6 +39,8 @@ float compute_shadowing(const ShadowMappingInfo shadow_info, const float3 pos, c
         && ls_ndc.z <= ls_ndc.w;
 
     if (!in_frustum) return 1.0f;
+    
+    const float bias = shadow_info.texel_size_padding.x * ls_ndc.w; // additional constant bias
 
     ls_ndc /= ls_ndc.w;
     float2 uv = ls_ndc.xy * float2(0.5f, -0.5f) + 0.5f;
@@ -54,7 +56,6 @@ float compute_shadowing(const ShadowMappingInfo shadow_info, const float3 pos, c
         
     if (light_type == LightType::Point) return 1.0f; // TODO: do cubemap shadows
         
-    const float bias = 0.01f; // TODO: adaptive bias, proper VS shadow maps
     if (vec_length > shadow_sample.x + bias) return 0.0f;
     return 1.0f;
 }

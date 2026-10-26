@@ -18,7 +18,8 @@ struct ShadowMappingInfo {
     fmat4x4 viewProjection;
     fvec4 origin;
     fvec4 direction;
-    glm::ivec4 shadowMapTextureIndex_type_padding;
+    glm::ivec2 shadowMapTextureIndex_type;
+    fvec2 texel_size_padding;
 };
 
 class Shadow_mapping_helper {
@@ -35,9 +36,11 @@ class Shadow_mapping_helper {
 
     static constexpr int ShadowMapSizeDefault = 1024;
 
+    float BiasMultiplier = 0.0f;
+
   private:
     void CreateShadowMap(const GPU_model& gpu_model, const ShadowMappingInfo& shadow,
-        const GPU_texture& shadowMap, UINT size);
+        const GPU_texture& shadowMap, UINT size, float far_plane);
     
     static void CreateRootSignature();
     static void CreatePipelineStateObject();
