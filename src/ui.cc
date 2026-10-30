@@ -823,6 +823,15 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
     raster_settings_changed |= ImGui::SliderFloat(
         "Specular AA Threshold", &render_settings.specular_aa_threshold, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
     raster_settings_changed |= ImGui::SliderFloat("Additional Shadow Bias", &render_settings.shadow_bias_multiplier, 0.0f, 10.0f, "%.3f");
+
+    // Shadow map size selection
+    const auto shadow_map_size_options = std::array{"256", "512", "1024", "2048"};
+    int shadow_map_size_index = std::clamp(std::bit_width(render_settings.shadow_map_size) - 1 - 8, 0, 3);
+    if (imgui_combo("Shadow Map Size:", shadow_map_size_options, shadow_map_size_index)) {
+        render_settings.shadow_map_size = 1 << (8 + shadow_map_size_index);
+        raster_settings_changed = true;
+    }
+
     // For testing only:
     // raster_settings_changed |= ImGui::Checkbox("Disable depth clip", &render_settings.disableDepthClip);
     // HelpTooltip("Draw opaque G-buffer objects with depth clip disabled (mainly for light probe rendering)");

@@ -204,6 +204,7 @@ class Raster_pipeline : public IRender_pipeline {
 
     UINT64 currentWidth = 0;
     UINT currentHeight = 0;
+    UINT m_shadow_map_size = 1024;
 
     RayProgramMode RaytracingMode = RayProgramMode::AmbientOcclusion;
 

@@ -34,7 +34,7 @@ class Shadow_mapping_helper {
     
     static void Reload();
 
-    static constexpr int ShadowMapSizeDefault = 1024;
+    static constexpr unsigned int ShadowMapSizeDefault = 1024;
 
     float BiasMultiplier = 0.0f;
 
