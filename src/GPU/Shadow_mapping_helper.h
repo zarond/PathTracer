@@ -41,6 +41,8 @@ class Shadow_mapping_helper {
   private:
     void CreateShadowMap(const GPU_model& gpu_model, const ShadowMappingInfo& shadow,
         const GPU_texture& shadowMap, UINT size, float far_plane);
+    void CreateCubemapShadowMap(
+        const GPU_model& gpu_model, const ShadowMappingInfo& shadow, GPU_texture& shadowMap, UINT size, float far_plane);
     
     static void CreateRootSignature();
     static void CreatePipelineStateObject();
@@ -52,6 +54,7 @@ class Shadow_mapping_helper {
     static constexpr const wchar_t* c_ps_file_name = L"PS_Shadows.dxil";
 
     std::vector<DrawableSortingInfo> m_sortedDrawables;  // reusable vector for sorting drawables every frame
+    GPU_texture m_tmpShadowMap; // TODO: remove
     GPU_texture m_depthTexture;
 
     // shadow maps textures
@@ -64,8 +67,9 @@ class Shadow_mapping_helper {
     D3D_Handle_Pair shadow_mapping_info_array{};
 
     UINT ShadowSize = 0;
+    std::vector<bool> is_cubemap_shadow_map;
 
-    void resize_shadow_maps(int new_size, int new_lights_count);
+    void resize_shadow_maps(int new_size, const std::vector<GPU_Light>& lights);
 
     void prepare_shadow_mapping_info_array_buffer();
     void update_shadow_mapping_info_array_buffer();

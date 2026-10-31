@@ -28,8 +28,28 @@ float compute_shadowing(const ShadowMappingInfo shadow_info, const float3 pos, c
     const SamplerState Sampler) 
 {
     Texture2D<float4> shadowTex = ResourceDescriptorHeap[shadow_info.shadowMapTextureIndex_type.x];
+    TextureCube<float4> shadowTexCube = ResourceDescriptorHeap[shadow_info.shadowMapTextureIndex_type.x];
     int light_type = shadow_info.shadowMapTextureIndex_type.y;
     
+    float3 vec = pos - shadow_info.origin.xyz;
+    float vec_length;
+    if (light_type == LightType::Directional) {
+        vec_length = dot(vec, shadow_info.direction.xyz);
+    } else {
+        vec_length = length(vec);
+    }
+        
+    float bias = shadow_info.texel_size_padding.x; // additional constant bias
+        
+    if (light_type == LightType::Point) {
+         bias *= vec_length;
+         vec.z *= -1;
+         float4 shadow_sample = shadowTexCube.SampleLevel(Sampler, vec, 0);
+         if (vec_length > shadow_sample.x + bias) return 0.0f;
+         return 1.0f;
+    }
+    
+    // else directional or spot light
     float4 ls_ndc = mul(shadow_info.viewProjection, float4(pos, 1.0f));
         
     bool in_frustum = ls_ndc.w > 0.0f
@@ -40,21 +60,12 @@ float compute_shadowing(const ShadowMappingInfo shadow_info, const float3 pos, c
 
     if (!in_frustum) return 1.0f;
     
-    const float bias = shadow_info.texel_size_padding.x * ls_ndc.w; // additional constant bias
+    bias *= ls_ndc.w;
 
     ls_ndc /= ls_ndc.w;
     float2 uv = ls_ndc.xy * float2(0.5f, -0.5f) + 0.5f;
     
     float4 shadow_sample = shadowTex.SampleLevel(Sampler, uv, 0);
-    float3 vec = pos - shadow_info.origin.xyz;
-    float vec_length;
-    if (light_type == LightType::Directional) {
-        vec_length = dot(vec, shadow_info.direction.xyz);
-    } else {
-        vec_length = length(vec);
-    }
-        
-    if (light_type == LightType::Point) return 1.0f; // TODO: do cubemap shadows
         
     if (vec_length > shadow_sample.x + bias) return 0.0f;
     return 1.0f;

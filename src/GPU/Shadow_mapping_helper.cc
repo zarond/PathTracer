@@ -58,9 +58,8 @@ void calculate_shadow_mapping_info(const GPU_Light& light, const BBox& sceneBBox
         out_info.origin = xyz1(origin);
         out_info.direction = xyz0(direction);
         out_far_plane = far_plane;
-    } else if (type == fastgltf::LightType::Spot) {
+    } else {
         auto eye = xyz(light.position_range);
-        viewMat = glm::lookAt(eye, eye + direction, up);
         auto range = light.position_range.w;
         float far_plane;
         if (range > 0) {
@@ -68,16 +67,19 @@ void calculate_shadow_mapping_info(const GPU_Light& light, const BBox& sceneBBox
         } else {
             far_plane = 2.0f * radius;
         }
-        float near_plane = std::max(0.001f * far_plane, 0.01f);
-        constexpr auto angle_limit = 3.1415926f * 80.0f / 180.f; // 80 degrees in radians
-        float yfov = 2.0f * glm::min(std::acos(light.inner_outerConeAngleCos.y), angle_limit);
-        projectionMat = glm::perspectiveRH_ZO(yfov, 1.0f, near_plane, far_plane);
-        texel_size *= 2.0f * std::tan(yfov * 0.5f);
+        if (type == fastgltf::LightType::Spot) {
+            viewMat = glm::lookAt(eye, eye + direction, up);
+            float near_plane = std::max(0.001f * far_plane, 0.01f);
+            constexpr auto angle_limit = 3.1415926f * 80.0f / 180.f; // 80 degrees in radians
+            float yfov = 2.0f * glm::min(std::acos(light.inner_outerConeAngleCos.y), angle_limit);
+            projectionMat = glm::perspectiveRH_ZO(yfov, 1.0f, near_plane, far_plane);
+            texel_size *= 2.0f * std::tan(yfov * 0.5f);
+            out_info.direction = xyz0(direction);
+        } else {
+            texel_size *= 2.0f;
+        }
         out_info.origin = xyz1(eye);
-        out_info.direction = xyz0(direction);
         out_far_plane = far_plane;
-    } else if (type == fastgltf::LightType::Point) {
-        // TODO: think of the way to point light shadows
     }
 
     out_info.viewProjection = projectionMat * viewMat;
@@ -119,25 +121,50 @@ void Shadow_mapping_helper::Reload() {
 
 Shadow_mapping_helper::~Shadow_mapping_helper() { release_gpu_resources(); }
 
-void Shadow_mapping_helper::resize_shadow_maps(int new_size, int new_lights_count) {
-    if (ShadowSize == new_size && m_shadowMaps.size() == new_lights_count) return;
+void Shadow_mapping_helper::resize_shadow_maps(int new_size, const std::vector<GPU_Light>& lights) {
+    int new_lights_count = lights.size();
+    bool can_skip = true;
+    if (ShadowSize != new_size || m_shadowMaps.size() != new_lights_count) can_skip = false;
+    for (int i = 0; (i < new_lights_count) && can_skip; ++i) {
+        const auto& light = lights[i];
+        fastgltf::LightType type = static_cast<fastgltf::LightType>(light.direction_type.w);
+        bool is_cubemap = is_cubemap_shadow_map[i];
+        if ((type == fastgltf::LightType::Point && !is_cubemap) || 
+            (type != fastgltf::LightType::Point && is_cubemap)
+        ) can_skip = false;
+    }
+    if (can_skip) return;
+
     ShadowSize = std::max(new_size, 0);
 
     m_shadowMaps.clear();
     m_shadowMaps.reserve(new_lights_count);
     m_shadowMappingInfo.clear();
     m_shadowMappingInfo.resize(new_lights_count);
-
-    TEXTURE_TRAITS flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::RenderTarget;
+    is_cubemap_shadow_map.clear();
+    is_cubemap_shadow_map.reserve(new_lights_count);
 
     for (int i = 0; i < new_lights_count; ++i) {
+        const auto& light = lights[i];
+        fastgltf::LightType type = static_cast<fastgltf::LightType>(light.direction_type.w);
+        TEXTURE_TRAITS flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::RenderTarget;
+        bool is_cubemap = false;
+        if (type == fastgltf::LightType::Point) {
+            is_cubemap = true;
+            flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::Cubemap;
+        }
+        is_cubemap_shadow_map.emplace_back(is_cubemap);
         m_shadowMaps.emplace_back(ShadowSize, ShadowSize, flags, 
             DXGI_FORMAT_R32G32B32A32_FLOAT, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     }
 
     m_depthTexture.release_gpu_resource();
-    flags = TEXTURE_TRAITS::Depth;
+    TEXTURE_TRAITS flags = TEXTURE_TRAITS::Depth;
     m_depthTexture = GPU_texture{ShadowSize, ShadowSize, flags};
+
+    m_tmpShadowMap.release_gpu_resource();
+    flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::RenderTarget;
+    m_tmpShadowMap = GPU_texture{ShadowSize, ShadowSize, flags};
 
     prepare_shadow_mapping_info_array_buffer();
 }
@@ -214,23 +241,76 @@ void Shadow_mapping_helper::update_shadow_mapping_info_array_buffer() {
 }
 
 void Shadow_mapping_helper::CreateShadowMaps(const GPU_model& gpu_model, UINT size) {
-    resize_shadow_maps(size, gpu_model.get_lights_count());
+    const auto& lights = gpu_model.get_lights_cpu_array();
+    resize_shadow_maps(size, lights);
 
     int shadow_map_count = static_cast<int>(m_shadowMaps.size());
     int light_count = gpu_model.get_lights_count();
-    const auto& lights = gpu_model.get_lights_cpu_array();
 
     for (int i=0; i < shadow_map_count && i < light_count; ++i) {
         const auto& Light = lights[i];
-        const auto& ShadowMap = m_shadowMaps[i];
+        auto& ShadowMap = m_shadowMaps[i];
+        bool is_cubemap = is_cubemap_shadow_map[i];
         
         auto& info = m_shadowMappingInfo[i];
         float far_plane = 0.0f;
         calculate_shadow_mapping_info(Light, gpu_model.scene_bounds, ShadowMap, ShadowSize, BiasMultiplier, info, far_plane);
-        CreateShadowMap(gpu_model, info, ShadowMap, size, far_plane);
+        if (is_cubemap)
+            CreateCubemapShadowMap(gpu_model, info, ShadowMap, size, far_plane);
+        else 
+            CreateShadowMap(gpu_model, info, ShadowMap, size, far_plane);
     }
 
     update_shadow_mapping_info_array_buffer();
+}
+
+void Shadow_mapping_helper::CreateCubemapShadowMap(
+    const GPU_model& gpu_model, const ShadowMappingInfo& shadow, GPU_texture& shadowMap, UINT size, float far_plane) {
+    // DirectX 12 cubemap face order and their camera directions
+    // Face order: +X, -X, +Y, -Y, +Z, -Z
+    struct CubemapFace {
+        fvec3 forward;  // camera forward direction
+        fvec3 up;       // camera up direction
+    };
+
+    // Right-handed coordinate system
+    const CubemapFace cubemap_faces[6] = {
+        // +X face (looking right)
+        {fvec3(1.0f, 0.0f, 0.0f), fvec3(0.0f, 1.0f, 0.0f)},
+        // -X face (looking left)
+        {fvec3(-1.0f, 0.0f, 0.0f), fvec3(0.0f, 1.0f, 0.0f)},
+        // +Y face (looking up)
+        {fvec3(0.0f, 1.0f, 0.0f), fvec3(0.0f, 0.0f, 1.0f)},
+        // -Y face (looking down)
+        {fvec3(0.0f, -1.0f, 0.0f), fvec3(0.0f, 0.0f, -1.0f)},
+        // +Z face (looking forward)
+        {fvec3(0.0f, 0.0f, -1.0f), fvec3(0.0f, 1.0f, 0.0f)},
+        // -Z face (looking backward)
+        {fvec3(0.0f, 0.0f, 1.0f), fvec3(0.0f, 1.0f, 0.0f)}};
+
+    D3DContext& d3d_ctx = D3DContext::Get();
+
+    float near_plane = std::max(0.001f * far_plane, 0.01f);
+
+    // Render each cubemap face
+    for (int face_idx = 0; face_idx < 6; ++face_idx) {
+        ShadowMappingInfo side_shadow = shadow;
+
+        const CubemapFace& face = cubemap_faces[face_idx];
+        auto& cubemap_side = m_tmpShadowMap;
+
+        auto eye = xyz(side_shadow.origin);
+        fmat4x4 viewMat = glm::lookAt(eye, eye + face.forward, face.up);
+        fmat4x4 projectionMat = glm::perspectiveRH_ZO(glm::half_pi<float>(), 1.0f, near_plane, far_plane);
+
+        side_shadow.viewProjection = projectionMat * viewMat;
+
+        CreateShadowMap(gpu_model, side_shadow, cubemap_side, size, far_plane);
+
+        // copy each cubemap face into the cubemap texture
+        GPU_texture::copy_texture_to_cubemap_side(shadowMap, cubemap_side, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, face_idx, d3d_ctx.m_DXRCommandList);
+    }
 }
 
 void Shadow_mapping_helper::CreateShadowMap(const GPU_model& gpu_model,
