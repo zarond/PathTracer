@@ -1055,6 +1055,42 @@ DXGI_FORMAT GPU_texture::choose_format() const {
 
 GPU_texture::~GPU_texture() { release_gpu_resource(); }
 
+GPU_texture::GPU_texture(GPU_texture&& other) noexcept
+    : pTexture(std::move(other.pTexture)),
+      srv_handle(other.srv_handle),
+      uav_handle(other.uav_handle),
+      rtv_handle(other.rtv_handle),
+      dsv_handle(other.dsv_handle),
+      format_(other.format_),
+      texture_options(other.texture_options),
+      mipLevels(other.mipLevels) {
+    other.srv_handle = {};
+    other.uav_handle = {};
+    other.rtv_handle = {};
+    other.dsv_handle = {};
+}
+
+GPU_texture& GPU_texture::operator=(GPU_texture&& other) noexcept {
+    if (this != &other) {
+        release_gpu_resource();
+
+        pTexture = std::move(other.pTexture);
+        srv_handle = other.srv_handle;
+        uav_handle = other.uav_handle;
+        rtv_handle = other.rtv_handle;
+        dsv_handle = other.dsv_handle;
+        format_ = other.format_;
+        texture_options = other.texture_options;
+        mipLevels = other.mipLevels;
+
+        other.srv_handle = {};
+        other.uav_handle = {};
+        other.rtv_handle = {};
+        other.dsv_handle = {};
+    }
+    return *this;
+}
+
 void GPU_texture::create_texture_resource(
     UINT64 width, UINT height, DXGI_FORMAT format, D3D12_RESOURCE_STATES initial_state_override, bool use_initial_state_override) {
     D3DContext& d3d_ctx = D3DContext::Get();

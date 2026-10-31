@@ -119,8 +119,8 @@ class GPU_texture {
     GPU_texture(const GPU_texture&) = delete;
     GPU_texture& operator=(const GPU_texture&) = delete;
 
-    GPU_texture(GPU_texture&&) = default;
-    GPU_texture& operator=(GPU_texture&&) = default;
+    GPU_texture(GPU_texture&& other) noexcept;
+    GPU_texture& operator=(GPU_texture&& other) noexcept;
 
     D3D12_GPU_DESCRIPTOR_HANDLE GetSRVHandle() const;
     D3D12_GPU_DESCRIPTOR_HANDLE GetUAVHandle() const;
