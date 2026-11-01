@@ -40,7 +40,7 @@ class Shadow_mapping_helper {
 
   private:
     void CreateShadowMap(const GPU_model& gpu_model, const ShadowMappingInfo& shadow,
-        const GPU_texture& shadowMap, UINT size, float far_plane);
+        const GPU_texture& shadowMap, int cubemap_side, UINT size, float far_plane);
     void CreateCubemapShadowMap(
         const GPU_model& gpu_model, const ShadowMappingInfo& shadow, GPU_texture& shadowMap, UINT size, float far_plane);
     
@@ -54,7 +54,6 @@ class Shadow_mapping_helper {
     static constexpr const wchar_t* c_ps_file_name = L"PS_Shadows.dxil";
 
     std::vector<DrawableSortingInfo> m_sortedDrawables;  // reusable vector for sorting drawables every frame
-    GPU_texture m_tmpShadowMap; // TODO: remove
     GPU_texture m_depthTexture;
 
     // shadow maps textures

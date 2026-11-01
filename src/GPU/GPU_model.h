@@ -6,6 +6,7 @@
 
 #include <glm/fwd.hpp>
 #include <vector>
+#include <array>
 
 #include "../cpu_texture.h"
 #include "../model_loader.h"
@@ -124,7 +125,7 @@ class GPU_texture {
 
     D3D12_GPU_DESCRIPTOR_HANDLE GetSRVHandle() const;
     D3D12_GPU_DESCRIPTOR_HANDLE GetUAVHandle() const;
-    D3D12_CPU_DESCRIPTOR_HANDLE GetRTVHandle() const;
+    D3D12_CPU_DESCRIPTOR_HANDLE GetRTVHandle(int i = 0) const;
     D3D12_CPU_DESCRIPTOR_HANDLE GetDSVHandle() const;
 
     ComPtr<ID3D12Resource> get_gpu_resource() const;
@@ -161,7 +162,7 @@ class GPU_texture {
     ComPtr<ID3D12Resource> pTexture;
     D3D_Handle_Pair srv_handle{};
     D3D_Handle_Pair uav_handle{};
-    D3D_Handle_Pair rtv_handle{};
+    std::array<D3D_Handle_Pair, 6> rtv_handles{};
     D3D_Handle_Pair dsv_handle{};
     // ComPtr<ID3D12Resource> uploadBuffer;
 };

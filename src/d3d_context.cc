@@ -210,7 +210,7 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
     {
         D3D12_DESCRIPTOR_HEAP_DESC desc = {};
         desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-        desc.NumDescriptors = 8;
+        desc.NumDescriptors = 16;
         desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
         desc.NodeMask = 0;
         if (FAILED(m_d3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_additional_RtvDescHeap)))) return false;

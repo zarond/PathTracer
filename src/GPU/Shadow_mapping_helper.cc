@@ -151,7 +151,7 @@ void Shadow_mapping_helper::resize_shadow_maps(int new_size, const std::vector<G
         bool is_cubemap = false;
         if (type == fastgltf::LightType::Point) {
             is_cubemap = true;
-            flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::Cubemap;
+            flags |= TEXTURE_TRAITS::Cubemap;
         }
         is_cubemap_shadow_map.emplace_back(is_cubemap);
         m_shadowMaps.emplace_back(ShadowSize, ShadowSize, flags, 
@@ -161,10 +161,6 @@ void Shadow_mapping_helper::resize_shadow_maps(int new_size, const std::vector<G
     m_depthTexture.release_gpu_resource();
     TEXTURE_TRAITS flags = TEXTURE_TRAITS::Depth;
     m_depthTexture = GPU_texture{ShadowSize, ShadowSize, flags};
-
-    m_tmpShadowMap.release_gpu_resource();
-    flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::RenderTarget;
-    m_tmpShadowMap = GPU_texture{ShadowSize, ShadowSize, flags};
 
     prepare_shadow_mapping_info_array_buffer();
 }
@@ -258,7 +254,7 @@ void Shadow_mapping_helper::CreateShadowMaps(const GPU_model& gpu_model, UINT si
         if (is_cubemap)
             CreateCubemapShadowMap(gpu_model, info, ShadowMap, size, far_plane);
         else 
-            CreateShadowMap(gpu_model, info, ShadowMap, size, far_plane);
+            CreateShadowMap(gpu_model, info, ShadowMap, 0, size, far_plane);
     }
 
     update_shadow_mapping_info_array_buffer();
@@ -297,7 +293,6 @@ void Shadow_mapping_helper::CreateCubemapShadowMap(
         ShadowMappingInfo side_shadow = shadow;
 
         const CubemapFace& face = cubemap_faces[face_idx];
-        auto& cubemap_side = m_tmpShadowMap;
 
         auto eye = xyz(side_shadow.origin);
         fmat4x4 viewMat = glm::lookAt(eye, eye + face.forward, face.up);
@@ -305,16 +300,12 @@ void Shadow_mapping_helper::CreateCubemapShadowMap(
 
         side_shadow.viewProjection = projectionMat * viewMat;
 
-        CreateShadowMap(gpu_model, side_shadow, cubemap_side, size, far_plane);
-
-        // copy each cubemap face into the cubemap texture
-        GPU_texture::copy_texture_to_cubemap_side(shadowMap, cubemap_side, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, face_idx, d3d_ctx.m_DXRCommandList);
+        CreateShadowMap(gpu_model, side_shadow, shadowMap, face_idx, size, far_plane);
     }
 }
 
-void Shadow_mapping_helper::CreateShadowMap(const GPU_model& gpu_model,
-    const ShadowMappingInfo& shadow, const GPU_texture& shadowMap, UINT size, float far_plane) {
+void Shadow_mapping_helper::CreateShadowMap(const GPU_model& gpu_model, const ShadowMappingInfo& shadow,
+    const GPU_texture& shadowMap, int cubemap_side, UINT size, float far_plane) {
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
 
@@ -356,7 +347,7 @@ void Shadow_mapping_helper::CreateShadowMap(const GPU_model& gpu_model,
     indexBufferView.Format = DXGI_FORMAT_R32_UINT;
     indexBufferView.SizeInBytes = sizeof(uint32_t) * index_count;
 
-    auto rtvHandle = shadowMap.GetRTVHandle();
+    auto rtvHandle = shadowMap.GetRTVHandle(cubemap_side);
     auto depthHandle = m_depthTexture.GetDSVHandle();
 
     const float clearColor[] = {far_plane, far_plane * far_plane, 0.0f, 0.0f};
