@@ -124,7 +124,8 @@ class GPU_texture {
     GPU_texture& operator=(GPU_texture&& other) noexcept;
 
     D3D12_GPU_DESCRIPTOR_HANDLE GetSRVHandle() const;
-    D3D12_GPU_DESCRIPTOR_HANDLE GetUAVHandle() const;
+    D3D12_GPU_DESCRIPTOR_HANDLE GetUAVHandle() const; // If cubemap, get texture array UAV handle
+    D3D12_GPU_DESCRIPTOR_HANDLE GetUAVHandle(int i) const; // If cubemap, get individual cubemap sides UAV handles
     D3D12_CPU_DESCRIPTOR_HANDLE GetRTVHandle(int i = 0) const;
     D3D12_CPU_DESCRIPTOR_HANDLE GetDSVHandle() const;
 
@@ -133,7 +134,7 @@ class GPU_texture {
     TEXTURE_TRAITS texture_options = TEXTURE_TRAITS::None;
     uint8_t mipLevels = 1;
 
-    void GetUAVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle) const;
+    void GetUAVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle, int cubemap_side) const;
     void GetSRVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle) const;
 
     static constexpr uint32_t CalculateMipCount(uint32_t width, uint32_t height) { return std::bit_width(std::max(width, height)); }
@@ -162,6 +163,7 @@ class GPU_texture {
     ComPtr<ID3D12Resource> pTexture;
     D3D_Handle_Pair srv_handle{};
     D3D_Handle_Pair uav_handle{};
+    std::array<D3D_Handle_Pair, 6> uav_handles{};
     std::array<D3D_Handle_Pair, 6> rtv_handles{};
     D3D_Handle_Pair dsv_handle{};
     // ComPtr<ID3D12Resource> uploadBuffer;

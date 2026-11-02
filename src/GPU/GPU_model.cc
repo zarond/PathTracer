@@ -1059,6 +1059,7 @@ GPU_texture::GPU_texture(GPU_texture&& other) noexcept
     : pTexture(std::move(other.pTexture)),
       srv_handle(other.srv_handle),
       uav_handle(other.uav_handle),
+      uav_handles(other.uav_handles),
       rtv_handles(other.rtv_handles),
       dsv_handle(other.dsv_handle),
       format_(other.format_),
@@ -1066,6 +1067,7 @@ GPU_texture::GPU_texture(GPU_texture&& other) noexcept
       mipLevels(other.mipLevels) {
     other.srv_handle = {};
     other.uav_handle = {};
+    other.uav_handles = {};
     other.rtv_handles = {};
     other.dsv_handle = {};
 }
@@ -1077,6 +1079,7 @@ GPU_texture& GPU_texture::operator=(GPU_texture&& other) noexcept {
         pTexture = std::move(other.pTexture);
         srv_handle = other.srv_handle;
         uav_handle = other.uav_handle;
+        uav_handles = other.uav_handles;
         rtv_handles = other.rtv_handles;
         dsv_handle = other.dsv_handle;
         format_ = other.format_;
@@ -1085,6 +1088,7 @@ GPU_texture& GPU_texture::operator=(GPU_texture&& other) noexcept {
 
         other.srv_handle = {};
         other.uav_handle = {};
+        other.uav_handles = {};
         other.rtv_handles = {};
         other.dsv_handle = {};
     }
@@ -1142,6 +1146,9 @@ void GPU_texture::create_texture_resource(
         }
         if (isUAV) {
             d3d_ctx.m_SrvDescHeapAlloc.Alloc(&uav_handle);
+            for (int i = 0; i < (isCubemap ? 6 : 1); ++i) {
+                d3d_ctx.m_SrvDescHeapAlloc.Alloc(&uav_handles[i]);
+            }
             initial_state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         }
         if (use_initial_state_override) {
@@ -1239,6 +1246,17 @@ void GPU_texture::create_texture_resource(
                 };
             }
             d3d_ctx.m_d3dDevice->CreateUnorderedAccessView(pTexture.Get(), nullptr, &uavDesc, uav_handle.cpuHandle);
+            for (int i = 0; i < (isCubemap ? 6 : 1); ++i) {
+                if (isCubemap) {
+                    uavDesc.Texture2DArray = D3D12_TEX2D_ARRAY_UAV{
+                        .MipSlice = 0,
+                        .FirstArraySlice = static_cast<unsigned int>(i),
+                        .ArraySize = 1,
+                        .PlaneSlice = 0,
+                    };
+                }
+                d3d_ctx.m_d3dDevice->CreateUnorderedAccessView(pTexture.Get(), nullptr, &uavDesc, uav_handles[i].cpuHandle);
+            }
         }
     }
 }
@@ -1319,7 +1337,7 @@ void GPU_texture::upload_texture_to_gpu(int width_, int height_, const auto& dat
 
 ComPtr<ID3D12Resource> GPU_texture::get_gpu_resource() const { return pTexture; }
 
-void GPU_texture::GetUAVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle) const {
+void GPU_texture::GetUAVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle, int cubemap_side) const {
     bool isCubemap = ::isCubemap(texture_options);
     bool isUAV = ::isUAV(texture_options);
     if (!isUAV) {
@@ -1327,6 +1345,7 @@ void GPU_texture::GetUAVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR
     }
     bool isSRGB = ::isSRGB(texture_options);
     D3DContext& d3d_ctx = D3DContext::Get();
+
     // Create a unordered access view for the texture
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{
         .Format = isSRGB ? DXGI_FORMAT_R8G8B8A8_UNORM : format_,
@@ -1340,8 +1359,8 @@ void GPU_texture::GetUAVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR
     if (isCubemap) {
         uavDesc.Texture2DArray = D3D12_TEX2D_ARRAY_UAV{
             .MipSlice = mipLevel,
-                .FirstArraySlice = 0,
-                .ArraySize = 6,
+            .FirstArraySlice = (cubemap_side >= 0)? static_cast<unsigned int>(cubemap_side) : 0,
+            .ArraySize = (cubemap_side >= 0) ? 1u : 6u,
             .PlaneSlice = 0,
         };
     }
@@ -1390,6 +1409,9 @@ void GPU_texture::release_gpu_resource() {
         }
         if (isUAV(texture_options)) {
             d3d_ctx.m_SrvDescHeapAlloc.Free(uav_handle);
+            for (int i = 0; i < (is_Cubemap ? 6 : 1); ++i) {
+                d3d_ctx.m_SrvDescHeapAlloc.Free(uav_handles[i]);
+            }
         }
 
         pTexture.Reset();
@@ -1494,6 +1516,8 @@ void GPU_texture::copy_texture_to_cubemap_side(GPU_texture& dst, GPU_texture& sr
 D3D12_GPU_DESCRIPTOR_HANDLE GPU_texture::GetSRVHandle() const { return srv_handle.gpuHandle; }
 
 D3D12_GPU_DESCRIPTOR_HANDLE GPU_texture::GetUAVHandle() const { return uav_handle.gpuHandle; }
+
+D3D12_GPU_DESCRIPTOR_HANDLE GPU_texture::GetUAVHandle(int i) const { return uav_handles[i % 6].gpuHandle; }
 
 D3D12_CPU_DESCRIPTOR_HANDLE GPU_texture::GetRTVHandle(int i) const { return rtv_handles[i % 6].cpuHandle; }
 

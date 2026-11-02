@@ -17,6 +17,7 @@
 #include "../d3d_context.h"
 #include "Raster_pipeline.h"
 #include "Cubemaps_helper.h"
+#include "Mipmaps_helper.h"
 
 namespace app {
 
@@ -229,15 +230,11 @@ GPU_texture GPURenderer::render_cubemap(const UINT cubemap_size, bool need_mips,
     const auto saved_render_state = render_state_.load();
     const auto saved_render_settings = render_settings_;
 
-    // Create cubemap textures (6 faces)
-    std::array<GPU_texture, 6> cubemap_textures;
-    auto flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
+    auto cubemap_flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::Cubemap | TEXTURE_TRAITS::UAV;
     if (need_mips) {
-        flags |= TEXTURE_TRAITS::AllocateMips;
+        cubemap_flags |= TEXTURE_TRAITS::AllocateMips;
     }
-    for (int face_idx = 0; face_idx < 6; ++face_idx) {
-        cubemap_textures[face_idx] = GPU_texture{cubemap_size, cubemap_size, flags };
-    }
+    GPU_texture cubemap{cubemap_size, cubemap_size, cubemap_flags};
 
     // DirectX 12 cubemap face order and their camera directions
     // Face order: +X, -X, +Y, -Y, +Z, -Z
@@ -276,7 +273,6 @@ GPU_texture GPURenderer::render_cubemap(const UINT cubemap_size, bool need_mips,
         d3d_ctx.m_DXRCommandList->SetDescriptorHeaps(1, desc_heap);
 
         const CubemapFace& face = cubemap_faces[face_idx];
-        auto& cubemap_side = cubemap_textures[face_idx];
 
         // Set up camera for this face
         const auto camera = fastgltf::Camera::Perspective{1.0f, glm ::radians(90.0f), 1000.0f, 0.1f};
@@ -288,17 +284,12 @@ GPU_texture GPURenderer::render_cubemap(const UINT cubemap_size, bool need_mips,
             jitter, ++frameID_, 1, 1.0f);
 
         // Render to this cubemap face
-        pipeline_->DoRender(*gpu_model_, *gpu_envmap_, cubemap_side, cubemap_size, cubemap_size);
-
-        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(cubemap_side.get_gpu_resource().Get(),
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-        d3d_ctx.m_DXRCommandList->ResourceBarrier(1, &barrier);
-
-        // Dispatch and wait for this face to complete before rendering the next one
-        d3d_ctx.DispatchDXRCommandList();
-        d3d_ctx.WaitForPendingDXR();
+        pipeline_->DoRender(*gpu_model_, *gpu_envmap_, cubemap, cubemap_size, cubemap_size, face_idx);
 
         progress_ = (face_idx + 1) / 6.0f;
+
+        d3d_ctx.DispatchDXRCommandList();
+        d3d_ctx.WaitForPendingDXR();
     }
 
     // Restore original state
@@ -310,28 +301,24 @@ GPU_texture GPURenderer::render_cubemap(const UINT cubemap_size, bool need_mips,
     render_settings_ = saved_render_settings;
     progress_ = 0.0f;
 
-    auto cubemap_flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::Cubemap;
-    if (need_mips) {
-        cubemap_flags |= TEXTURE_TRAITS::AllocateMips;
-    }
-    GPU_texture cubemap{cubemap_size, cubemap_size, cubemap_flags};
+    d3d_ctx.InitDXRCommandList();
+    d3d_ctx.m_DXRCommandList->SetDescriptorHeaps(1, desc_heap);
+
     // calculate mip maps for the cubemap texture
     if (need_mips) {
-        for (int face_idx = 0; face_idx < 6; ++face_idx) {
-            auto& cubemap_side = cubemap_textures[face_idx];
-            Raster_pipeline::ComputeMipMaps(cubemap_side);
-        }    
-    }
-    // copy each cubemap face into the cubemap texture
-    d3d_ctx.InitDXRCommandList();
-    ID3D12DescriptorHeap* copy_desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};
-    d3d_ctx.m_DXRCommandList->SetDescriptorHeaps(1, copy_desc_heap);
+        static Mipmaps_helper mip_helper{};
+        mip_helper.Init();
 
-    for (int face_idx = 0; face_idx < 6; ++face_idx) {
-        auto& cubemap_side = cubemap_textures[face_idx];
-        GPU_texture::copy_texture_to_cubemap_side(cubemap, cubemap_side, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, face_idx, d3d_ctx.m_DXRCommandList);
+        const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(cubemap.get_gpu_resource().Get());
+        d3d_ctx.m_DXRCommandList->ResourceBarrier(1, &barrier);
+
+        mip_helper.CreateMips(cubemap);
     }
+
+    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        cubemap.get_gpu_resource().Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    d3d_ctx.m_DXRCommandList->ResourceBarrier(1, &barrier);
+
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();
 

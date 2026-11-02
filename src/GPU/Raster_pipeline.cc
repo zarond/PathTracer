@@ -341,7 +341,9 @@ void Raster_pipeline::CreateConstantBuffers() {
     ThrowIfFailed(m_GISettingsConstants->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedGIData)));
 }
 
-void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer, UINT width, UINT height) {
+void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer, 
+    UINT width, UINT height, int cubemap_side) 
+{
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
 
@@ -534,7 +536,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     if (DrawAOMode) {
         GPU_texture::copy_texture(m_renderTarget, m_AOTexture, D3D12_RESOURCE_STATE_RENDER_TARGET,
                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS, commandList);
-        copy_render_target_to_framebuffer(framebuffer);
+        copy_render_target_to_framebuffer(framebuffer, cubemap_side);
         // set the previous frame VP matrix for next frame
         m_rasterCB.viewProjection_prev = m_rasterCB.viewProjection;
         return;
@@ -658,15 +660,15 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     }
 
     if (DrawSSROnly) {
-        copy_ssr_to_framebuffer(framebuffer);
+        copy_ssr_to_framebuffer(framebuffer, cubemap_side);
     } else {
-        copy_render_target_to_framebuffer(framebuffer);
+        copy_render_target_to_framebuffer(framebuffer, cubemap_side);
     }
     // set the previous frame VP matrix for next frame
     m_rasterCB.viewProjection_prev = m_rasterCB.viewProjection;
 }
 
-void Raster_pipeline::copy_render_target_to_framebuffer(const GPU_texture& framebuffer) {
+void Raster_pipeline::copy_render_target_to_framebuffer(const GPU_texture& framebuffer, int cubemap_side) {
     static Copy_helper copy_helper{};
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
@@ -675,16 +677,16 @@ void Raster_pipeline::copy_render_target_to_framebuffer(const GPU_texture& frame
         D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     commandList->ResourceBarrier(1, &barrier);
 
-    copy_helper.Copy(framebuffer, m_renderTarget);
+    copy_helper.Copy(framebuffer, m_renderTarget, cubemap_side);
 
     barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTarget.get_gpu_resource().Get(),
         D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
     commandList->ResourceBarrier(1, &barrier);
 }
 
-void Raster_pipeline::copy_ssr_to_framebuffer(const GPU_texture& framebuffer) {
+void Raster_pipeline::copy_ssr_to_framebuffer(const GPU_texture& framebuffer, int cubemap_side) {
     static Copy_helper copy_helper{};
-    copy_helper.Copy(framebuffer, m_SSR);
+    copy_helper.Copy(framebuffer, m_SSR, cubemap_side);
 }
 
 void Raster_pipeline::resize_render_targets(int new_width, int new_height) {

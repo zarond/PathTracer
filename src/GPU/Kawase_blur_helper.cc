@@ -65,7 +65,7 @@ void Kawase_blur_helper::CreateBlurMips(GPU_texture& uav_texture) {  // works on
     auto iter_srv_cpuHandle = cpuHandle;
     iter_srv_cpuHandle.Offset(MipsLimit, HeapHandleIncrement);
     for (int mipLevel = 0; mipLevel < NumMips; ++mipLevel) {
-        uav_texture.GetUAVHandleForMipLevel(mipLevel, iter_uav_cpuHandle);
+        uav_texture.GetUAVHandleForMipLevel(mipLevel, iter_uav_cpuHandle, 0);
         uav_texture.GetSRVHandleForMipLevel(mipLevel, iter_srv_cpuHandle);
         iter_uav_cpuHandle.Offset(1, HeapHandleIncrement);
         iter_srv_cpuHandle.Offset(1, HeapHandleIncrement);

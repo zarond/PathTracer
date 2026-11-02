@@ -101,7 +101,8 @@ class Raster_pipeline : public IRender_pipeline {
         const fmat4x4& ViewMatrix, const fmat4x4& ProjectionMatrix, fvec2 subpixelOffset, unsigned int frameID, int iteration,
         float invIterationCount) override;
 
-    void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer, UINT width, UINT height) override;
+    void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer, 
+        UINT width, UINT height, int cubemap_side = 0) override;
 
     void OnModelLoad(GPU_model& gpu_model) override;
 
@@ -127,8 +128,8 @@ class Raster_pipeline : public IRender_pipeline {
     void ComputeDFGLut();
 
     void resize_render_targets(int new_width, int new_height);
-    void copy_render_target_to_framebuffer(const GPU_texture& framebuffer);
-    void copy_ssr_to_framebuffer(const GPU_texture& framebuffer);
+    void copy_render_target_to_framebuffer(const GPU_texture& framebuffer, int cubemap_side = 0);
+    void copy_ssr_to_framebuffer(const GPU_texture& framebuffer, int cubemap_side = 0);
 
     static constexpr const wchar_t* c_vs_file_name = L"VS_Main.dxil";
     static constexpr const wchar_t* c_ps_file_name = L"PS_Main.dxil";

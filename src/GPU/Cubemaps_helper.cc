@@ -101,13 +101,15 @@ void EnvCube_helper::CreateSpecularEnvmapCube(const GPU_texture& envmap, bool is
         commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::EnvmapTex, envmap.GetSRVHandle());
     }
 
+    ReleaseTemporaryGPUResources();
+
     m_mip_uav_handles.resize(SpecularMips);
 
     for (int mipLevel = 0; mipLevel < SpecularMips; ++mipLevel) {
         D3D_Handle_Pair handles{};
         d3d_ctx.m_SrvDescHeapAlloc.Alloc(&handles);
 
-        Specular_lut.GetUAVHandleForMipLevel(mipLevel, handles.cpuHandle);
+        Specular_lut.GetUAVHandleForMipLevel(mipLevel, handles.cpuHandle, -1);
 
         m_mip_uav_handles[mipLevel] = handles;
     }
