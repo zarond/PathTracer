@@ -341,14 +341,15 @@ void Raster_pipeline::CreateConstantBuffers() {
     ThrowIfFailed(m_GISettingsConstants->Map(0, nullptr, reinterpret_cast<void**>(&m_mappedGIData)));
 }
 
+void Raster_pipeline::DoShadowPass(const GPU_model& gpu_model) {
+    m_shadow_mapping_helper.CreateShadowMaps(gpu_model, m_shadow_map_size);
+}
+
 void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer, 
     UINT width, UINT height, int cubemap_side) 
 {
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
-
-    // Shadow mapping passes for each light in the scene
-    m_shadow_mapping_helper.CreateShadowMaps(gpu_model, m_shadow_map_size);
 
     m_rasterCB.RenderFrameMips = std::min(GPU_texture::CalculateMipCount(width, height), static_cast<unsigned int>(Kawase_blur_helper::BlurIterations));
     m_rasterCB.FrameSize = {width, height};

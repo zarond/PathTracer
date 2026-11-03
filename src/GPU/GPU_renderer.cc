@@ -140,12 +140,11 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
     ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};
     d3d_ctx.m_DXRCommandList->SetDescriptorHeaps(1, desc_heap);
 
+    pipeline_->DoShadowPass(*gpu_model_);
     pipeline_->DoRender(*gpu_model_, *gpu_envmap_, framebuffer.get_texture_resource(), framebuffer.width(), framebuffer.height());
 
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();
-
-    std::cout << "texture slots left: " << d3d_ctx.m_SrvDescHeapAlloc.GetFreeIndices() << '\n';
 
     if (render_state_ == RenderingState::Rendering) {
         progress_ = 1.0f;
@@ -324,9 +323,20 @@ GPU_texture GPURenderer::render_cubemap(const UINT cubemap_size, bool need_mips,
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();
 
-    std::cout << "texture slots left: " << d3d_ctx.m_SrvDescHeapAlloc.GetFreeIndices() << '\n';
-
     return cubemap;
+}
+
+void GPURenderer::render_shadow_maps() {
+    D3DContext& d3d_ctx = D3DContext::Get();
+    d3d_ctx.InitDXRCommandList();
+
+    ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};
+    d3d_ctx.m_DXRCommandList->SetDescriptorHeaps(1, desc_heap);
+
+    pipeline_->DoShadowPass(*gpu_model_);
+
+    d3d_ctx.DispatchDXRCommandList();
+    d3d_ctx.WaitForPendingDXR();
 }
 
 void GPURenderer::compute_lighting_probe() {
@@ -340,6 +350,7 @@ void GPURenderer::compute_lighting_probe() {
         return;
     }
 
+    render_shadow_maps();
     GPU_texture cubemap = render_cubemap(EnvCube_helper::Specular_size, true, origin_);
 
     GPU_texture diffuse_probe;
@@ -385,6 +396,8 @@ void GPURenderer::compute_GI(BBox bbox, int longest_dimension_N, bool expand_bbo
         bbox.max += delta * 0.5f * fvec3{expand_directions};
         bbox_size = bbox.max - bbox.min;
     }
+
+    render_shadow_maps();
 
     std::vector<SHCoefficients> sh_probes;
     sh_probes.reserve(grid_dim.x * grid_dim.y * grid_dim.z);

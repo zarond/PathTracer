@@ -89,6 +89,7 @@ class GPURenderer : public IRenderer {
     void OnModelLoad();
 
     GPU_texture render_cubemap(const UINT cubemap_size, bool need_mips, fvec3 origin);
+    void render_shadow_maps();
 
     unsigned int frameID_ = 0;
 };

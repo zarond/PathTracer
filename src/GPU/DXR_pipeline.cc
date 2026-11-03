@@ -446,6 +446,8 @@ void DXR_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envma
     commandList->ResourceBarrier(1, &toSRV);
 }
 
+void DXR_pipeline::DoShadowPass(const GPU_model& gpu_model) {}
+
 // no actions required for a model in this raytracing pipeline, because it doesn't use mips
 void DXR_pipeline::OnModelLoad(GPU_model& gpu_model) {} 
 
