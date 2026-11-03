@@ -12,7 +12,7 @@ using Microsoft::WRL::ComPtr;
 
 class Mipmaps_helper {
   public:
-    Mipmaps_helper();
+    Mipmaps_helper(bool can_blur_cubemaps = false);
     ~Mipmaps_helper();
 
     void Init(); // must call this once before use, contains GPU command list instructions
@@ -46,6 +46,8 @@ class Mipmaps_helper {
     ComPtr<ID3D12Resource2> zero_uploadBuffer;
 
     constexpr static int MipsLimit = 16;
+
+    bool CanBlurCubemaps = false;
 
     void release_gpu_resources();
 };

@@ -147,7 +147,8 @@ void Shadow_mapping_helper::resize_shadow_maps(int new_size, const std::vector<G
     for (int i = 0; i < new_lights_count; ++i) {
         const auto& light = lights[i];
         fastgltf::LightType type = static_cast<fastgltf::LightType>(light.direction_type.w);
-        TEXTURE_TRAITS flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::RenderTarget;
+        TEXTURE_TRAITS flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::RenderTarget 
+            | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;
         bool is_cubemap = false;
         if (type == fastgltf::LightType::Point) {
             is_cubemap = true;
@@ -155,7 +156,7 @@ void Shadow_mapping_helper::resize_shadow_maps(int new_size, const std::vector<G
         }
         is_cubemap_shadow_map.emplace_back(is_cubemap);
         m_shadowMaps.emplace_back(ShadowSize, ShadowSize, flags, 
-            DXGI_FORMAT_R32G32B32A32_FLOAT, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+            DXGI_FORMAT_R32G32B32A32_FLOAT, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, true);
     }
 
     m_depthTexture.release_gpu_resource();
@@ -240,6 +241,9 @@ void Shadow_mapping_helper::CreateShadowMaps(const GPU_model& gpu_model, UINT si
     const auto& lights = gpu_model.get_lights_cpu_array();
     resize_shadow_maps(size, lights);
 
+    D3DContext& d3d_ctx = D3DContext::Get();
+    auto commandList = d3d_ctx.m_DXRCommandList;
+
     int shadow_map_count = static_cast<int>(m_shadowMaps.size());
     int light_count = gpu_model.get_lights_count();
 
@@ -247,6 +251,10 @@ void Shadow_mapping_helper::CreateShadowMaps(const GPU_model& gpu_model, UINT si
         const auto& Light = lights[i];
         auto& ShadowMap = m_shadowMaps[i];
         bool is_cubemap = is_cubemap_shadow_map[i];
+
+        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+            ShadowMap.get_gpu_resource().Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        commandList->ResourceBarrier(1, &barrier);
         
         auto& info = m_shadowMappingInfo[i];
         float far_plane = 0.0f;
@@ -256,6 +264,25 @@ void Shadow_mapping_helper::CreateShadowMaps(const GPU_model& gpu_model, UINT si
         else 
             CreateShadowMap(gpu_model, info, ShadowMap, 0, size, far_plane);
     }
+
+    for (int i = 0; i < shadow_map_count && i < light_count; ++i) {
+        auto& ShadowMap = m_shadowMaps[i];
+
+        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+            ShadowMap.get_gpu_resource().Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+        commandList->ResourceBarrier(1, &barrier);
+
+        if (i < MaxSoftShadowMaps) {
+            m_blur_helper.CreateBlurMips(ShadowMap);
+        }
+
+        barrier = CD3DX12_RESOURCE_BARRIER::Transition(ShadowMap.get_gpu_resource().Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        commandList->ResourceBarrier(1, &barrier);
+    }
+
+    ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};  // todo: don't replace heap during blur pass?
+    commandList->SetDescriptorHeaps(1, desc_heap);
 
     update_shadow_mapping_info_array_buffer();
 }
@@ -308,10 +335,6 @@ void Shadow_mapping_helper::CreateShadowMap(const GPU_model& gpu_model, const Sh
     const GPU_texture& shadowMap, int cubemap_side, UINT size, float far_plane) {
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
-
-    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        shadowMap.get_gpu_resource().Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
-    commandList->ResourceBarrier(1, &barrier);
 
     const auto m_viewport = CD3DX12_VIEWPORT{0.0f, 0.0f, static_cast<float>(ShadowSize), static_cast<float>(ShadowSize)};
     const auto m_scissorRect = CD3DX12_RECT{0, 0, static_cast<LONG>(ShadowSize), static_cast<LONG>(ShadowSize)};
@@ -408,10 +431,6 @@ void Shadow_mapping_helper::CreateShadowMap(const GPU_model& gpu_model, const Sh
     for (const auto& element : transmissive_objects) {
         draw_object(element, RenderShaders::Shadow);
     }
-
-    barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        shadowMap.get_gpu_resource().Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-    commandList->ResourceBarrier(1, &barrier);
 }
 
 void Shadow_mapping_helper::CreateRootSignature() {

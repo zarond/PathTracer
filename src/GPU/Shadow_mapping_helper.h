@@ -9,6 +9,7 @@
 
 #include "GPU_model.h"
 #include "PSO_helper.h"
+#include "Kawase_blur_helper.h"
 #include "Drawables.h"
 
 namespace app {
@@ -35,6 +36,8 @@ class Shadow_mapping_helper {
     static void Reload();
 
     static constexpr unsigned int ShadowMapSizeDefault = 1024;
+    static constexpr int MaxBlurIterations = 2;
+    static constexpr int MaxSoftShadowMaps = 8;
 
     float BiasMultiplier = 0.0f;
 
@@ -67,6 +70,8 @@ class Shadow_mapping_helper {
 
     UINT ShadowSize = 0;
     std::vector<bool> is_cubemap_shadow_map;
+
+    Kawase_blur_helper m_blur_helper{ MaxSoftShadowMaps, MaxBlurIterations + 1, true};
 
     void resize_shadow_maps(int new_size, const std::vector<GPU_Light>& lights);
 

@@ -12,7 +12,7 @@ using Microsoft::WRL::ComPtr;
 
 class Kawase_blur_helper {
   public:
-    Kawase_blur_helper();
+    Kawase_blur_helper(int max_concurrent_calls = 1, int mips_limit = 16, bool can_blur_cubemaps = false);
     ~Kawase_blur_helper();
 
     void CreateBlurMips(GPU_texture& uav_texture);
@@ -40,7 +40,12 @@ class Kawase_blur_helper {
     D3D12_GPU_DESCRIPTOR_HANDLE HeapStartGpu = {};
     UINT HeapHandleIncrement = 0;
 
-    constexpr static int MipsLimit = 16;
+    int m_next_call_slot = 0;  // rotating index of the slot range used by the next blur call
+    
+    // Max number of CreateBlurMips calls that may be recorded into one command list per single helper instance
+    int MaxConcurrentCalls = 8;
+    int MipsLimit = 16;
+    bool CanBlurCubemaps = false;
 
     void release_gpu_resources();
 };

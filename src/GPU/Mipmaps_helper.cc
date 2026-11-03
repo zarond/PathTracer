@@ -30,7 +30,7 @@ ComPtr<ID3D12RootSignature> Mipmaps_helper::m_rootSignature{};
 ComPtr<ID3D12PipelineState> Mipmaps_helper::m_PipelineState{};
 ComPtr<ID3D12PipelineState> Mipmaps_helper::m_HiZ_PipelineState{};
 
-Mipmaps_helper::Mipmaps_helper() {
+Mipmaps_helper::Mipmaps_helper(bool can_blur_cubemaps) : CanBlurCubemaps(can_blur_cubemaps) {
     if (!m_rootSignature || !m_PipelineState || !m_HiZ_PipelineState) {
         Reload();
     }
@@ -168,7 +168,7 @@ void Mipmaps_helper::CreateDescriptorHeap() {
 
     D3D12_DESCRIPTOR_HEAP_DESC desc = {};
     desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    desc.NumDescriptors = MipsLimit * 6;
+    desc.NumDescriptors = MipsLimit * (CanBlurCubemaps ? 6 : 1);
     desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     ThrowIfFailed(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_SrvDescHeap)));
     HeapStartCpu = m_SrvDescHeap->GetCPUDescriptorHandleForHeapStart();

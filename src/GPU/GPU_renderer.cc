@@ -145,6 +145,8 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();
 
+    std::cout << "texture slots left: " << d3d_ctx.m_SrvDescHeapAlloc.GetFreeIndices() << '\n';
+
     if (render_state_ == RenderingState::Rendering) {
         progress_ = 1.0f;
     }
@@ -306,7 +308,7 @@ GPU_texture GPURenderer::render_cubemap(const UINT cubemap_size, bool need_mips,
 
     // calculate mip maps for the cubemap texture
     if (need_mips) {
-        static Mipmaps_helper mip_helper{};
+        static Mipmaps_helper mip_helper{true};
         mip_helper.Init();
 
         const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(cubemap.get_gpu_resource().Get());
@@ -321,6 +323,8 @@ GPU_texture GPURenderer::render_cubemap(const UINT cubemap_size, bool need_mips,
 
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();
+
+    std::cout << "texture slots left: " << d3d_ctx.m_SrvDescHeapAlloc.GetFreeIndices() << '\n';
 
     return cubemap;
 }

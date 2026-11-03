@@ -47,6 +47,7 @@ class DescriptorHeapAllocator {
     void Free(D3D12_CPU_DESCRIPTOR_HANDLE cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE gpu_desc_handle);
     void Free(D3D_Handle_Pair desc_handle);
     int GetIndex(D3D12_GPU_DESCRIPTOR_HANDLE gpu_desc_handle) const;
+    int GetFreeIndices() const;
 };
 
 // Data

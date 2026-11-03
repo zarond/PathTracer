@@ -1367,9 +1367,8 @@ void GPU_texture::GetUAVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR
     d3d_ctx.m_d3dDevice->CreateUnorderedAccessView(pTexture.Get(), nullptr, &uavDesc, Handle);
 }
 
-void GPU_texture::GetSRVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle) const {
+void GPU_texture::GetSRVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle, int cubemap_side) const {
     bool isCubemap = ::isCubemap(texture_options);
-    bool isSRGB = ::isSRGB(texture_options);
     D3DContext& d3d_ctx = D3DContext::Get();
 
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{
@@ -1382,7 +1381,16 @@ void GPU_texture::GetSRVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR
                 .MipLevels = 1,
             },
     };
-    if (isCubemap) {
+    if (isCubemap && cubemap_side >= 0) {
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+        srvDesc.Texture2DArray = D3D12_TEX2D_ARRAY_SRV{
+            .MostDetailedMip = mipLevel,
+            .MipLevels = 1,
+            .FirstArraySlice = static_cast<unsigned int>(cubemap_side),
+            .ArraySize = 1,
+            .PlaneSlice = 0,
+        };
+    } else if (isCubemap) {
         srvDesc.TextureCube = D3D12_TEXCUBE_SRV{
             .MostDetailedMip = mipLevel,
             .MipLevels = 1,
