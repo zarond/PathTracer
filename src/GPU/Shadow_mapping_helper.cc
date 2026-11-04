@@ -84,7 +84,27 @@ void calculate_shadow_mapping_info(const GPU_Light& light, const BBox& sceneBBox
 
     out_info.viewProjection = projectionMat * viewMat;
     out_info.shadowMapTextureIndex_type = glm::ivec4(find_texture_id(ShadowMap), type, 0, 0);
-    out_info.texel_size_padding = fvec2{texel_size * BiasMultiplier, 0};
+    out_info.texel_size_inv_far_plane = fvec2{texel_size * BiasMultiplier, 1.0f / out_far_plane};
+}
+
+// From paper "Moment Shadow Mapping" by
+// Christoph Peters - University of Bonn, Germany
+// Reinhard Klein - University of Bonn, Germany
+fvec4 Get4MomentsOptimized(float FragmentDepth) {
+    float Square = FragmentDepth * FragmentDepth;
+    fvec4 Moments = fvec4(FragmentDepth, Square, Square * FragmentDepth, Square * Square);
+
+    const glm::mat4 transformMatrix(
+        -2.07224649f,   32.23703778f,       -68.571074599f,     39.3703274134f,
+        13.7948857237f, -59.4683975703f,    82.0359750338f,     -35.364903257f,
+        0.105877704f,   -1.9077466311f,     9.3496555107f,      -6.6543490743f,
+        9.7924062118f,  -33.7652110555f,    47.9456096605f,     -23.9728048165f
+    );
+
+    glm::vec4 out4MomentsOptimized = Moments * transformMatrix;
+    out4MomentsOptimized[0] += 0.035955884801f;
+
+    return out4MomentsOptimized;
 }
 
 }
@@ -98,6 +118,8 @@ struct ShadowConstantBuffer {
     fvec4 lightDirection;
     fvec4 lightPosition;
     int isPointLight;
+    float inv_far_plane;
+    float texel_size_inv;
 };
 
 struct ShadowPerDrawData {
@@ -112,6 +134,7 @@ Shadow_mapping_helper::Shadow_mapping_helper() {
     if (!m_rootSignature || !m_PSO_helper.is_initialized()) {
         Reload();
     }
+    shadowMapClearColor = Get4MomentsOptimized(1.0f);
 }
 
 void Shadow_mapping_helper::Reload() {
@@ -259,6 +282,8 @@ void Shadow_mapping_helper::CreateShadowMaps(const GPU_model& gpu_model, UINT si
         auto& info = m_shadowMappingInfo[i];
         float far_plane = 0.0f;
         calculate_shadow_mapping_info(Light, gpu_model.scene_bounds, ShadowMap, ShadowSize, BiasMultiplier, info, far_plane);
+        info.maxMip_padding = fvec4(Softness, 0.0f, 0.0f, 0.0f);
+
         if (is_cubemap)
             CreateCubemapShadowMap(gpu_model, info, ShadowMap, size, far_plane);
         else 
@@ -348,6 +373,8 @@ void Shadow_mapping_helper::CreateShadowMap(const GPU_model& gpu_model, const Sh
         .lightDirection = shadow.direction,
         .lightPosition = shadow.origin,
         .isPointLight = (shadow.shadowMapTextureIndex_type.y != int(fastgltf::LightType::Directional)),
+        .inv_far_plane = 1.0f / far_plane,
+        .texel_size_inv = 1.0f / static_cast<float>(ShadowSize)
     };
     constexpr int ShadowSceneDataSizeInInt = sizeof(ShadowConstantBuffer) / 4;
     commandList->SetGraphicsRoot32BitConstants(
@@ -373,7 +400,7 @@ void Shadow_mapping_helper::CreateShadowMap(const GPU_model& gpu_model, const Sh
     auto rtvHandle = shadowMap.GetRTVHandle(cubemap_side);
     auto depthHandle = m_depthTexture.GetDSVHandle();
 
-    const float clearColor[] = {far_plane, far_plane * far_plane, 0.0f, 0.0f};
+    const float clearColor[] = {shadowMapClearColor.x, shadowMapClearColor.y, shadowMapClearColor.z, shadowMapClearColor.w};
 
     commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &depthHandle);
     commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);

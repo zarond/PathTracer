@@ -5,8 +5,6 @@
 #include <directx/d3dx12.h>
 #include <wrl.h>
 
-#include "../acceleration_structure.h"
-
 #include "GPU_model.h"
 #include "PSO_helper.h"
 #include "Kawase_blur_helper.h"
@@ -20,7 +18,8 @@ struct ShadowMappingInfo {
     fvec4 origin;
     fvec4 direction;
     glm::ivec2 shadowMapTextureIndex_type;
-    fvec2 texel_size_padding;
+    fvec2 texel_size_inv_far_plane;
+    fvec4 maxMip_padding;
 };
 
 class Shadow_mapping_helper {
@@ -36,10 +35,11 @@ class Shadow_mapping_helper {
     static void Reload();
 
     static constexpr unsigned int ShadowMapSizeDefault = 1024;
-    static constexpr int MaxBlurIterations = 2;
+    static constexpr int MaxBlurIterations = 3;
     static constexpr int MaxSoftShadowMaps = 8;
 
     float BiasMultiplier = 0.0f;
+    float Softness = 0.0f;
 
   private:
     void CreateShadowMap(const GPU_model& gpu_model, const ShadowMappingInfo& shadow,
@@ -70,6 +70,7 @@ class Shadow_mapping_helper {
 
     UINT ShadowSize = 0;
     std::vector<bool> is_cubemap_shadow_map;
+    fvec4 shadowMapClearColor{};
 
     Kawase_blur_helper m_blur_helper{ MaxSoftShadowMaps, MaxBlurIterations + 1, true};
 

@@ -43,6 +43,7 @@ struct RenderSettings {
     float specular_aa_variance = 0.15f;
     float specular_aa_threshold = 0.2f;
     float shadow_bias_multiplier = 0.0f;
+    float shadow_softness = 0.0f;
     unsigned int shadow_map_size = 1024;  // Power of 2
 
     RenderSettings() = default;

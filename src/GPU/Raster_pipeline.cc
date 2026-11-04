@@ -139,6 +139,7 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_rasterCB.specular_aa_variance = render_settings.specular_aa_variance;
     m_rasterCB.specular_aa_threshold = render_settings.specular_aa_threshold;
     m_shadow_mapping_helper.BiasMultiplier = render_settings.shadow_bias_multiplier;
+    m_shadow_mapping_helper.Softness = render_settings.shadow_softness;
     m_shadow_map_size = render_settings.shadow_map_size;
     m_GTAO_helper.AODistance = render_settings.AODistance;
     m_GTAO_helper.DenoiseEnabled = render_settings.AODenoiseEnabled;
@@ -217,7 +218,7 @@ void Raster_pipeline::CreateRootSignatures() {
     dfg_sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
     D3D12_STATIC_SAMPLER_DESC shadow_sampler = {};
-    shadow_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+    shadow_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
     shadow_sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     shadow_sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     shadow_sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;

@@ -1,10 +1,13 @@
 #include "Common.hlsl"
+#include "MomentShadowMapping.hlsl"
 
 struct ShadowConstantBuffer {
     float4x4 viewProjection;
     float4 lightDirection;
     float4 lightPosition;
     int isPointLight;
+    float inv_far_plane;
+    float texel_size_inv;
 };
 
 struct ShadowPerDrawData {
@@ -63,7 +66,9 @@ float4 PS_Shadows(SHInput input) : SV_TARGET {
     } else {
         D = dot(L, g_shadowCB.lightDirection.xyz);
     }
-    D += fwidth( D ); // main slope-based bias
+    float linearDepth01 = D * g_shadowCB.inv_far_plane;
+    const float maxBias = g_shadowCB.texel_size_inv;
+    linearDepth01 += min(fwidth( linearDepth01 ), maxBias); // main slope-based bias
     if (alpha < mat.alpha_cutoff) discard;  // alpha-test in the same shader for simplicity, but it disables early-z optimisation
-    return float4(D, D * D, 0, 0);
+    return Get4MomentsOptimized(linearDepth01);
 }

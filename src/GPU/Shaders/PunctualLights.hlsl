@@ -1,5 +1,6 @@
 #include "Common.hlsl"
 #include "BRDF.hlsl"
+#include "MomentShadowMapping.hlsl"
 
 enum LightType { 
     Directional = 0,
@@ -38,15 +39,18 @@ float compute_shadowing(const ShadowMappingInfo shadow_info, const float3 pos, c
     } else {
         vec_length = length(vec);
     }
+    float linearDepth01 = vec_length * shadow_info.texel_size_inv_far_plane.y;
         
-    float bias = shadow_info.texel_size_padding.x; // additional constant bias
+    float bias = shadow_info.texel_size_inv_far_plane.x; // additional constant bias
+    bias *= shadow_info.texel_size_inv_far_plane.y;
+    const float moments_bias = 0.00005f;
+    const float mipLevel = shadow_info.maxMip_padding.x;
         
     if (light_type == LightType::Point) {
          bias *= vec_length;
          vec.z *= -1;
-         float4 shadow_sample = shadowTexCube.SampleLevel(Sampler, vec, 0);
-         if (vec_length > shadow_sample.x + bias) return 0.0f;
-         return 1.0f;
+         float4 shadow_sample = SampleOptimized4MomentShadowMap(Sampler, shadowTexCube, vec, mipLevel);
+         return 1.0f - GetHamburger4MSMShadowIntensity(shadow_sample, linearDepth01, bias, moments_bias);
     }
     
     // else directional or spot light
@@ -65,10 +69,8 @@ float compute_shadowing(const ShadowMappingInfo shadow_info, const float3 pos, c
     ls_ndc /= ls_ndc.w;
     float2 uv = ls_ndc.xy * float2(0.5f, -0.5f) + 0.5f;
     
-    float4 shadow_sample = shadowTex.SampleLevel(Sampler, uv, 0);
-        
-    if (vec_length > shadow_sample.x + bias) return 0.0f;
-    return 1.0f;
+    float4 shadow_sample = SampleOptimized4MomentShadowMap(Sampler, shadowTex, uv, mipLevel);
+    return 1.0f - GetHamburger4MSMShadowIntensity(shadow_sample, linearDepth01, bias, moments_bias);
 }
 
 float3 lambertian_BRDF(float3 diffuseColor) {
