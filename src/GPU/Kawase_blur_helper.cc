@@ -139,6 +139,94 @@ void Kawase_blur_helper::CreateBlurMips(GPU_texture& uav_texture) {  // works on
     commandList->ResourceBarrier(1, &barrier);
 }
 
+// Upsamples every mip one step: mip 1 -> mip 0, mip 2 -> mip 1, mip 3 -> mip 2, etc.
+void Kawase_blur_helper::CreateUpsampleMips(GPU_texture& uav_texture) {
+    const auto& resource = uav_texture.get_gpu_resource();
+    const auto description = resource->GetDesc();
+    const auto width = description.Width;
+    const auto height = description.Height;
+
+    int NumMips = GPU_texture::CalculateMipCount(width, height);
+    NumMips = std::min(NumMips, MipsLimit);
+
+    D3DContext& d3d_ctx = D3DContext::Get();
+    auto commandList = d3d_ctx.m_DXRCommandList;
+
+    ID3D12DescriptorHeap* desc_heap[] = {m_SrvDescHeap.Get()};
+    commandList->SetDescriptorHeaps(1, desc_heap);
+
+    commandList->SetComputeRootSignature(m_rootSignature.Get());
+    commandList->SetPipelineState(m_UpsamplePipelineState.Get());
+
+    const bool is_cubemap = (uav_texture.texture_options & TEXTURE_TRAITS::Cubemap) != TEXTURE_TRAITS::None;
+    const int face_count = is_cubemap ? 6 : 1;
+    const UINT resource_mips = description.MipLevels;
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(HeapStartCpu);
+    CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(HeapStartGpu);
+
+    const UINT slot_base = m_next_call_slot * 2 * MipsLimit * (CanBlurCubemaps ? 6 : 1);
+    m_next_call_slot = (m_next_call_slot + 1) % MaxConcurrentCalls;
+    cpuHandle.Offset(slot_base, HeapHandleIncrement);
+    gpuHandle.Offset(slot_base, HeapHandleIncrement);
+
+    // per-face descriptor ranges: face f keeps its UAVs at slot f * MipsLimit + mip,
+    // and its SRVs at (6 + f) * MipsLimit + mip
+    for (int face_idx = 0; face_idx < face_count; ++face_idx) {
+        auto iter_uav_cpuHandle = cpuHandle;
+        auto iter_srv_cpuHandle = cpuHandle;
+        iter_uav_cpuHandle.Offset(face_idx * MipsLimit, HeapHandleIncrement);
+        iter_srv_cpuHandle.Offset(((CanBlurCubemaps ? 6 : 1) + face_idx) * MipsLimit, HeapHandleIncrement);
+        for (int mipLevel = 0; mipLevel < NumMips; ++mipLevel) {
+            uav_texture.GetUAVHandleForMipLevel(mipLevel, iter_uav_cpuHandle, face_idx);
+            uav_texture.GetSRVHandleForMipLevel(mipLevel, iter_srv_cpuHandle, is_cubemap ? face_idx : -1);
+            iter_uav_cpuHandle.Offset(1, HeapHandleIncrement);
+            iter_srv_cpuHandle.Offset(1, HeapHandleIncrement);
+        }
+    }
+
+    for (int face_idx = 0; face_idx < face_count; ++face_idx) {
+        auto base_uav_gpuHandle = gpuHandle;
+        auto base_srv_gpuHandle = gpuHandle;
+        base_uav_gpuHandle.Offset(face_idx * MipsLimit, HeapHandleIncrement);
+        base_srv_gpuHandle.Offset(((CanBlurCubemaps ? 6 : 1) + face_idx) * MipsLimit, HeapHandleIncrement);
+        for (int mipLevel = 1; mipLevel < NumMips; ++mipLevel) {
+            auto iter_uav_gpuHandle = base_uav_gpuHandle;
+            auto iter_srv_gpuHandle = base_srv_gpuHandle;
+            iter_uav_gpuHandle.Offset(mipLevel - 1, HeapHandleIncrement);  // write one mip up
+            iter_srv_gpuHandle.Offset(mipLevel, HeapHandleIncrement);      // read the current mip
+
+            const auto dst_width = GPU_texture::GetMipDimension(width, mipLevel - 1);
+            const auto dst_height = GPU_texture::GetMipDimension(height, mipLevel - 1);
+            int GroupsX = (dst_width + 15) / 16;
+            int GroupsY = (dst_height + 15) / 16;
+
+            commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::InputSRV, iter_srv_gpuHandle);
+            commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputUAV, iter_uav_gpuHandle);
+
+            const auto mip_width = GPU_texture::GetMipDimension(width, mipLevel);
+            const auto mip_height = GPU_texture::GetMipDimension(height, mipLevel);
+            fvec2 halftexel{0.5f / mip_width, 0.5f / mip_height};
+            KawaseCSInput input{halftexel, NumMips};
+            constexpr int inputSizeInInt = sizeof(KawaseCSInput) / 4;
+            commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
+
+            const UINT subresource = mipLevel + face_idx * resource_mips;
+            const auto barrier_to_read = CD3DX12_RESOURCE_BARRIER::Transition(
+                uav_texture.get_gpu_resource().Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, subresource);
+            commandList->ResourceBarrier(1, &barrier_to_read);
+
+            commandList->Dispatch(GroupsX, GroupsY, 1);
+
+            const auto barrier_to_write = CD3DX12_RESOURCE_BARRIER::Transition(
+                uav_texture.get_gpu_resource().Get(), D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                D3D12_RESOURCE_STATE_UNORDERED_ACCESS, subresource);
+            commandList->ResourceBarrier(1, &barrier_to_write);
+        }
+    }
+}
+
 GPU_texture Kawase_blur_helper::GetBlankCompatibleUAVTex(GPU_texture& texture) {
     const auto& resource = texture.get_gpu_resource();
     const auto description = resource->GetDesc();

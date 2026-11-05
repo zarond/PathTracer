@@ -299,6 +299,7 @@ void Shadow_mapping_helper::CreateShadowMaps(const GPU_model& gpu_model, UINT si
 
         if (i < MaxSoftShadowMaps) {
             m_blur_helper.CreateBlurMips(ShadowMap);
+            m_blur_helper.CreateUpsampleMips(ShadowMap);
         }
 
         barrier = CD3DX12_RESOURCE_BARRIER::Transition(ShadowMap.get_gpu_resource().Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,

@@ -16,6 +16,7 @@ class Kawase_blur_helper {
     ~Kawase_blur_helper();
 
     void CreateBlurMips(GPU_texture& uav_texture);
+    void CreateUpsampleMips(GPU_texture& uav_texture);
 
     static GPU_texture GetBlankCompatibleUAVTex(GPU_texture& texture);
 

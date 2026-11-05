@@ -1,3 +1,5 @@
+#pragma once
+
 #include "Common.hlsl"
 #include "MomentShadowMapping.hlsl"
 
