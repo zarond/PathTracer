@@ -43,8 +43,8 @@ float compute_shadowing(const ShadowMappingInfo shadow_info, const float3 pos, c
         
     float bias = shadow_info.texel_size_inv_far_plane.x; // additional constant bias
     bias *= shadow_info.texel_size_inv_far_plane.y;
-    const float moments_bias = 0.00005f;
-    const float mipLevel = shadow_info.maxMip_padding.x;
+    const float moments_bias = shadow_info.maxMip_moment_bias_padding.y;
+    const float mipLevel = shadow_info.maxMip_moment_bias_padding.x;
         
     if (light_type == LightType::Point) {
          bias *= vec_length;

@@ -139,6 +139,8 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_rasterCB.specular_aa_variance = render_settings.specular_aa_variance;
     m_rasterCB.specular_aa_threshold = render_settings.specular_aa_threshold;
     m_shadow_mapping_helper.BiasMultiplier = render_settings.shadow_bias_multiplier;
+    m_shadow_mapping_helper.MomentBias = render_settings.shadow_moment_bias;
+    m_shadow_mapping_helper.UseSoftShadows = render_settings.use_soft_shadows;
     m_shadow_mapping_helper.Softness = render_settings.shadow_softness;
     m_shadow_map_size = render_settings.shadow_map_size;
     m_GTAO_helper.AODistance = render_settings.AODistance;

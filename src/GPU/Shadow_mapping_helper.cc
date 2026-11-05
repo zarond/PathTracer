@@ -282,7 +282,7 @@ void Shadow_mapping_helper::CreateShadowMaps(const GPU_model& gpu_model, UINT si
         auto& info = m_shadowMappingInfo[i];
         float far_plane = 0.0f;
         calculate_shadow_mapping_info(Light, gpu_model.scene_bounds, ShadowMap, ShadowSize, BiasMultiplier, info, far_plane);
-        info.maxMip_padding = fvec4(Softness, 0.0f, 0.0f, 0.0f);
+        info.maxMip_moment_bias_padding = fvec4(UseSoftShadows ? Softness : 0.0f, MomentBias, 0.0f, 0.0f);
 
         if (is_cubemap)
             CreateCubemapShadowMap(gpu_model, info, ShadowMap, size, far_plane);
@@ -297,7 +297,7 @@ void Shadow_mapping_helper::CreateShadowMaps(const GPU_model& gpu_model, UINT si
             ShadowMap.get_gpu_resource().Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
         commandList->ResourceBarrier(1, &barrier);
 
-        if (i < MaxSoftShadowMaps) {
+        if (i < MaxSoftShadowMaps && UseSoftShadows) {
             m_blur_helper.CreateBlurMips(ShadowMap);
             m_blur_helper.CreateUpsampleMips(ShadowMap);
         }

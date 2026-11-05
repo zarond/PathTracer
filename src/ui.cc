@@ -822,7 +822,9 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
         "Specular AA Variance", &render_settings.specular_aa_variance, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
     raster_settings_changed |= ImGui::SliderFloat(
         "Specular AA Threshold", &render_settings.specular_aa_threshold, 0.0f, 1.0f, nullptr, ImGuiSliderFlags_AlwaysClamp);
-    raster_settings_changed |= ImGui::SliderFloat("Additional Shadow Bias", &render_settings.shadow_bias_multiplier, 0.0f, 10.0f, "%.3f");
+    raster_settings_changed |= ImGui::SliderFloat("Additional Shadow Depth Bias", &render_settings.shadow_bias_multiplier, 0.0f, 10.0f, "%.3f");
+    raster_settings_changed |= ImGui::SliderFloat("Shadow Moment Bias", &render_settings.shadow_moment_bias, 0.0f, 0.001f, "%.5f");
+    raster_settings_changed |= ImGui::Checkbox("Use Soft Shadows", &render_settings.use_soft_shadows);
     raster_settings_changed |= ImGui::SliderFloat("Shadow Softness", &render_settings.shadow_softness, 0.0f, 2.0f, "%.1f");
 
     // Shadow map size selection

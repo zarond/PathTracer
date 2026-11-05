@@ -19,7 +19,7 @@ struct ShadowMappingInfo {
     fvec4 direction;
     glm::ivec2 shadowMapTextureIndex_type;
     fvec2 texel_size_inv_far_plane;
-    fvec4 maxMip_padding;
+    fvec4 maxMip_moment_bias_padding;
 };
 
 class Shadow_mapping_helper {
@@ -39,6 +39,8 @@ class Shadow_mapping_helper {
     static constexpr int MaxSoftShadowMaps = 8;
 
     float BiasMultiplier = 0.0f;
+    float MomentBias = 0.00005f;
+    bool UseSoftShadows = true;
     float Softness = 0.0f;
 
   private:
