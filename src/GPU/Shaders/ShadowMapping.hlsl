@@ -63,11 +63,7 @@ float4 PS_Shadows(SHInput input) : SV_TARGET {
     float alpha = sample_albedo_filtered(mat, uv, ASampler).w;
     float D;
     float3 L = input.world_position.xyz - g_shadowCB.lightPosition.xyz;
-    if (g_shadowCB.isPointLight) {
-        D = length(L);
-    } else {
-        D = dot(L, g_shadowCB.lightDirection.xyz);
-    }
+    D = dot(L, g_shadowCB.lightDirection.xyz);
     float linearDepth01 = D * g_shadowCB.inv_far_plane;
     const float maxBias = g_shadowCB.texel_size_inv;
     linearDepth01 += min(fwidth( linearDepth01 ), maxBias); // main slope-based bias

@@ -34,11 +34,15 @@ float compute_shadowing(const ShadowMappingInfo shadow_info, const float3 pos, c
     
     float3 vec = pos - shadow_info.origin.xyz;
     float vec_length;
-    if (light_type == LightType::Directional) {
-        vec_length = dot(vec, shadow_info.direction.xyz);
+    float3 axis;
+    if (light_type == LightType::Point) {
+        float3 a = abs(vec);
+        axis = (a.x >= a.y && a.x >= a.z) ? float3(sign(vec.x), 0.0f, 0.0f) :
+               ((a.y >= a.z) ? float3(0.0f, sign(vec.y), 0.0f) : float3(0.0f, 0.0f, sign(vec.z)));
     } else {
-        vec_length = length(vec);
+        axis = shadow_info.direction.xyz;
     }
+    vec_length = dot(vec, axis);
     float linearDepth01 = vec_length * shadow_info.texel_size_inv_far_plane.y;
         
     float bias = shadow_info.texel_size_inv_far_plane.x; // additional constant bias

@@ -352,6 +352,7 @@ void Shadow_mapping_helper::CreateCubemapShadowMap(
         fmat4x4 projectionMat = glm::perspectiveRH_ZO(glm::half_pi<float>(), 1.0f, near_plane, far_plane);
 
         side_shadow.viewProjection = projectionMat * viewMat;
+        side_shadow.direction = fvec4(face.forward, 0.0f);
 
         CreateShadowMap(gpu_model, side_shadow, shadowMap, face_idx, size, far_plane);
     }
