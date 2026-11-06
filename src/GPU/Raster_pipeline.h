@@ -17,6 +17,8 @@
 #include "GTAO_helper.h"
 #include "SSR_helper.h"
 #include "PSO_helper.h"
+#include "Shadow_mapping_helper.h"
+#include "Drawables.h"
 
 namespace app {
 
@@ -43,6 +45,7 @@ struct RasterConstantBuffer {
     float envmap_rotation_sin;
     float envmap_rotation_cos;
     
+    int lightsCount;
     unsigned int frameID;
     int albedoOnlyMode;
     int SpecularLutMips;
@@ -89,15 +92,6 @@ struct GISettings {
     SHCoefficients diffuse; // one global sh probe
 };
 
-struct DrawableSortingInfo {
-    const GPU_object_info* object;
-    float modelScale;
-    float ZDistanceToCamera;
-    bool backfaceCulling;
-    bool alphaBlending;
-    bool transmittance;
-};
-
 class Raster_pipeline : public IRender_pipeline {
   public:
     Raster_pipeline();
@@ -107,7 +101,10 @@ class Raster_pipeline : public IRender_pipeline {
         const fmat4x4& ViewMatrix, const fmat4x4& ProjectionMatrix, fvec2 subpixelOffset, unsigned int frameID, int iteration,
         float invIterationCount) override;
 
-    void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer, UINT width, UINT height) override;
+    void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer, 
+        UINT width, UINT height, int cubemap_side = 0) override;
+
+    void DoShadowPass(const GPU_model& gpu_model) override;
 
     void OnModelLoad(GPU_model& gpu_model) override;
 
@@ -133,8 +130,8 @@ class Raster_pipeline : public IRender_pipeline {
     void ComputeDFGLut();
 
     void resize_render_targets(int new_width, int new_height);
-    void copy_render_target_to_framebuffer(const GPU_texture& framebuffer);
-    void copy_ssr_to_framebuffer(const GPU_texture& framebuffer);
+    void copy_render_target_to_framebuffer(const GPU_texture& framebuffer, int cubemap_side = 0);
+    void copy_ssr_to_framebuffer(const GPU_texture& framebuffer, int cubemap_side = 0);
 
     static constexpr const wchar_t* c_vs_file_name = L"VS_Main.dxil";
     static constexpr const wchar_t* c_ps_file_name = L"PS_Main.dxil";
@@ -175,6 +172,7 @@ class Raster_pipeline : public IRender_pipeline {
     Kawase_blur_helper m_bloom_helper{};
     GTAO_helper m_GTAO_helper{};
     SSR_helper m_SSR_helper{};
+    Shadow_mapping_helper m_shadow_mapping_helper{};
 
     // additional render targets
     GPU_texture m_renderTarget;
@@ -206,11 +204,10 @@ class Raster_pipeline : public IRender_pipeline {
     SHCoefficients diffuse_irradiance_sh_from_probe;  // precomputed irradiance SH coefficients from Reflection_probe
 
     std::vector<DrawableSortingInfo> m_sortedDrawables;  // reusable vector for sorting drawables every frame
-    void sort_objects_for_rendering(
-        const GPU_model& gpu_model, int& num_opaque_objects, int& num_transmissive_objects, int& num_alpha_blended_objects);
 
     UINT64 currentWidth = 0;
     UINT currentHeight = 0;
+    UINT m_shadow_map_size = 1024;
 
     RayProgramMode RaytracingMode = RayProgramMode::AmbientOcclusion;
 

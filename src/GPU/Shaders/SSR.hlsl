@@ -222,7 +222,7 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
     float sampleDepth = centerDepth;
     int mip = 0;
     for (int i = 0; i < STEPS; ++i) {
-        if (any(sampleUV < 0.0f | sampleUV > 1.0f)) break;
+        if (any(sampleUV <= 0.0f | sampleUV >= 1.0f)) break;
         sampleDepth = Depth.SampleLevel(PointSampler, sampleUV.xy, mip);
         if (IsPotentialHit(sampleUV, sampleDepth)) {
             if (mip == 0) {
@@ -407,7 +407,8 @@ void CS_SSR_resolve(uint3 DTid : SV_DispatchThreadID, uint3 Gid : SV_GroupID, ui
 
             // (BRDF / pdf) * Cos Weighting
             // BRDF_GGX = (D * F * G) / (4 * NdotV * NdotL)
-            float weight = D_GGX(NdotH, linearRoughness) * V_Schlick(NdotL, NdotV, centerRoughness) * NdotL * hit_info.inv_pdf;
+            float G = V_SmithGGXCorrelated(NdotV, NdotL, linearRoughness);
+            float weight = D_GGX(NdotH, linearRoughness) * G * NdotL * hit_info.inv_pdf;
 
             if (hit_valid) {
                 float3 frameSample = prefilteredSample(ray_distance, linearRoughness, -centerPosVS.z, hit_info.uv);

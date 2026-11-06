@@ -8,17 +8,13 @@
 
 #include "cpu_texture.h"
 #include "model_loader.h"
+#include "bounding_volumes.h"
 #include "render_settings.h"
 
 namespace app {
 using glm::fvec2;
 using glm::fvec3;
 using glm::fvec4;
-
-struct ray {
-    fvec3 origin;
-    fvec3 direction;  // should always be normalized
-};
 
 struct ray_with_payload : ray {
     fvec3 payload = fvec3(1.0f);  // accumulated color
@@ -37,16 +33,6 @@ struct barycentric_coords {
     bool backface = false;
 
     float C() const noexcept { return 1.0f - A - B; }
-};
-
-struct ray_volume_hit_info {
-    bool hit = false;  // Todo: optimize layout, use infinity as no-hit indicator?
-    float t0 = 0.0f;   // distance along the ray
-    float t1 = 0.0f;   // distance along the ray
-    constexpr bool forward_hit() const noexcept { return hit && (t1 > 0.0f); }
-    constexpr float forward_hit_distance() const noexcept {
-        return forward_hit() ? (t0 > 0.0f ? t0 : 0.0f) : std::numeric_limits<float>::infinity();
-    }
 };
 
 struct ray_triangle_hit_info : public barycentric_coords {

@@ -56,6 +56,10 @@ int DescriptorHeapAllocator::GetIndex(D3D12_GPU_DESCRIPTOR_HANDLE gpu_desc_handl
     return gpu_idx;
 }
 
+int DescriptorHeapAllocator::GetFreeIndices() const {
+    return (int)FreeIndices.size();
+}
+
 bool D3DContext::CreateDeviceD3D(HWND hWnd) {
     // Create DXGI Factory
     if (FAILED(CreateDXGIFactory2(0, IID_PPV_ARGS(&m_dxgiFactory)))) return false;
@@ -210,7 +214,7 @@ bool D3DContext::CreateDeviceD3D(HWND hWnd) {
     {
         D3D12_DESCRIPTOR_HEAP_DESC desc = {};
         desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-        desc.NumDescriptors = 8;
+        desc.NumDescriptors = 16;
         desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
         desc.NodeMask = 0;
         if (FAILED(m_d3dDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_additional_RtvDescHeap)))) return false;

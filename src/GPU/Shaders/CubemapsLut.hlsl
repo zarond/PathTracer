@@ -70,7 +70,7 @@ float3 SampleEnvmap(float3 dir, float lod) {  // dir is expected to be normalize
         dir.z *= -1.0f; // Flip Z for cubemap sampling
         return EnvMapCube.SampleLevel(EnvMapSampler, dir, lod).xyz;
     } else {
-        float2 uv = float2(atan2(-dir.z, -dir.x), -2.0f * asin(dir.y)) * (1.0f / PI);
+        float2 uv = float2(atan2(-dir.z, -dir.x), -2.0f * asin(dir.y)) * inv_PI;
         uv = uv * 0.5f + 0.5f;
         return EnvMap.SampleLevel(EnvMapSampler, uv, lod).xyz;
     }

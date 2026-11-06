@@ -154,6 +154,8 @@ void GTAO_helper::ResizeInnerResource(int new_width, int new_height) {
     currentWidth = std::max(new_width, 0);
     currentHeight = std::max(new_height, 0);
     auto flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
+    m_SpatialDenoised.release_gpu_resource();
+    m_SpatialDenoised_previous.release_gpu_resource();
     m_SpatialDenoised = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R16G16B16A16_FLOAT};
     m_SpatialDenoised_previous = GPU_texture{currentWidth, currentHeight, flags, DXGI_FORMAT_R16G16B16A16_FLOAT};
 }

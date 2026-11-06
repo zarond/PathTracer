@@ -39,7 +39,7 @@ void Copy_helper::Reload() {
 
 Copy_helper::~Copy_helper() { release_gpu_resources(); }
 
-void Copy_helper::Copy(const GPU_texture& dst_texture,  const GPU_texture& src_texture) {
+void Copy_helper::Copy(const GPU_texture& dst_texture, const GPU_texture& src_texture, int cubemap_side) {
     const auto& resource = dst_texture.get_gpu_resource();
     const auto description = resource->GetDesc();
     const auto width = description.Width;
@@ -52,7 +52,7 @@ void Copy_helper::Copy(const GPU_texture& dst_texture,  const GPU_texture& src_t
     commandList->SetPipelineState(m_PipelineState.Get());
 
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::SrcTexture, src_texture.GetSRVHandle());
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::DstTexture, dst_texture.GetUAVHandle());
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::DstTexture, dst_texture.GetUAVHandle(cubemap_side));
 
     CopyCSInput input{{width, height}};
     constexpr int inputSizeInInt = sizeof(CopyCSInput) / 4;

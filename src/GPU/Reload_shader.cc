@@ -17,6 +17,7 @@
 #include "SSR_helper.h"
 #include "Tonemapping_helper.h"
 #include "SphericalHarmonics_helper.h"
+#include "Shadow_mapping_helper.h"
 
 namespace app {
 
@@ -40,6 +41,7 @@ void ReloadShaders() {
         Silhouette_helper,
         SSR_helper, 
         Tonemapping_helper,
+        Shadow_mapping_helper,
         SphericalHarmonics_helper>(); 
 }
 

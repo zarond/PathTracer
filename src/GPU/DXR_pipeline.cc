@@ -371,8 +371,8 @@ void DXR_pipeline::SetRenderingSettings(const RenderSettings& render_settings, f
     RaytracingMode = render_settings.programMode;
 }
 
-void DXR_pipeline::DoRender(
-    const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer, UINT m_width, UINT m_height) {
+void DXR_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer,
+    UINT m_width, UINT m_height, int cubemap_side) {
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
 
@@ -422,7 +422,7 @@ void DXR_pipeline::DoRender(
     // Bind the heaps, acceleration structure and dispatch rays.
     D3D12_DISPATCH_RAYS_DESC dispatchDesc = {};
     // commandList->SetDescriptorHeaps(1, m_descriptorHeap.GetAddressOf());
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, framebuffer.GetUAVHandle());
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, framebuffer.GetUAVHandle(cubemap_side));
     commandList->SetComputeRootShaderResourceView(
         GlobalRootSignatureParams::AccelerationStructureSlot, gpu_model.GetGPUVirtualAddress());
 
@@ -445,6 +445,8 @@ void DXR_pipeline::DoRender(
         framebuffer.get_gpu_resource().Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     commandList->ResourceBarrier(1, &toSRV);
 }
+
+void DXR_pipeline::DoShadowPass(const GPU_model& gpu_model) {}
 
 // no actions required for a model in this raytracing pipeline, because it doesn't use mips
 void DXR_pipeline::OnModelLoad(GPU_model& gpu_model) {} 

@@ -17,6 +17,7 @@
 #include "../d3d_context.h"
 #include "Raster_pipeline.h"
 #include "Cubemaps_helper.h"
+#include "Mipmaps_helper.h"
 
 namespace app {
 
@@ -139,6 +140,7 @@ void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, boo
     ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};
     d3d_ctx.m_DXRCommandList->SetDescriptorHeaps(1, desc_heap);
 
+    pipeline_->DoShadowPass(*gpu_model_);
     pipeline_->DoRender(*gpu_model_, *gpu_envmap_, framebuffer.get_texture_resource(), framebuffer.width(), framebuffer.height());
 
     d3d_ctx.DispatchDXRCommandList();
@@ -186,6 +188,7 @@ void GPURenderer::update_transforms() {
     if (model_ref_ && gpu_model_) {
         bool updateTLAS = (active_pipeline_mode_ == RenderPipelineMode::DXRPipeline);
         gpu_model_->update_transforms(*model_ref_, updateTLAS);
+        gpu_model_->update_lights_array_buffer(*model_ref_);
     }
 }
 
@@ -228,15 +231,11 @@ GPU_texture GPURenderer::render_cubemap(const UINT cubemap_size, bool need_mips,
     const auto saved_render_state = render_state_.load();
     const auto saved_render_settings = render_settings_;
 
-    // Create cubemap textures (6 faces)
-    std::array<GPU_texture, 6> cubemap_textures;
-    auto flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::UAV;
+    auto cubemap_flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::Cubemap | TEXTURE_TRAITS::UAV;
     if (need_mips) {
-        flags |= TEXTURE_TRAITS::AllocateMips;
+        cubemap_flags |= TEXTURE_TRAITS::AllocateMips;
     }
-    for (int face_idx = 0; face_idx < 6; ++face_idx) {
-        cubemap_textures[face_idx] = GPU_texture{cubemap_size, cubemap_size, flags };
-    }
+    GPU_texture cubemap{cubemap_size, cubemap_size, cubemap_flags};
 
     // DirectX 12 cubemap face order and their camera directions
     // Face order: +X, -X, +Y, -Y, +Z, -Z
@@ -275,7 +274,6 @@ GPU_texture GPURenderer::render_cubemap(const UINT cubemap_size, bool need_mips,
         d3d_ctx.m_DXRCommandList->SetDescriptorHeaps(1, desc_heap);
 
         const CubemapFace& face = cubemap_faces[face_idx];
-        auto& cubemap_side = cubemap_textures[face_idx];
 
         // Set up camera for this face
         const auto camera = fastgltf::Camera::Perspective{1.0f, glm ::radians(90.0f), 1000.0f, 0.1f};
@@ -287,17 +285,12 @@ GPU_texture GPURenderer::render_cubemap(const UINT cubemap_size, bool need_mips,
             jitter, ++frameID_, 1, 1.0f);
 
         // Render to this cubemap face
-        pipeline_->DoRender(*gpu_model_, *gpu_envmap_, cubemap_side, cubemap_size, cubemap_size);
-
-        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(cubemap_side.get_gpu_resource().Get(),
-            D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-        d3d_ctx.m_DXRCommandList->ResourceBarrier(1, &barrier);
-
-        // Dispatch and wait for this face to complete before rendering the next one
-        d3d_ctx.DispatchDXRCommandList();
-        d3d_ctx.WaitForPendingDXR();
+        pipeline_->DoRender(*gpu_model_, *gpu_envmap_, cubemap, cubemap_size, cubemap_size, face_idx);
 
         progress_ = (face_idx + 1) / 6.0f;
+
+        d3d_ctx.DispatchDXRCommandList();
+        d3d_ctx.WaitForPendingDXR();
     }
 
     // Restore original state
@@ -309,32 +302,41 @@ GPU_texture GPURenderer::render_cubemap(const UINT cubemap_size, bool need_mips,
     render_settings_ = saved_render_settings;
     progress_ = 0.0f;
 
-    auto cubemap_flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::Cubemap;
-    if (need_mips) {
-        cubemap_flags |= TEXTURE_TRAITS::AllocateMips;
-    }
-    GPU_texture cubemap{cubemap_size, cubemap_size, cubemap_flags};
+    d3d_ctx.InitDXRCommandList();
+    d3d_ctx.m_DXRCommandList->SetDescriptorHeaps(1, desc_heap);
+
     // calculate mip maps for the cubemap texture
     if (need_mips) {
-        for (int face_idx = 0; face_idx < 6; ++face_idx) {
-            auto& cubemap_side = cubemap_textures[face_idx];
-            Raster_pipeline::ComputeMipMaps(cubemap_side);
-        }    
-    }
-    // copy each cubemap face into the cubemap texture
-    d3d_ctx.InitDXRCommandList();
-    ID3D12DescriptorHeap* copy_desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};
-    d3d_ctx.m_DXRCommandList->SetDescriptorHeaps(1, copy_desc_heap);
+        static Mipmaps_helper mip_helper{true};
+        mip_helper.Init();
 
-    for (int face_idx = 0; face_idx < 6; ++face_idx) {
-        auto& cubemap_side = cubemap_textures[face_idx];
-        GPU_texture::copy_texture_to_cubemap_side(cubemap, cubemap_side, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, face_idx, d3d_ctx.m_DXRCommandList);
+        const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(cubemap.get_gpu_resource().Get());
+        d3d_ctx.m_DXRCommandList->ResourceBarrier(1, &barrier);
+
+        mip_helper.CreateMips(cubemap);
     }
+
+    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        cubemap.get_gpu_resource().Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    d3d_ctx.m_DXRCommandList->ResourceBarrier(1, &barrier);
+
     d3d_ctx.DispatchDXRCommandList();
     d3d_ctx.WaitForPendingDXR();
 
     return cubemap;
+}
+
+void GPURenderer::render_shadow_maps() {
+    D3DContext& d3d_ctx = D3DContext::Get();
+    d3d_ctx.InitDXRCommandList();
+
+    ID3D12DescriptorHeap* desc_heap[] = {d3d_ctx.m_SrvDescHeap.Get()};
+    d3d_ctx.m_DXRCommandList->SetDescriptorHeaps(1, desc_heap);
+
+    pipeline_->DoShadowPass(*gpu_model_);
+
+    d3d_ctx.DispatchDXRCommandList();
+    d3d_ctx.WaitForPendingDXR();
 }
 
 void GPURenderer::compute_lighting_probe() {
@@ -348,6 +350,7 @@ void GPURenderer::compute_lighting_probe() {
         return;
     }
 
+    render_shadow_maps();
     GPU_texture cubemap = render_cubemap(EnvCube_helper::Specular_size, true, origin_);
 
     GPU_texture diffuse_probe;
@@ -378,7 +381,7 @@ void GPURenderer::compute_GI(BBox bbox, int longest_dimension_N, bool expand_bbo
     auto start = std::chrono::high_resolution_clock::now();
 
     fvec3 bbox_size = bbox.max - bbox.min;
-    int longest_axis = get_longest_axis(bbox);
+    int longest_axis = bbox.get_longest_axis();
     float main_axis_delta = abs(bbox_size[longest_axis] / static_cast<float>(longest_dimension_N));
     uvec3 grid_dim = bbox_size / main_axis_delta;
     grid_dim = glm::max(grid_dim, uvec3{1});
@@ -393,6 +396,8 @@ void GPURenderer::compute_GI(BBox bbox, int longest_dimension_N, bool expand_bbo
         bbox.max += delta * 0.5f * fvec3{expand_directions};
         bbox_size = bbox.max - bbox.min;
     }
+
+    render_shadow_maps();
 
     std::vector<SHCoefficients> sh_probes;
     sh_probes.reserve(grid_dim.x * grid_dim.y * grid_dim.z);
