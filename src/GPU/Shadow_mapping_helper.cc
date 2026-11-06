@@ -179,7 +179,7 @@ void Shadow_mapping_helper::resize_shadow_maps(int new_size, const std::vector<G
         }
         is_cubemap_shadow_map.emplace_back(is_cubemap);
         m_shadowMaps.emplace_back(ShadowSize, ShadowSize, flags, 
-            DXGI_FORMAT_R32G32B32A32_FLOAT, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, true);
+            DXGI_FORMAT_R16G16B16A16_UNORM, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, true);
     }
 
     m_depthTexture.release_gpu_resource();
@@ -519,7 +519,7 @@ void Shadow_mapping_helper::CreatePipelineStateObject() {
     auto rt_num = std::array<int, RenderShaders::Count>{1};
 
     bool success = m_PSO_helper.init(RenderShaders::Count, vs_file_names, ps_file_names, m_rootSignature, inputElementDescs,
-        use_input_layout, rt_write_mask, depth_write_mask, rt_num, true);
+        use_input_layout, rt_write_mask, depth_write_mask, rt_num, DXGI_FORMAT_R16G16B16A16_UNORM);
 
     if (!success) {
         throw std::runtime_error("Failed to initialize PSO helper");
