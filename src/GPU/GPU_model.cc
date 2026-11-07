@@ -966,6 +966,18 @@ void GPU_model::update_transforms(const Model& model, bool updateTLAS) {
                 inst.Transform[r][c] = Mat[r][c];
             }
         }
+        const auto& cpu_mesh = model.meshes[obj.meshIndex];
+        const auto& material = model.materials[cpu_mesh.materialIndex];
+        bool doubleSided = material.doubleSided || material.hasVolume;
+        bool alphaBlending = material.alphaBlending;
+        bool alphaTest = (material.alphaCutoff >= 0.0f);
+
+        inst.InstanceID = obj.meshIndex;  // can be used to identify object in shaders
+        inst.InstanceMask = 0xFF;
+        inst.InstanceContributionToHitGroupIndex = 0;  // shader binding table offsets if used
+        inst.Flags = 0;
+        if (doubleSided) inst.Flags |= D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE;
+        if (!alphaTest) inst.Flags |= D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE;
     }
 
     void* pInstancesData = nullptr;

@@ -149,7 +149,7 @@ Model ModelLoader::construct_model() const {
             .AOStrength = material.occlusionTexture.has_value() ? material.occlusionTexture->strength : 0.0f,
             .aoTextureIndex = AO_imageIndex,
             .thicknessTextureIndex = thickness_imageIndex,
-            .thicknessFactor = material.volume ? material.volume->thicknessFactor : 0.0f,
+            .thicknessFactor = material.volume ? material.volume->thicknessFactor : 1.0f,
             .attenuationColor = attenuationColor,
             .attenuationDistance = material.volume ? material.volume->attenuationDistance : 0.0f,
             .useBlenderAttenuation = true,

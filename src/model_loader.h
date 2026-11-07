@@ -61,7 +61,7 @@ struct Material {
     float AOStrength = 1.0f;
     int aoTextureIndex = -1;
     int thicknessTextureIndex = -1;
-    float thicknessFactor = 0.0f;
+    float thicknessFactor = 1.0f;
     fvec3 attenuationColor{0.0f, 0.0f, 0.0f};
     float attenuationDistance = 0.0f;
     bool useBlenderAttenuation = true;
