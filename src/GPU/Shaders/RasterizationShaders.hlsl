@@ -381,13 +381,13 @@ float4 PS_Main(PSInput input, bool isFrontFace : SV_IsFrontFace) : SV_TARGET {
     float3 diffuse_light = diffuse_color * lerp(AO * diffuseIBL, transmissionIBL, transmission);
     float3 final_light = lerp(diffuse_light, specularIBL, Fresnel) + emissive;
     
+    MaterialParams mat_params;
+    mat_params.diffuse_color = diffuse_color * (1.0f - transmission);
+    mat_params.linear_roughness = linear_roughness;
+    mat_params.f0 = f0;
+    mat_params.transmission_roughness = transmission_roughness(original_roughness * original_roughness, mat.ior); // roughness without specular antialiasing for transmission
+    mat_params.transmission_attenuation = diffuse_color * transmission * transmission_attenuation;
     for (uint i = 0; i < g_rasterCB.lightsCount; ++i) {
-        MaterialParams mat_params;
-        mat_params.diffuse_color = diffuse_color * (1.0f - transmission);
-        mat_params.linear_roughness = linear_roughness;
-        mat_params.f0 = f0;
-        mat_params.transmission_roughness = transmission_roughness(original_roughness * original_roughness, mat.ior); // roughness without specular antialiasing for transmission
-        mat_params.transmission_attenuation = diffuse_color * transmission * transmission_attenuation;
         final_light += compute_punctual_light_contribution(
             input.world_position.xyz, N, v, refracted_v, mat_params, Lights[i], Shadows[i], ShadowSampler);
     }

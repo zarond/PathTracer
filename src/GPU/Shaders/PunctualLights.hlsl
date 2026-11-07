@@ -121,7 +121,7 @@ LightRay convert_to_light_ray(const float3 pos, const Light light) {
 }
     
 float3 directional_lighting(const float3 pos, const float3 n, const float3 v, float3 refracted_v, 
-    MaterialParams mat_params, const LightRay light_ray, const bool has_transmission) 
+    MaterialParams mat_params, const LightRay light_ray, const bool has_transmission, const bool transmission_fresnel_twice) 
 {
     const float3 f90 = 1.0f;
     float3 h = normalize(v + light_ray.direction);
@@ -137,9 +137,10 @@ float3 directional_lighting(const float3 pos, const float3 n, const float3 v, fl
     float D = D_GGX(NdH, mat_params.linear_roughness);
     
     float3 diffuse_brdf = (1.0f - F) * lambertian_BRDF(mat_params.diffuse_color);
-    float3 specular_brdf = (D * G) * F;
+    float3 specular_brdf = (D * G) * F * LdN;
+    specular_brdf = min(specular_brdf, kMaxBRDF);   // clamp to avoid fireflies
     
-    float3 R = (diffuse_brdf + specular_brdf) * LdN * light_ray.color;
+    float3 R = (diffuse_brdf * LdN + specular_brdf) * light_ray.color;
     
     if (!has_transmission) {
         return R;
@@ -158,8 +159,12 @@ float3 directional_lighting(const float3 pos, const float3 n, const float3 v, fl
     G = V_SmithGGXCorrelated(VdN, LdN, mat_params.transmission_roughness);
     D = D_GGX(NdH, mat_params.transmission_roughness);
     
-    float3 transmittance_brdf = (D * G) * (1.0 - F) * (1.0 - F) * mat_params.transmission_attenuation;
-    R += transmittance_brdf * LdN * light_ray.color;
+    float3 transmittance_brdf = (D * G) * (1.0 - F) * LdN;
+    if (transmission_fresnel_twice) {
+        transmittance_brdf *= (1.0 - F);
+    }
+    transmittance_brdf = min(transmittance_brdf, kMaxBRDF);   // clamp to avoid fireflies
+    R += transmittance_brdf * light_ray.color * mat_params.transmission_attenuation;
     
     return R;
 }
@@ -181,7 +186,7 @@ float3 compute_punctual_light_contribution(const float3 pos, const float3 n, con
         return 0.0f; // early exit if fully in shadow
     }
         
-    float3 Radiance = directional_lighting(pos, n, v, refracted_v, mat_params, light_ray, has_transmission);
+    float3 Radiance = directional_lighting(pos, n, v, refracted_v, mat_params, light_ray, has_transmission, true);
     return Radiance * shadowing_factor;
 }
     

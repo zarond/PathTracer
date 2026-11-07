@@ -37,6 +37,7 @@ struct RayGenConstantBuffer {
     float invMaxNewRaysPerBounce;
     int maxRayBounces;
     float envmapRotation;
+    int lightsCount;
 };
 
 class IRender_pipeline {
@@ -100,12 +101,15 @@ class DXR_pipeline : public IRender_pipeline {
     static constexpr const wchar_t* c_dxilLibraryName = L"RaytracingShaders.dxil";  // DXIL library file name
 
     static constexpr const wchar_t* c_hitGroupName = L"MyHitGroup";
+    static constexpr const wchar_t* c_shadowHitGroupName = L"ShadowHitGroup";
     static constexpr const wchar_t* c_raygenShaderName = L"RayGen";
     static constexpr const wchar_t* c_anyHitRCShaderName = L"AnyHitRC";
+    static constexpr const wchar_t* c_anyHitShadowShaderName = L"AnyHitShadow";
     static constexpr const wchar_t* c_closestHitAOShaderName = L"ClosestHitAO";
     static constexpr const wchar_t* c_closestHitRCShaderName = L"ClosestHitRC";
     static constexpr const wchar_t* c_closestHitPBRShaderName = L"ClosestHitPBR";
     static constexpr const wchar_t* c_missAOShaderName = L"MissAO";
+    static constexpr const wchar_t* c_missShadowShaderName = L"MissShadow";
     static constexpr const wchar_t* c_missEnvmapShaderName = L"MissEnvmap";
 
     union AlignedSceneConstantBuffer {

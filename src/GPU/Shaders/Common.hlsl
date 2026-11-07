@@ -24,6 +24,7 @@ struct RayGenConstantBuffer {
     float invMaxNewRaysPerBounce;
     int maxRayBounces;
     float envmapRotation;
+    int lightsCount;
 };
 
 struct RasterConstantBuffer {
