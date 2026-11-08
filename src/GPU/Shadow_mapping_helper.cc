@@ -38,7 +38,7 @@ int find_texture_id(const GPU_texture& texture) {
 void calculate_shadow_mapping_info(const GPU_Light& light, const BBox& sceneBBox, const GPU_texture& ShadowMap, UINT ShadowSize,
     float BiasMultiplier, ShadowMappingInfo& out_info, float& out_far_plane) 
 {
-    fastgltf::LightType type = static_cast<fastgltf::LightType>(light.direction_type.w);
+    auto type = static_cast<PackedLightType>(light.direction_type.w);
     fmat4x4 viewMat{};
     fmat4x4 projectionMat{};
 
@@ -48,7 +48,7 @@ void calculate_shadow_mapping_info(const GPU_Light& light, const BBox& sceneBBox
     auto direction = xyz(-light.direction_type);
     auto up = (glm::abs(direction.y) < 0.999f) ? fvec3{0, 1, 0} : fvec3{1, 0, 0};
     float texel_size = 1.0f / static_cast<float>(ShadowSize);
-    if (type == fastgltf::LightType::Directional) {
+    if (type == PackedLightType::Directional) {
         auto origin = scene_center - direction * radius;
         viewMat = glm::lookAt(scene_center - direction * radius, scene_center, up);
         float near_plane = 0.0f;
@@ -67,7 +67,7 @@ void calculate_shadow_mapping_info(const GPU_Light& light, const BBox& sceneBBox
         } else {
             far_plane = 2.0f * radius;
         }
-        if (type == fastgltf::LightType::Spot) {
+        if (type == PackedLightType::Spot) {
             viewMat = glm::lookAt(eye, eye + direction, up);
             float near_plane = std::max(0.001f * far_plane, 0.01f);
             constexpr auto angle_limit = 3.1415926f * 80.0f / 180.f; // 80 degrees in radians
@@ -150,10 +150,10 @@ void Shadow_mapping_helper::resize_shadow_maps(int new_size, const std::vector<G
     if (ShadowSize != new_size || m_shadowMaps.size() != new_lights_count) can_skip = false;
     for (int i = 0; (i < new_lights_count) && can_skip; ++i) {
         const auto& light = lights[i];
-        fastgltf::LightType type = static_cast<fastgltf::LightType>(light.direction_type.w);
+        auto type = static_cast<PackedLightType>(light.direction_type.w);
         bool is_cubemap = is_cubemap_shadow_map[i];
-        if ((type == fastgltf::LightType::Point && !is_cubemap) || 
-            (type != fastgltf::LightType::Point && is_cubemap)
+        if ((type == PackedLightType::Point && !is_cubemap) || 
+            (type != PackedLightType::Point && is_cubemap)
         ) can_skip = false;
     }
     if (can_skip) return;
@@ -169,11 +169,11 @@ void Shadow_mapping_helper::resize_shadow_maps(int new_size, const std::vector<G
 
     for (int i = 0; i < new_lights_count; ++i) {
         const auto& light = lights[i];
-        fastgltf::LightType type = static_cast<fastgltf::LightType>(light.direction_type.w);
+        auto type = static_cast<PackedLightType>(light.direction_type.w);
         TEXTURE_TRAITS flags = TEXTURE_TRAITS::HDR | TEXTURE_TRAITS::RenderTarget 
             | TEXTURE_TRAITS::UAV | TEXTURE_TRAITS::AllocateMips;
         bool is_cubemap = false;
-        if (type == fastgltf::LightType::Point) {
+        if (type == PackedLightType::Point) {
             is_cubemap = true;
             flags |= TEXTURE_TRAITS::Cubemap;
         }
@@ -374,7 +374,7 @@ void Shadow_mapping_helper::CreateShadowMap(const GPU_model& gpu_model, const Sh
         .viewProjection = shadow.viewProjection,
         .lightDirection = shadow.direction,
         .lightPosition = shadow.origin,
-        .isPointLight = (shadow.shadowMapTextureIndex_type.y != int(fastgltf::LightType::Directional)),
+        .isPointLight = (shadow.shadowMapTextureIndex_type.y != int(PackedLightType::Directional)),
         .inv_far_plane = 1.0f / far_plane,
         .texel_size_inv = 1.0f / static_cast<float>(ShadowSize)
     };

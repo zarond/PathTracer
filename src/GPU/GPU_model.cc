@@ -37,37 +37,6 @@ bool isDepthWithSRV(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::DepthWithSRV
 bool isUAV(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::UAV) != TEXTURE_TRAITS::None; }
 bool AllocateMips(TEXTURE_TRAITS a) { return (a & TEXTURE_TRAITS::AllocateMips) != TEXTURE_TRAITS::None; }
 
-float photometric_to_radiometric_irradiance(float lux) { return lux / 683.0f; } // lx -> W/m^2
-
-float photometric_to_radiometric_intensity(float candela) { return candela / (683.0f * 0.25f / glm::pi<float>()); } // candela -> W/sr
-
-// converts intensity from Lux and Candela (as in KHR_lights_punctual) to Watts/M^2 and Watts/Sr to use in shader
-float photometric_to_radiometric_units(const fastgltf::Light& light) {
-    if (light.type == fastgltf::LightType::Directional) {
-        return photometric_to_radiometric_irradiance(light.intensity);
-    } else if (light.type == fastgltf::LightType::Point || light.type == fastgltf::LightType::Spot) {
-        return photometric_to_radiometric_intensity(light.intensity);
-    }
-    return 0.0;
-}
-
-GPU_Light make_light(const Light& light, const fmat4x4& transform) {
-    GPU_Light out_light;
-    //float intensity = photometric_to_radiometric_units(light_params);
-    float intensity = photometric_to_radiometric_irradiance(light.intensity); // to skip spherical area influence conversion in shader
-    out_light.color_intensity = {light.color.x, light.color.y, light.color.z, intensity};
-    float range = (light.use_range && light.type != fastgltf::LightType::Directional) ? light.range : -1.0f;
-    out_light.position_range = {transform[3][0], transform[3][1], transform[3][2], range};
-    auto direction = glm::normalize(transform[2]);
-    out_light.direction_type = {direction.x, direction.y, direction.z, static_cast<float>(light.type)};
-    out_light.inner_outerConeAngleCos = {
-        std::cos(light.innerConeAngle),
-        std::cos(light.outerConeAngle),
-        0.0f, 0.0f
-    };
-    return out_light;
-}
-
 }  // namespace
 
 namespace app {
@@ -879,7 +848,7 @@ void GPU_model::update_lights_array_buffer(const Model& cpu_model) {
     for (const auto& light_instance : cpu_model.light_instances) {
         const auto& light = cpu_model.lights[light_instance.lightIndex];
         const auto& matrix = light_instance.ModelMatrix;
-        GPU_Light gpu_light = make_light(light, matrix);
+        GPU_Light gpu_light = make_packed_light(light, matrix);
         LightsCPUArray.emplace_back(gpu_light);
     }
 

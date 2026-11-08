@@ -10,6 +10,7 @@
 
 #include "../cpu_texture.h"
 #include "../model_loader.h"
+#include "../lights.h"
 #include "../d3d_context.h"
 
 namespace app {
@@ -86,12 +87,8 @@ struct GPU_Material {  // enforce packing rules on CPU Material data
     GPU_Material(const Material& mat, const std::vector<int>& texture_id_conversion_table, int default_texture);
 };
 
-struct GPU_Light {
-    fvec4 color_intensity;
-    fvec4 position_range;
-    fvec4 direction_type;
-    fvec4 inner_outerConeAngleCos;
-};
+// Packed light layout shared with the CPU path tracer
+using GPU_Light = PackedLight;
 
 enum class TEXTURE_TRAITS : uint16_t {
     None            = 0,
