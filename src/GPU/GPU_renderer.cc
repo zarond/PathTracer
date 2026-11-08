@@ -105,6 +105,11 @@ void GPURenderer::reload_materials() {
     if (model_ref_ == nullptr || gpu_model_ == nullptr) return;
     D3DContext& d3d_ctx = D3DContext::Get();
     gpu_model_->update_materials_array_buffer(*model_ref_);
+    
+    // update instances flags in case materials have changed in a way that would require it
+    bool updateTLAS = (active_pipeline_mode_ == RenderPipelineMode::DXRPipeline);
+    if (updateTLAS)
+        gpu_model_->update_transforms(*model_ref_, updateTLAS);
 }
 
 void GPURenderer::render_frame(CPUFrameBuffer& framebuffer, bool continuous, bool iterative, int iteration_count) {

@@ -239,10 +239,7 @@ void Viewer::load_model(Model&& model) {
 const Model& Viewer::get_model() const { return model_; }
 Model& Viewer::get_model() { return model_; }
 const std::vector<Material>& Viewer::get_materials_backup() const { return materials_backups_; }
-void Viewer::set_materials_updated() { 
-    need_materials_update_ = true; 
-    need_transforms_update_ = true;
-}
+void Viewer::set_materials_updated() { need_materials_update_ = true; }
 const std::vector<Light>& Viewer::get_lights_backup() const { return lights_backups_; }
 void Viewer::set_lights_updated() { need_transforms_update_ = true; }
 
