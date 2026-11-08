@@ -420,24 +420,26 @@ void ClosestHitPBR(inout HitInfo payload, Attributes attr) {
     const float linear_roughness = roughness * roughness;
 
     // NEE Punctual lights contribution
-    float3 n_shade = exiting_volume ? -TBN[2] : TBN[2];
-    float eta = exiting_volume ? material.ior : (1.0f / material.ior);
-    float3 refracted_v = -v;
-    if (transmission > 0.0f && material.hasVolume) {
-        float3 rd = refract(-v, n_shade, eta);
-        refracted_v = any(rd != 0.0f) ? rd : 0.0f;
+    if (g_rayGenCB.lightsCount != 0) {
+        float3 n_shade = exiting_volume ? -TBN[2] : TBN[2];
+        float eta = exiting_volume ? material.ior : (1.0f / material.ior);
+        float3 refracted_v = -v;
+        if (transmission > 0.0f && material.hasVolume) {
+            float3 rd = refract(-v, n_shade, eta);
+            refracted_v = any(rd != 0.0f) ? rd : 0.0f;
+        }
+        MaterialParams mat_params;
+        mat_params.diffuse_color = diffuse_color * (1.0f - transmission);
+        mat_params.linear_roughness = linear_roughness;
+        mat_params.f0 = f0;
+        mat_params.transmission_roughness = linear_roughness;
+        mat_params.transmission_attenuation = diffuse_color * transmission;
+        for (uint i = 0; i < g_rayGenCB.lightsCount; ++i) {
+            float3 light_contrib = compute_punctual_light_contribution_DXR(
+                worldPosition, n_shade, worldNormal, v, refracted_v, mat_params, Lights[i], exiting_volume);
+            payload.color += old_payload_absorption * light_contrib * attenuation * alpha;
+        }  
     }
-    MaterialParams mat_params;
-    mat_params.diffuse_color = diffuse_color * (1.0f - transmission);
-    mat_params.linear_roughness = linear_roughness;
-    mat_params.f0 = f0;
-    mat_params.transmission_roughness = linear_roughness;
-    mat_params.transmission_attenuation = diffuse_color * transmission;
-    for (uint i = 0; i < g_rayGenCB.lightsCount; ++i) {
-        float3 light_contrib = compute_punctual_light_contribution_DXR(
-            worldPosition, n_shade, worldNormal, v, refracted_v, mat_params, Lights[i], exiting_volume);
-        payload.color += old_payload_absorption * light_contrib * attenuation * alpha;
-    }  
         
     if (old_depth == 0) {
         return;

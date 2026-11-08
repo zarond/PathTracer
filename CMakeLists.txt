@@ -72,7 +72,6 @@ set(APP_SOURCES
     src/acceleration_structure.cc
     src/renderer.cc
     src/render_settings.cc
-    src/brdf.cc
     src/convex_hull_helper.cc
 )
 if(ON_WINDOWS)

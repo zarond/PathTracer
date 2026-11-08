@@ -256,6 +256,9 @@ void Renderer::update_transforms() {
     if (model_ref_ && accel_struct_) {
         accel_struct_->update_transforms(*model_ref_);
     }
+    if (model_ref_ && ray_program_) {
+        ray_program_->refresh_lights();
+    }
 }
 
 }  // namespace app

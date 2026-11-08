@@ -10,6 +10,7 @@
 #include "model_loader.h"
 #include "bounding_volumes.h"
 #include "render_settings.h"
+#include "lights.h"
 
 namespace app {
 using glm::fvec2;
@@ -48,6 +49,7 @@ class IRayProgram {
     virtual ~IRayProgram() = default;
     virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo,
         std::vector<ray_with_payload>& ray_collection) const noexcept = 0;
+    virtual void refresh_lights() {};
 };
 
 class RayCasterProgram : public IRayProgram {
@@ -89,10 +91,13 @@ class PBRProgram : public IRayProgram {
     virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo,
         std::vector<ray_with_payload>& ray_collection) const noexcept override;
 
+    virtual void refresh_lights() override;
+
   private:
     const Model& model_ref_;
     const CPUTexture<hdr_pixel>& envmap_ref_;
     float envmap_rot_;
+    std::vector<PackedLight> packed_lights_;
 
     static thread_local std::minstd_rand s_gen;
     static thread_local std::uniform_real_distribution<float> s_dist;
