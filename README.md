@@ -72,12 +72,14 @@ Check out this [Video showcase](https://youtu.be/y_9sgQ1A5yA?si=sGy150cQlWNMSJuG
 
 ## Features
 
-PBR ray program mode renders images using path tracing with support for:
+PBR rendering with support for:
 
  - Opaque material = Lambertian diffuse + GGX microsurface with all standard GLTF textures: Albedo, RoughnessMetallic, Normal map
  - Transmissive materials (via `KHR_materials_transmission`) with absorption with several limitations that will be addressed in the future, for example: you can't accurately render nested volumes of transmissive materials that are inside of each other and absorption can have artifacts in case there are other opaque objects inside transmissive volumes. And to properly render transmissive materials refractions you **MUST** specify it with `KHR_materials_volume`. 
  - Emissive materials with `KHR_materials_emissive_strength`
  - `KHR_materials_ior` for IOR manipulation
+ - `KHR_lights_punctual` for point, spot, and directional lights
+ - Moment Shadow Mapping for soft shadows in raster mode
  - Alpha blending and masking
 
 ## Dependencies
