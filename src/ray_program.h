@@ -13,6 +13,10 @@
 #include "lights.h"
 
 namespace app {
+
+class IAccelerationStructure;
+struct NeeMaterialParams;
+
 using glm::fvec2;
 using glm::fvec3;
 using glm::fvec4;
@@ -85,7 +89,8 @@ class AOProgram : public IRayProgram {
 
 class PBRProgram : public IRayProgram {
   public:
-    PBRProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings);
+    PBRProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings,
+        const IAccelerationStructure& accel);
     virtual ~PBRProgram() = default;
 
     virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo,
@@ -97,7 +102,14 @@ class PBRProgram : public IRayProgram {
     const Model& model_ref_;
     const CPUTexture<hdr_pixel>& envmap_ref_;
     float envmap_rot_;
+    const IAccelerationStructure& accel_ref_;
     std::vector<PackedLight> packed_lights_;
+
+    float compute_shadowing(const fvec3& pos, const fvec3& geom_n, const PackedLight& light) const noexcept;
+
+    fvec3 compute_punctual_light_contribution(const fvec3& pos, const fvec3& n, const fvec3& geom_n, const fvec3& v,
+        const fvec3& refracted_v, const NeeMaterialParams& mat_params, const PackedLight& light,
+        bool exiting_volume) const noexcept;
 
     static thread_local std::minstd_rand s_gen;
     static thread_local std::uniform_real_distribution<float> s_dist;

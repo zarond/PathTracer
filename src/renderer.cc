@@ -75,7 +75,7 @@ void Renderer::reload_ray_program() {
             ray_program_ = std::make_unique<AOProgram>(*model_ref_, render_settings_);
             break;
         case RayProgramMode::PBR:
-            ray_program_ = std::make_unique<PBRProgram>(*model_ref_, *envmap_ref_, render_settings_);
+            ray_program_ = std::make_unique<PBRProgram>(*model_ref_, *envmap_ref_, render_settings_, *accel_struct_);
             break;
         case RayProgramMode::RayCaster:
         default:
@@ -199,6 +199,7 @@ void Renderer::set_render_settings(const RenderSettings& settings) {
     if (currentSettings.accelStructType != settings.accelStructType ||
         currentSettings.maxTrianglesPerBVHLeaf != settings.maxTrianglesPerBVHLeaf) {
         reload_acceleration_structure();
+        reload_ray_program();
     }
     if (currentSettings.programMode != settings.programMode || currentSettings.envmapRotation != settings.envmapRotation ||
         currentSettings.maxNewRaysPerBounce != settings.maxNewRaysPerBounce) {

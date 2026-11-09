@@ -120,7 +120,7 @@ LightRay convert_to_light_ray(const float3 pos, const Light light) {
     return light_ray;
 }
     
-float3 directional_lighting(const float3 pos, const float3 n, const float3 v, float3 refracted_v, 
+float3 directional_lighting(const float3 n, const float3 v, float3 refracted_v, 
     MaterialParams mat_params, const LightRay light_ray, const bool has_transmission, const bool transmission_fresnel_twice) 
 {
     const float3 f90 = 1.0f;
@@ -186,7 +186,7 @@ float3 compute_punctual_light_contribution(const float3 pos, const float3 n, con
         return 0.0f; // early exit if fully in shadow
     }
         
-    float3 Radiance = directional_lighting(pos, n, v, refracted_v, mat_params, light_ray, has_transmission, true);
+    float3 Radiance = directional_lighting(n, v, refracted_v, mat_params, light_ray, has_transmission, true);
     return Radiance * shadowing_factor;
 }
     

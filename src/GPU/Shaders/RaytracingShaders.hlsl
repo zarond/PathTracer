@@ -337,7 +337,7 @@ float3 compute_punctual_light_contribution_DXR(const float3 pos, const float3 n,
         return 0.0f; // early exit if fully in shadow
     }
         
-    float3 Radiance = directional_lighting(pos, n, v, refracted_v, mat_params, light_ray, has_transmission, false);
+    float3 Radiance = directional_lighting(n, v, refracted_v, mat_params, light_ray, has_transmission, false);
     return Radiance * shadowing_factor;
 }
     
