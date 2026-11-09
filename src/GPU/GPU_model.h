@@ -6,9 +6,11 @@
 
 #include <glm/fwd.hpp>
 #include <vector>
+#include <array>
 
 #include "../cpu_texture.h"
 #include "../model_loader.h"
+#include "../lights.h"
 #include "../d3d_context.h"
 
 namespace app {
@@ -85,6 +87,9 @@ struct GPU_Material {  // enforce packing rules on CPU Material data
     GPU_Material(const Material& mat, const std::vector<int>& texture_id_conversion_table, int default_texture);
 };
 
+// Packed light layout shared with the CPU path tracer
+using GPU_Light = PackedLight;
+
 enum class TEXTURE_TRAITS : uint16_t {
     None            = 0,
     HDR             = 1 << 0,
@@ -112,12 +117,13 @@ class GPU_texture {
     GPU_texture(const GPU_texture&) = delete;
     GPU_texture& operator=(const GPU_texture&) = delete;
 
-    GPU_texture(GPU_texture&&) = default;
-    GPU_texture& operator=(GPU_texture&&) = default;
+    GPU_texture(GPU_texture&& other) noexcept;
+    GPU_texture& operator=(GPU_texture&& other) noexcept;
 
     D3D12_GPU_DESCRIPTOR_HANDLE GetSRVHandle() const;
-    D3D12_GPU_DESCRIPTOR_HANDLE GetUAVHandle() const;
-    D3D12_CPU_DESCRIPTOR_HANDLE GetRTVHandle() const;
+    D3D12_GPU_DESCRIPTOR_HANDLE GetUAVHandle() const; // If cubemap, get texture array UAV handle
+    D3D12_GPU_DESCRIPTOR_HANDLE GetUAVHandle(int i) const; // If cubemap, get individual cubemap sides UAV handles
+    D3D12_CPU_DESCRIPTOR_HANDLE GetRTVHandle(int i = 0) const;
     D3D12_CPU_DESCRIPTOR_HANDLE GetDSVHandle() const;
 
     ComPtr<ID3D12Resource> get_gpu_resource() const;
@@ -125,8 +131,8 @@ class GPU_texture {
     TEXTURE_TRAITS texture_options = TEXTURE_TRAITS::None;
     uint8_t mipLevels = 1;
 
-    void GetUAVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle) const;
-    void GetSRVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle) const;
+    void GetUAVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle, int cubemap_side) const;
+    void GetSRVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle, int cubemap_side = -1) const;
 
     static constexpr uint32_t CalculateMipCount(uint32_t width, uint32_t height) { return std::bit_width(std::max(width, height)); }
     static constexpr uint32_t GetMipDimension(uint32_t baseSize, uint32_t mipLevel) { return std::max(1u, baseSize >> mipLevel); }
@@ -154,7 +160,8 @@ class GPU_texture {
     ComPtr<ID3D12Resource> pTexture;
     D3D_Handle_Pair srv_handle{};
     D3D_Handle_Pair uav_handle{};
-    D3D_Handle_Pair rtv_handle{};
+    std::array<D3D_Handle_Pair, 6> uav_handles{};
+    std::array<D3D_Handle_Pair, 6> rtv_handles{};
     D3D_Handle_Pair dsv_handle{};
     // ComPtr<ID3D12Resource> uploadBuffer;
 };
@@ -189,6 +196,7 @@ class GPU_model {
     D3D_Handle_Pair combined_mesh_offsets{};
 
     D3D_Handle_Pair materials_array{};
+    D3D_Handle_Pair lights_array{};
 
     std::vector<uint32_t> indicesOffsets;
     std::vector<uint32_t> indicesSizes;
@@ -197,10 +205,16 @@ class GPU_model {
 
     std::vector<GPU_texture> textures;
 
+    BBox scene_bounds{};
+
     bool isEmpty() const;
 
     void update_materials_array_buffer(const Model& cpu_model);
     const std::vector<GPU_Material>& get_materials_cpu_array() const;
+
+    void update_lights_array_buffer(const Model& cpu_model);
+    const std::vector<GPU_Light>& get_lights_cpu_array() const;
+    int get_lights_count() const;
 
     void update_transforms(const Model& model, bool updateTLAS);
 
@@ -225,13 +239,16 @@ class GPU_model {
     GPU_mesh combinedMesh;
     ComPtr<ID3D12Resource> MeshIndicesOffsets;
     ComPtr<ID3D12Resource> MaterialsArray;
+    ComPtr<ID3D12Resource> LightsArray;
     std::vector<GPU_Material> MaterialsCPUArray;
+    std::vector<GPU_Light> LightsCPUArray;
     std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;
 
     bool isEmpty_ = true;
 
     void prepare_combined_vertex_index_buffers(const Model& cpu_model);
     void prepare_materials_array_buffer(const Model& cpu_model);
+    void prepare_lights_array_buffer(const Model& cpu_model);
     void prepare_textures_array_buffer(const Model& cpu_model);
     void release_gpu_resource();
 };

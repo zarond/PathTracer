@@ -9,14 +9,13 @@
 #include <tuple>
 
 #include "brdf.h"
+#include "brdf_punctual_lights.h"
+#include "lights.h"
+#include "acceleration_structure.h"
 
 namespace {
 using namespace glm;
 using namespace app;
-
-constexpr float kEpsilon = 1e-8f;
-constexpr float kEpsilon5 = 1e-5f;
-constexpr float kMaxBRDF = 10.0f;
 
 fvec3 ImportanceSampleCosDir(fvec2 xi) {
     // pdf(x) = cos(l, n) / pi
@@ -44,32 +43,7 @@ fvec3 importanceSampleGGX(fvec2 xi, float a) {
     float sin_phi = sin(phi);
     return fvec3(sin_theta * cos_phi, sin_theta * sin_phi, cos_theta);
 }
-fvec3 fresnel_schlick(fvec3 f0, fvec3 f90, float cos_nv) {
-    float x = 1.0f - cos_nv;
-    float x2 = x * x;
-    float x5 = x2 * x2 * x;
-    return mix(f0, f90, x5);
-}
-float V_SmithGGXCorrelated(float NoV, float NoL, float a) {  // a is alpha_linear_roughness = perceptual_roughness^2
-    // Original formulation of G_SmithGGX Correlated
-    // lambda_v = (-1 + sqrt ( alphaG2 * (1 - NdotL2 ) / NdotL2 + 1)) * 0.5 f;
-    // lambda_l = (-1 + sqrt ( alphaG2 * (1 - NdotV2 ) / NdotV2 + 1)) * 0.5 f;
-    // G_SmithGGXCorrelated = 1 / (1 + lambda_v + lambda_l );
-    // V_SmithGGXCorrelated = G_SmithGGXCorrelated / (4.0 f * NdotL * NdotV );
-    // This is the optimized version
-    float a2 = a * a;
-    float GGXV = NoL * sqrt((-NoV * a2 + NoV) * NoV + a2);
-    float GGXL = NoV * sqrt((-NoL * a2 + NoL) * NoL + a2);
-    return 2.0f / (GGXV + GGXL);  // should be 0.5f / (GGXV + GGXL);
-}
-float G1(float NdW, float k) { return 1.0f / (NdW * (1.0f - k) + k); }
-// Schlick - Smith visibility term
-// [ http://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf ]
-float V_Schlick(float NoL, float NoV, float Roughness)  // Roughness is perceptual roughness
-{
-    float k = max(Roughness * Roughness * 0.5f, kEpsilon5);
-    return G1(NoL, k) * G1(NoV, k);  // should be G1*G1 / 4.0;
-}
+
 fvec3 Tangent2World(fvec3 v, fvec3 T, fvec3 B, fvec3 N) { return T * v.x + B * v.y + N * v.z; }
 fvec3 Tangent2World(fvec3 v, const fmat3x3& TBN) { return TBN * v; }
 
@@ -146,7 +120,6 @@ fmat3x3 handle_TBN_creation(
     }
     return TBN;
 }
-float pow2(float v) { return v * v; }
 }  // namespace
 
 namespace app {
@@ -259,8 +232,101 @@ fvec3 AOProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_inf
 }
 // AOProgram
 
-PBRProgram::PBRProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings)
-    : model_ref_(model), envmap_ref_(env), envmap_rot_(settings.envmapRotation) {}
+PBRProgram::PBRProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings,
+    const IAccelerationStructure& accel)
+    : model_ref_(model), envmap_ref_(env), envmap_rot_(settings.envmapRotation), accel_ref_(accel) 
+{
+    packed_lights_.reserve(model.light_instances.size());
+    for (const auto& instance : model.light_instances)
+        packed_lights_.push_back(make_packed_light(model.lights[instance.lightIndex], instance.ModelMatrix));
+}
+
+void PBRProgram::refresh_lights() {
+    packed_lights_.resize(model_ref_.light_instances.size());
+    for (int i = 0; i < packed_lights_.size(); ++i) {
+        const auto& instance = model_ref_.light_instances[i];
+        packed_lights_[i] = make_packed_light(model_ref_.lights[instance.lightIndex], instance.ModelMatrix);
+    }
+}
+
+float PBRProgram::compute_shadowing(const fvec3& pos, const fvec3& geom_n, const PackedLight& light) const noexcept {
+    constexpr int MAX_TRANSPARENT_BOUNCES = 8;   // limit the number of transparent bounces
+
+    const auto light_type = static_cast<PackedLightType>(static_cast<int>(light.direction_type.w));
+    const bool directional = (light_type == PackedLightType::Directional);
+
+    fvec3 origin = pos + geom_n * kEpsilon5;
+    fvec3 direction;
+    float t_max;
+    if (directional) {
+        direction = xyz(light.direction_type);
+        t_max = 10000.0f;
+    } else {
+        const fvec3 to_light = xyz(light.position_range) - origin;
+        const float dist = length(to_light);
+        if (dist < kEpsilon5) {
+            return 1.0f;
+        }
+        direction = to_light / dist;
+        t_max = dist;
+    }
+
+    float transmittance = 1.0f;
+    float distance_traveled = 0.0f;
+    for (int bounce = 0; bounce < MAX_TRANSPARENT_BOUNCES; ++bounce) {
+        const auto hit = accel_ref_.intersect_ray(ray{origin, direction});
+        bool forward_hit = hit.forward_hit();
+        if (forward_hit) {
+            distance_traveled += hit.t;
+        }
+        if (!forward_hit || distance_traveled >= t_max) {
+            return transmittance;
+        }
+
+        const auto& mesh_data = get_mesh_data(model_ref_, hit);
+        const auto& [p1, p2, p3] = get_vertex_data(mesh_data, hit);
+        const fvec2 uv = p1.uv * hit.A + p2.uv * hit.B + p3.uv * hit.C();
+
+        auto mat_index = mesh_data.materialIndex;
+        const auto& material = model_ref_.materials[mat_index];
+        const float alpha = sample_albedo(material, model_ref_.images, uv).w;
+
+        const float occlusion = (material.alphaBlending == 0)
+            ? ((alpha < material.alphaCutoff) ? 0.0f : 1.0f)  // alpha cutout
+            : alpha;                                          // alpha blending: partial occlusion
+
+        transmittance *= (1.0f - occlusion);
+        if (transmittance < 0.001f) {
+            return 0.0f;
+        }
+        origin += direction * (hit.t + kEpsilon5);
+        distance_traveled += kEpsilon5;
+    }
+    return transmittance;
+}
+
+fvec3 PBRProgram::compute_punctual_light_contribution(const fvec3& pos, const fvec3& n, const fvec3& geom_n,
+    const fvec3& v,
+    const fvec3& refracted_v, const NeeMaterialParams& mat_params, const PackedLight& light,
+    const bool exiting_volume) const noexcept {
+    LightRay light_ray = convert_to_light_ray(pos, light);
+
+    const bool has_transmission = exiting_volume && (mat_params.transmission_attenuation != fvec3(0.0f)) &&
+        (refracted_v != fvec3(0.0f));
+    if (!has_transmission) {
+        light_ray.color = dot(n, light_ray.direction) > 0.0f ? light_ray.color : fvec3(0.0f);  // facing attenuation for opaque materials
+    }
+    if (light_ray.color == fvec3(0.0f)) {
+        return fvec3(0.0f);  // early exit if light is not contributing
+    }
+    const float shadowing_factor = compute_shadowing(pos, geom_n, light);
+    if (shadowing_factor == 0.0f) {
+        return fvec3(0.0f);  // early exit if fully in shadow
+    }
+
+    fvec3 Radiance = directional_lighting(n, v, refracted_v, mat_params, light_ray, has_transmission);
+    return Radiance * shadowing_factor;
+}
 
 std::minstd_rand thread_local PBRProgram::s_gen = std::minstd_rand(std::random_device{}());
 std::uniform_real_distribution<float> thread_local PBRProgram::s_dist = std::uniform_real_distribution<float>(0.0f, 1.0f);
@@ -315,9 +381,7 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
         exiting_volume ? min(exp(-material.attenuationFactor * hit.t), 1.0f) : fvec3{1.0f};  // Volume absorption
 
     auto emissive = xyz(sample_emissive(material, model_ref_.images, point.uv));
-    if (ray_.depth == 0) {
-        return ray_.payload * emissive * attenuation * alpha;
-    }
+    fvec3 color = ray_.payload * emissive * attenuation * alpha;
 
     auto v = -ray_.direction;
 
@@ -335,6 +399,34 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
     const auto f90 = fvec3(1.0f);
     const auto roughness = ORM.y;
     const auto linear_roughness = roughness * roughness;
+
+    // Next event estimation for punctual lights (KHR_lights_punctual).
+    if (!packed_lights_.empty()) {
+        const fvec3 n_shade = exiting_volume ? -TBN[2] : TBN[2];
+        const float eta = exiting_volume ? material.ior : (1.0f / material.ior);
+        fvec3 refracted_v = -v;
+        if (transmission > 0.0f && material.hasVolume) {
+            fvec3 rd = glm::refract(-v, n_shade, eta);
+            refracted_v = (rd != fvec3(0.0f)) ? rd : fvec3(0.0f);
+        }
+
+        NeeMaterialParams mat_params;
+        mat_params.diffuse_color = diffuse_color * (1.0f - transmission);
+        mat_params.linear_roughness = linear_roughness;
+        mat_params.f0 = f0;
+        mat_params.transmission_roughness = linear_roughness;
+        mat_params.transmission_attenuation = diffuse_color * transmission;
+
+        for (const auto& light : packed_lights_) {
+            color += ray_.payload * attenuation * alpha *
+                compute_punctual_light_contribution(
+                    point.position, n_shade, point.normal, v, refracted_v, mat_params, light, exiting_volume);
+        }
+    }
+
+    if (ray_.depth == 0) {
+        return color;
+    }
 
     std::uint8_t new_depth = ray_.depth - 1;
 
@@ -398,7 +490,7 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
             float NdM = clamp(dot(N, m), kEpsilon, 1.0f);
             float VdH = clamp(dot((!exiting_volume) ? v : -v, h), 0.0f, 1.0f);
 
-            auto brdf = (fvec3(1.0f) - F) * (G * VdH * LdN / NdM);
+            auto brdf = (fvec3(1.0f) - F) * (4.0f * G * VdH * LdN / NdM);
             brdf = min(brdf, fvec3(kMaxBRDF));                               // clamp to avoid fireflies
             auto new_pos = point.position - new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
             auto new_payload = diffuse_color * transmission * attenuation * brdf * ray_.payload * alpha;
@@ -416,7 +508,7 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
 
             auto G = V_SmithGGXCorrelated(VdN, LdN, linear_roughness);
             // auto G = V_Schlick(LdN, VdN, roughness);
-            auto brdf = F * (G * LdN * LdH / NdH);
+            auto brdf = F * (4.0f * G * LdN * LdH / NdH);
             brdf = min(brdf, fvec3(kMaxBRDF));                               // clamp to avoid fireflies
             auto new_pos = point.position + new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
             auto new_payload = attenuation * brdf * ray_.payload * alpha;
@@ -424,7 +516,7 @@ fvec3 PBRProgram::on_hit(const ray_with_payload& ray_, const ray_triangle_hit_in
             ray_collection.push_back(new_ray);
         }
     }
-    return ray_.payload * emissive * attenuation * alpha;
+    return color;
 }
 
 }  // namespace app

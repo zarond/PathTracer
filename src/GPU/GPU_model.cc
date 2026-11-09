@@ -4,6 +4,7 @@
 
 #include <bit>
 #include <directx/d3dx12.h>
+#include <glm/gtc/constants.hpp>
 
 namespace {
 
@@ -391,6 +392,8 @@ GPU_model::GPU_model(const Model& cpu_model, bool raytracing_support) {
     prepare_combined_vertex_index_buffers(cpu_model);
     prepare_textures_array_buffer(cpu_model);
     prepare_materials_array_buffer(cpu_model);
+    prepare_lights_array_buffer(cpu_model);
+    scene_bounds = cpu_model.scene_bounds;
     isEmpty_ = false;
 }
 
@@ -436,6 +439,7 @@ void GPU_model::release_gpu_resource() {
     instancesUploadBuffer.Reset();
     //instancesBuffer.Reset();
     MaterialsArray.Reset();
+    LightsArray.Reset();
 
     if (isEmpty_) return;
 
@@ -443,6 +447,7 @@ void GPU_model::release_gpu_resource() {
     d3d_ctx.m_SrvDescHeapAlloc.Free(combined_mesh_vertices.cpuHandle, combined_mesh_vertices.gpuHandle);
     d3d_ctx.m_SrvDescHeapAlloc.Free(combined_mesh_offsets.cpuHandle, combined_mesh_offsets.gpuHandle);
     d3d_ctx.m_SrvDescHeapAlloc.Free(materials_array.cpuHandle, materials_array.gpuHandle);
+    d3d_ctx.m_SrvDescHeapAlloc.Free(lights_array.cpuHandle, lights_array.gpuHandle);
 };
 
 bool GPU_model::isEmpty() const { return isEmpty_; }
@@ -740,6 +745,41 @@ void GPU_model::prepare_materials_array_buffer(const Model& cpu_model) {
     update_materials_array_buffer(cpu_model);
 }
 
+void GPU_model::prepare_lights_array_buffer(const Model& cpu_model) {
+    D3DContext& d3d_ctx = D3DContext::Get();
+    const auto& heap_alloc = d3d_ctx.m_SrvDescHeapAlloc;
+
+    uint32_t lightCount = max(cpu_model.light_instances.size(), size_t(1));
+    const UINT BufferSize = sizeof(GPU_Light) * lightCount;
+
+    const D3D12_HEAP_PROPERTIES def_props{
+        .Type = D3D12_HEAP_TYPE_DEFAULT,
+        .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
+        .CreationNodeMask = 1,
+        .VisibleNodeMask = 1,
+    };
+
+    const D3D12_RESOURCE_DESC upload_desc{
+        .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
+        .Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+        .Width = BufferSize,
+        .Height = 1,
+        .DepthOrArraySize = 1,
+        .MipLevels = 1,
+        .Format = DXGI_FORMAT_UNKNOWN,
+        .SampleDesc = {1, 0},
+        .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+        .Flags = D3D12_RESOURCE_FLAG_NONE,
+    };
+
+    ThrowIfFailed(d3d_ctx.m_d3dDevice->CreateCommittedResource(
+        &def_props, D3D12_HEAP_FLAG_NONE, &upload_desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&LightsArray)));
+    CreateBufferSRV(d3d_ctx, LightsArray, lightCount, sizeof(GPU_Light), lights_array);
+
+    update_lights_array_buffer(cpu_model);
+}
+
 void GPU_model::update_materials_array_buffer(const Model& cpu_model) {
     // I pack materials differently than in CPU for ease of use in shader.
     // Here, I index material by meshID, that might lead to some redundant data
@@ -797,6 +837,69 @@ void GPU_model::update_materials_array_buffer(const Model& cpu_model) {
 
 const std::vector<GPU_Material>& GPU_model::get_materials_cpu_array() const { return MaterialsCPUArray; }
 
+void GPU_model::update_lights_array_buffer(const Model& cpu_model) {
+    uint32_t lightCount = cpu_model.light_instances.size();
+
+    LightsCPUArray.clear();
+    LightsCPUArray.reserve(lightCount);
+
+    if (lightCount == 0) return;
+
+    for (const auto& light_instance : cpu_model.light_instances) {
+        const auto& light = cpu_model.lights[light_instance.lightIndex];
+        const auto& matrix = light_instance.ModelMatrix;
+        GPU_Light gpu_light = make_packed_light(light, matrix);
+        LightsCPUArray.emplace_back(gpu_light);
+    }
+
+    D3DContext& d3d_ctx = D3DContext::Get();
+    d3d_ctx.InitCopyCommandList();
+
+    ComPtr<ID3D12Resource2> light_uploadBuffer; // todo: keep and reuse
+
+    const UINT BufferSize = sizeof(GPU_Light) * lightCount;
+
+    const D3D12_HEAP_PROPERTIES upload_props{
+        .Type = D3D12_HEAP_TYPE_UPLOAD,
+        .CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN,
+        .MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN,
+        .CreationNodeMask = 1,
+        .VisibleNodeMask = 1,
+    };
+
+    const D3D12_RESOURCE_DESC upload_desc{
+        .Dimension = D3D12_RESOURCE_DIMENSION_BUFFER,
+        .Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT,
+        .Width = BufferSize,
+        .Height = 1,
+        .DepthOrArraySize = 1,
+        .MipLevels = 1,
+        .Format = DXGI_FORMAT_UNKNOWN,
+        .SampleDesc = {1, 0},
+        .Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR,
+        .Flags = D3D12_RESOURCE_FLAG_NONE,
+    };
+
+    ThrowIfFailed(d3d_ctx.m_d3dDevice->CreateCommittedResource(&upload_props, D3D12_HEAP_FLAG_NONE, &upload_desc,
+        D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&light_uploadBuffer)));
+
+    void* pDataBegin;
+    ThrowIfFailed(light_uploadBuffer->Map(0, nullptr, &pDataBegin));
+    memcpy(pDataBegin, LightsCPUArray.data(), BufferSize);
+    light_uploadBuffer->Unmap(0, nullptr);
+
+    d3d_ctx.m_CopyCommandList->CopyBufferRegion(LightsArray.Get(), 0, light_uploadBuffer.Get(), 0, BufferSize);
+
+    d3d_ctx.DispatchCopyCommandList();
+    d3d_ctx.WaitForPendingCopy();
+}
+
+const std::vector<GPU_Light>& GPU_model::get_lights_cpu_array() const { return LightsCPUArray; }
+
+int GPU_model::get_lights_count() const {
+    return static_cast<int>(LightsCPUArray.size());
+}
+
 void GPU_model::update_transforms(const Model& model, bool updateTLAS) {
     // copy new transforms and keep previous matrix for reprojections
     for (size_t i = 0; i < std::min(objects.size(), model.objects.size()); ++i) {
@@ -832,6 +935,18 @@ void GPU_model::update_transforms(const Model& model, bool updateTLAS) {
                 inst.Transform[r][c] = Mat[r][c];
             }
         }
+        const auto& cpu_mesh = model.meshes[obj.meshIndex];
+        const auto& material = model.materials[cpu_mesh.materialIndex];
+        bool doubleSided = material.doubleSided || material.hasVolume;
+        bool alphaBlending = material.alphaBlending;
+        bool alphaTest = (material.alphaCutoff >= 0.0f);
+
+        inst.InstanceID = obj.meshIndex;  // can be used to identify object in shaders
+        inst.InstanceMask = 0xFF;
+        inst.InstanceContributionToHitGroupIndex = 0;  // shader binding table offsets if used
+        inst.Flags = 0;
+        if (doubleSided) inst.Flags |= D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE;
+        if (!alphaTest) inst.Flags |= D3D12_RAYTRACING_INSTANCE_FLAG_FORCE_OPAQUE;
     }
 
     void* pInstancesData = nullptr;
@@ -921,6 +1036,46 @@ DXGI_FORMAT GPU_texture::choose_format() const {
 
 GPU_texture::~GPU_texture() { release_gpu_resource(); }
 
+GPU_texture::GPU_texture(GPU_texture&& other) noexcept
+    : pTexture(std::move(other.pTexture)),
+      srv_handle(other.srv_handle),
+      uav_handle(other.uav_handle),
+      uav_handles(other.uav_handles),
+      rtv_handles(other.rtv_handles),
+      dsv_handle(other.dsv_handle),
+      format_(other.format_),
+      texture_options(other.texture_options),
+      mipLevels(other.mipLevels) {
+    other.srv_handle = {};
+    other.uav_handle = {};
+    other.uav_handles = {};
+    other.rtv_handles = {};
+    other.dsv_handle = {};
+}
+
+GPU_texture& GPU_texture::operator=(GPU_texture&& other) noexcept {
+    if (this != &other) {
+        release_gpu_resource();
+
+        pTexture = std::move(other.pTexture);
+        srv_handle = other.srv_handle;
+        uav_handle = other.uav_handle;
+        uav_handles = other.uav_handles;
+        rtv_handles = other.rtv_handles;
+        dsv_handle = other.dsv_handle;
+        format_ = other.format_;
+        texture_options = other.texture_options;
+        mipLevels = other.mipLevels;
+
+        other.srv_handle = {};
+        other.uav_handle = {};
+        other.uav_handles = {};
+        other.rtv_handles = {};
+        other.dsv_handle = {};
+    }
+    return *this;
+}
+
 void GPU_texture::create_texture_resource(
     UINT64 width, UINT height, DXGI_FORMAT format, D3D12_RESOURCE_STATES initial_state_override, bool use_initial_state_override) {
     D3DContext& d3d_ctx = D3DContext::Get();
@@ -961,7 +1116,9 @@ void GPU_texture::create_texture_resource(
             d3d_ctx.m_SrvDescHeapAlloc.Alloc(&srv_handle);
         }
         if (isRenderTarget) {
-            d3d_ctx.m_RtvDescHeapAlloc.Alloc(&rtv_handle);
+            for (int i = 0; i < (isCubemap ? 6 : 1); ++i) {
+                d3d_ctx.m_RtvDescHeapAlloc.Alloc(&rtv_handles[i]);
+            }
             initial_state = D3D12_RESOURCE_STATE_RENDER_TARGET;
         }
         if (isDepth) {
@@ -970,6 +1127,9 @@ void GPU_texture::create_texture_resource(
         }
         if (isUAV) {
             d3d_ctx.m_SrvDescHeapAlloc.Alloc(&uav_handle);
+            for (int i = 0; i < (isCubemap ? 6 : 1); ++i) {
+                d3d_ctx.m_SrvDescHeapAlloc.Alloc(&uav_handles[i]);
+            }
             initial_state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
         }
         if (use_initial_state_override) {
@@ -1015,15 +1175,17 @@ void GPU_texture::create_texture_resource(
                         .PlaneSlice = 0,
                     },
             };
-            if (isCubemap) {
-                rtvDesc.Texture2DArray = D3D12_TEX2D_ARRAY_RTV {
-                    .MipSlice = 0,
-                    .FirstArraySlice = 0,
-                    .ArraySize = 6,
-                    .PlaneSlice = 0,
-                };
+            for (int i = 0; i < (isCubemap ? 6 : 1); ++i) {
+                if (isCubemap) {
+                    rtvDesc.Texture2DArray = D3D12_TEX2D_ARRAY_RTV {
+                        .MipSlice = 0,
+                        .FirstArraySlice = static_cast<unsigned int>(i),
+                        .ArraySize = 1,
+                        .PlaneSlice = 0,
+                    };
+                }
+                d3d_ctx.m_d3dDevice->CreateRenderTargetView(pTexture.Get(), &rtvDesc, rtv_handles[i].cpuHandle);
             }
-            d3d_ctx.m_d3dDevice->CreateRenderTargetView(pTexture.Get(), &rtvDesc, rtv_handle.cpuHandle);
         }
 
         if (isDepth) {
@@ -1065,6 +1227,17 @@ void GPU_texture::create_texture_resource(
                 };
             }
             d3d_ctx.m_d3dDevice->CreateUnorderedAccessView(pTexture.Get(), nullptr, &uavDesc, uav_handle.cpuHandle);
+            for (int i = 0; i < (isCubemap ? 6 : 1); ++i) {
+                if (isCubemap) {
+                    uavDesc.Texture2DArray = D3D12_TEX2D_ARRAY_UAV{
+                        .MipSlice = 0,
+                        .FirstArraySlice = static_cast<unsigned int>(i),
+                        .ArraySize = 1,
+                        .PlaneSlice = 0,
+                    };
+                }
+                d3d_ctx.m_d3dDevice->CreateUnorderedAccessView(pTexture.Get(), nullptr, &uavDesc, uav_handles[i].cpuHandle);
+            }
         }
     }
 }
@@ -1145,7 +1318,7 @@ void GPU_texture::upload_texture_to_gpu(int width_, int height_, const auto& dat
 
 ComPtr<ID3D12Resource> GPU_texture::get_gpu_resource() const { return pTexture; }
 
-void GPU_texture::GetUAVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle) const {
+void GPU_texture::GetUAVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle, int cubemap_side) const {
     bool isCubemap = ::isCubemap(texture_options);
     bool isUAV = ::isUAV(texture_options);
     if (!isUAV) {
@@ -1153,32 +1326,30 @@ void GPU_texture::GetUAVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR
     }
     bool isSRGB = ::isSRGB(texture_options);
     D3DContext& d3d_ctx = D3DContext::Get();
-    if (isUAV) {
-        // Create a unordered access view for the texture
-        D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{
-            .Format = isSRGB ? DXGI_FORMAT_R8G8B8A8_UNORM : format_,
-            .ViewDimension = isCubemap ? D3D12_UAV_DIMENSION_TEXTURE2DARRAY : D3D12_UAV_DIMENSION_TEXTURE2D,
-            .Texture2D =
-                D3D12_TEX2D_UAV{
-                    .MipSlice = mipLevel,
-                    .PlaneSlice = 0,
-                },
-        };
-        if (isCubemap) {
-            uavDesc.Texture2DArray = D3D12_TEX2D_ARRAY_UAV{
+
+    // Create a unordered access view for the texture
+    D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{
+        .Format = isSRGB ? DXGI_FORMAT_R8G8B8A8_UNORM : format_,
+        .ViewDimension = isCubemap ? D3D12_UAV_DIMENSION_TEXTURE2DARRAY : D3D12_UAV_DIMENSION_TEXTURE2D,
+        .Texture2D =
+            D3D12_TEX2D_UAV{
                 .MipSlice = mipLevel,
-                .FirstArraySlice = 0,
-                .ArraySize = 6,
                 .PlaneSlice = 0,
-            };
-        }
-        d3d_ctx.m_d3dDevice->CreateUnorderedAccessView(pTexture.Get(), nullptr, &uavDesc, Handle);
+            },
+    };
+    if (isCubemap) {
+        uavDesc.Texture2DArray = D3D12_TEX2D_ARRAY_UAV{
+            .MipSlice = mipLevel,
+            .FirstArraySlice = (cubemap_side >= 0)? static_cast<unsigned int>(cubemap_side) : 0,
+            .ArraySize = (cubemap_side >= 0) ? 1u : 6u,
+            .PlaneSlice = 0,
+        };
     }
+    d3d_ctx.m_d3dDevice->CreateUnorderedAccessView(pTexture.Get(), nullptr, &uavDesc, Handle);
 }
 
-void GPU_texture::GetSRVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle) const {
+void GPU_texture::GetSRVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR_HANDLE Handle, int cubemap_side) const {
     bool isCubemap = ::isCubemap(texture_options);
-    bool isSRGB = ::isSRGB(texture_options);
     D3DContext& d3d_ctx = D3DContext::Get();
 
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{
@@ -1191,7 +1362,16 @@ void GPU_texture::GetSRVHandleForMipLevel(uint8_t mipLevel, D3D12_CPU_DESCRIPTOR
                 .MipLevels = 1,
             },
     };
-    if (isCubemap) {
+    if (isCubemap && cubemap_side >= 0) {
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+        srvDesc.Texture2DArray = D3D12_TEX2D_ARRAY_SRV{
+            .MostDetailedMip = mipLevel,
+            .MipLevels = 1,
+            .FirstArraySlice = static_cast<unsigned int>(cubemap_side),
+            .ArraySize = 1,
+            .PlaneSlice = 0,
+        };
+    } else if (isCubemap) {
         srvDesc.TextureCube = D3D12_TEXCUBE_SRV{
             .MostDetailedMip = mipLevel,
             .MipLevels = 1,
@@ -1207,14 +1387,20 @@ void GPU_texture::release_gpu_resource() {
         if (!isDepth(texture_options) || isDepthWithSRV(texture_options)) {
             d3d_ctx.m_SrvDescHeapAlloc.Free(srv_handle);
         }
+        bool is_Cubemap = isCubemap(texture_options);
         if (isRenderTarget(texture_options)) {
-            d3d_ctx.m_RtvDescHeapAlloc.Free(rtv_handle);
+            for (int i = 0; i < (is_Cubemap ? 6 : 1); ++i) {
+                d3d_ctx.m_RtvDescHeapAlloc.Free(rtv_handles[i]);
+            }
         }
         if (isDepth(texture_options)) {
             d3d_ctx.m_DsvDescHeapAlloc.Free(dsv_handle);
         }
         if (isUAV(texture_options)) {
             d3d_ctx.m_SrvDescHeapAlloc.Free(uav_handle);
+            for (int i = 0; i < (is_Cubemap ? 6 : 1); ++i) {
+                d3d_ctx.m_SrvDescHeapAlloc.Free(uav_handles[i]);
+            }
         }
 
         pTexture.Reset();
@@ -1260,9 +1446,20 @@ void GPU_texture::copy_texture_mip0_only(GPU_texture& dst, GPU_texture& src,
     };
     commandList->ResourceBarrier(2, to_barriers);
 
-    CD3DX12_TEXTURE_COPY_LOCATION dstLocation = {gpuDst.Get(), 0};
-    CD3DX12_TEXTURE_COPY_LOCATION srcLocation = {gpuSrc.Get(), 0};
-    commandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, nullptr);
+    bool is_cubemap = isCubemap(src.texture_options);
+    int mipLevels = src.mipLevels;
+
+    for (int i = 0; i < (is_cubemap ? 6 : 1); ++i) {
+        UINT dstSubresource = D3D12CalcSubresource(i,  // MipSlice
+            i,                                         // ArraySlice (0 to 5)
+            0,                                         // PlaneSlice (0 for standard color formats)
+            mipLevels,                                 // MipLevels
+            is_cubemap ? 6 : 1                         // ArraySize (6 faces for a Cubemap)
+        );
+        CD3DX12_TEXTURE_COPY_LOCATION dstLocation = {gpuDst.Get(), dstSubresource};
+        CD3DX12_TEXTURE_COPY_LOCATION srcLocation = {gpuSrc.Get(), dstSubresource};
+        commandList->CopyTextureRegion(&dstLocation, 0, 0, 0, &srcLocation, nullptr);
+    }
 
     D3D12_RESOURCE_BARRIER from_barriers[2] = {
         CD3DX12_RESOURCE_BARRIER::Transition(gpuDst.Get(), D3D12_RESOURCE_STATE_COPY_DEST, dst_state),
@@ -1309,7 +1506,9 @@ D3D12_GPU_DESCRIPTOR_HANDLE GPU_texture::GetSRVHandle() const { return srv_handl
 
 D3D12_GPU_DESCRIPTOR_HANDLE GPU_texture::GetUAVHandle() const { return uav_handle.gpuHandle; }
 
-D3D12_CPU_DESCRIPTOR_HANDLE GPU_texture::GetRTVHandle() const { return rtv_handle.cpuHandle; }
+D3D12_GPU_DESCRIPTOR_HANDLE GPU_texture::GetUAVHandle(int i) const { return uav_handles[i % 6].gpuHandle; }
+
+D3D12_CPU_DESCRIPTOR_HANDLE GPU_texture::GetRTVHandle(int i) const { return rtv_handles[i % 6].cpuHandle; }
 
 D3D12_CPU_DESCRIPTOR_HANDLE GPU_texture::GetDSVHandle() const { return dsv_handle.cpuHandle; }
 

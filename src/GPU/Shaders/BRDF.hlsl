@@ -1,4 +1,7 @@
+#pragma once
+
 static const float PI = 3.14159265359f;
+static const float inv_PI = 0.31830988618f;
 static const float GOLDEN_RATIO = 1.618034f;
 static const float kEpsilon5 = 1e-5f;
 static const float kEpsilon = 1e-8f;
@@ -36,16 +39,23 @@ float3 importanceSampleGGX(float2 xi, float a) {
 float D_GGX(float NoH, float linear_roughness) {
     float a = NoH * linear_roughness;
     float k = linear_roughness / (1.0f - NoH * NoH + a * a);
-    return k * k * (1.0f / PI);
+    return k * k * inv_PI;
 }
-float G1(float NdW, float k) { return 1.0f / (NdW * (1.0f - k) + k); }
+float G1(float NdW, float k) { return 1.0f / (NdW * (1.0f - k) + k); } // Schlick's G1 function
+
+float G1_GGX_Smith(float NoV, float a) {
+    float a2 = a * a;
+    return (NoV <= 0.0f) ? 0.0f
+        : 2.0f * NoV / (NoV + sqrt((-NoV * a2 + NoV) * NoV + a2));
+}
 
 float PDF_of_importanceSampleGGX(float NoH, float LoH, float a) { 
     return D_GGX(NoH, a) * NoH / (4.0f * LoH); 
 }
 float PDF_of_importanceSampleGGXVNDF(float NoH, float VoN, float a) { 
-    float k = max(a * 0.5f, kEpsilon5);
-    return D_GGX(NoH, a) * G1(VoN, k) / (4.0f * VoN); 
+    // return D_GGX(NoH, a) * G1_GGX_Smith(VoN, a) / (4.0f * VoN);
+    float a2 = a * a;
+    return D_GGX(NoH, a) * 0.5f / (VoN + sqrt((-VoN * a2 + VoN) * VoN + a2)); // simplified in-place
 }
 float3 fresnel_schlick(float3 f0, float3 f90, float cos_nv) {
     float x = 1.0f - cos_nv;
@@ -63,14 +73,14 @@ float V_SmithGGXCorrelated(float NoV, float NoL, float a) {  // a is alpha_linea
     float a2 = a * a;
     float GGXV = NoL * sqrt((-NoV * a2 + NoV) * NoV + a2);
     float GGXL = NoV * sqrt((-NoL * a2 + NoL) * NoL + a2);
-    return 2.0f / (GGXV + GGXL);  // should be 0.5f / (GGXV + GGXL);
+    return 0.5f / (GGXV + GGXL);
 }
 // Schlick - Smith visibility term
 // [ http://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf ]
 float V_Schlick(float NoL, float NoV, float Roughness)  // Roughness is perceptual roughness
 {
     float k = max(Roughness * Roughness * 0.5f, kEpsilon5);
-    return G1(NoL, k) * G1(NoV, k);  // should be G1*G1 / 4.0;
+    return G1(NoL, k) * G1(NoV, k) / 4.0f;
 }
 float pow2(float x) { return x * x; }
 float pow5(float x) {

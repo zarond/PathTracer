@@ -8,17 +8,18 @@
 
 #include "cpu_texture.h"
 #include "model_loader.h"
+#include "bounding_volumes.h"
 #include "render_settings.h"
+#include "lights.h"
 
 namespace app {
+
+class IAccelerationStructure;
+struct NeeMaterialParams;
+
 using glm::fvec2;
 using glm::fvec3;
 using glm::fvec4;
-
-struct ray {
-    fvec3 origin;
-    fvec3 direction;  // should always be normalized
-};
 
 struct ray_with_payload : ray {
     fvec3 payload = fvec3(1.0f);  // accumulated color
@@ -39,16 +40,6 @@ struct barycentric_coords {
     float C() const noexcept { return 1.0f - A - B; }
 };
 
-struct ray_volume_hit_info {
-    bool hit = false;  // Todo: optimize layout, use infinity as no-hit indicator?
-    float t0 = 0.0f;   // distance along the ray
-    float t1 = 0.0f;   // distance along the ray
-    constexpr bool forward_hit() const noexcept { return hit && (t1 > 0.0f); }
-    constexpr float forward_hit_distance() const noexcept {
-        return forward_hit() ? (t0 > 0.0f ? t0 : 0.0f) : std::numeric_limits<float>::infinity();
-    }
-};
-
 struct ray_triangle_hit_info : public barycentric_coords {
     uint32_t objectIndex = 0;    // index of the object hit
     uint32_t meshIndex = 0;      // index of the mesh hit, redundant info, but might save one indirect memory access
@@ -62,6 +53,7 @@ class IRayProgram {
     virtual ~IRayProgram() = default;
     virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo,
         std::vector<ray_with_payload>& ray_collection) const noexcept = 0;
+    virtual void refresh_lights() {};
 };
 
 class RayCasterProgram : public IRayProgram {
@@ -97,16 +89,27 @@ class AOProgram : public IRayProgram {
 
 class PBRProgram : public IRayProgram {
   public:
-    PBRProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings);
+    PBRProgram(const Model& model, const CPUTexture<hdr_pixel>& env, const RenderSettings& settings,
+        const IAccelerationStructure& accel);
     virtual ~PBRProgram() = default;
 
     virtual fvec3 on_hit(const ray_with_payload& r, const ray_triangle_hit_info& hitInfo,
         std::vector<ray_with_payload>& ray_collection) const noexcept override;
 
+    virtual void refresh_lights() override;
+
   private:
     const Model& model_ref_;
     const CPUTexture<hdr_pixel>& envmap_ref_;
     float envmap_rot_;
+    const IAccelerationStructure& accel_ref_;
+    std::vector<PackedLight> packed_lights_;
+
+    float compute_shadowing(const fvec3& pos, const fvec3& geom_n, const PackedLight& light) const noexcept;
+
+    fvec3 compute_punctual_light_contribution(const fvec3& pos, const fvec3& n, const fvec3& geom_n, const fvec3& v,
+        const fvec3& refracted_v, const NeeMaterialParams& mat_params, const PackedLight& light,
+        bool exiting_volume) const noexcept;
 
     static thread_local std::minstd_rand s_gen;
     static thread_local std::uniform_real_distribution<float> s_dist;

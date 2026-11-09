@@ -1,5 +1,6 @@
 #include "BRDF.hlsl"
 #include "Common.hlsl"
+#include "PunctualLights.hlsl"
 
 // Raytracing output texture, accessed as a UAV
 RWTexture2D<float4> gOutput : register(u0);
@@ -15,6 +16,9 @@ StructuredBuffer<uint> Indices : register(t1, space0);
 StructuredBuffer<vertex> Vertices : register(t2, space0);
 StructuredBuffer<uint> IndicesOffset : register(t3, space0);
 StructuredBuffer<Material> Materials : register(t4, space0);
+    
+// Scene Lights data buffers
+StructuredBuffer<Light> Lights : register(t5, space0);
 
 // Envmap
 Texture2D<float4> EnvMap : register(t0, space1);
@@ -248,7 +252,95 @@ void AnyHitRC(inout HitInfo payload, Attributes attr) {
         IgnoreHit();
     }
 }
+    
+[shader("anyhit")]
+void AnyHitShadow(inout HitInfo payload, Attributes attr) {
+    const uint3 indices = GetIndices();
 
+    float2 vertexUV[3] = {Vertices[indices[0]].uv.xy, Vertices[indices[1]].uv.xy, Vertices[indices[2]].uv.xy};
+    
+    float2 uv = HitAttribute(vertexUV, attr);
+
+    const uint mesh_id = InstanceID();
+    const Material mat = Materials[mesh_id];
+    float alpha = mat.baseColorFactor.w;
+    if (mat.baseColorTextureIndex != -1) {
+        Texture2D<float4> albedoTex = ResourceDescriptorHeap[mat.baseColorTextureIndex];
+        alpha *= albedoTex.SampleLevel(Sampler, uv, 0).w;
+    }
+
+    float occlusion;
+    if (mat.alphaBlending == 0) {
+        occlusion = (alpha < mat.alpha_cutoff) ? 0.0f : 1.0f;
+    } else {
+        occlusion = alpha;
+    }
+
+    payload.absorption.r *= (1.0f - occlusion);
+
+    if (payload.absorption.r < 0.001f) {
+        payload.absorption.r = 0.0f;
+        AcceptHitAndEndSearch();
+    } else {
+        IgnoreHit();
+    }
+}
+
+[shader("miss")]
+void MissShadow(inout HitInfo payload) {}
+    
+float compute_shadowing_DXR(float3 pos, const float3 n, const Light light) 
+{
+    pos += n * kEpsilon5; // small offset from surface
+    int light_type = light.direction_type.w;
+    float3 to_light = light.position_range.xyz - pos;
+    float dist = length(to_light);
+
+    HitInfo shadow_payload;
+    shadow_payload.color = float3(0, 0, 0);
+    shadow_payload.absorption = float3(1, 1, 1);
+    shadow_payload.depth = 0;
+    shadow_payload.iteration = 0;
+
+    RayDesc ray;
+    ray.Origin = pos;
+    ray.Direction = (light_type == LightType::Directional) ? light.direction_type.xyz
+                                                           : to_light / dist;
+    ray.TMin = 0.0f;
+    ray.TMax = (light_type == LightType::Directional) ? 10000.0f : dist;
+
+    TraceRay(SceneBVH,
+        RAY_FLAG_FORCE_NON_OPAQUE | RAY_FLAG_CULL_BACK_FACING_TRIANGLES | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER,
+        ~0,
+        1,    // shadow hit group
+        1,
+        1,    // MissShadow
+        ray, shadow_payload);
+
+    return shadow_payload.absorption.r;  
+}
+    
+float3 compute_punctual_light_contribution_DXR(const float3 pos, const float3 n, const float3 geom_n, const float3 v, const float3 refracted_v, 
+    MaterialParams mat_params, const Light light, const bool exiting_volume) 
+{
+    LightRay light_ray = convert_to_light_ray(pos, light);
+    
+    bool has_transmission = exiting_volume && any(mat_params.transmission_attenuation > 0.0f) && any(refracted_v != 0.0f);
+    if (!has_transmission) {
+        light_ray.color = (dot(n, light_ray.direction) > 0) ? light_ray.color : 0.0f; // facing attenuation for opaque materials
+    }
+    if (all(light_ray.color == 0.0f)) {
+        return 0.0f; // early exit if light is not contributing
+    }
+    float shadowing_factor = compute_shadowing_DXR(pos, geom_n, light);
+    if (shadowing_factor == 0.0f) {
+        return 0.0f; // early exit if fully in shadow
+    }
+        
+    float3 Radiance = directional_lighting(n, v, refracted_v, mat_params, light_ray, has_transmission, false);
+    return Radiance * shadowing_factor;
+}
+    
 [shader("closesthit")] 
 void ClosestHitPBR(inout HitInfo payload, Attributes attr) {
     const uint3 indices = GetIndices();
@@ -299,9 +391,6 @@ void ClosestHitPBR(inout HitInfo payload, Attributes attr) {
 
     float3 emissive = sample_emissive(material, uv, Sampler);
     payload.color += old_payload_absorption * emissive * attenuation * alpha;
-    if (old_depth == 0) {
-        return;
-    }
 
     float3 v = -WorldRayDirection();
 
@@ -330,6 +419,32 @@ void ClosestHitPBR(inout HitInfo payload, Attributes attr) {
     const float roughness = max(ORM.x, 0.002f);  // trying to avoid numerical issues with very low roughness
     const float linear_roughness = roughness * roughness;
 
+    // NEE Punctual lights contribution
+    if (g_rayGenCB.lightsCount != 0) {
+        float3 n_shade = exiting_volume ? -TBN[2] : TBN[2];
+        float eta = exiting_volume ? material.ior : (1.0f / material.ior);
+        float3 refracted_v = -v;
+        if (transmission > 0.0f && material.hasVolume) {
+            float3 rd = refract(-v, n_shade, eta);
+            refracted_v = any(rd != 0.0f) ? rd : 0.0f;
+        }
+        MaterialParams mat_params;
+        mat_params.diffuse_color = diffuse_color * (1.0f - transmission);
+        mat_params.linear_roughness = linear_roughness;
+        mat_params.f0 = f0;
+        mat_params.transmission_roughness = linear_roughness;
+        mat_params.transmission_attenuation = diffuse_color * transmission;
+        for (uint i = 0; i < g_rayGenCB.lightsCount; ++i) {
+            float3 light_contrib = compute_punctual_light_contribution_DXR(
+                worldPosition, n_shade, worldNormal, v, refracted_v, mat_params, Lights[i], exiting_volume);
+            payload.color += old_payload_absorption * light_contrib * attenuation * alpha;
+        }  
+    }
+        
+    if (old_depth == 0) {
+        return;
+    }   
+    
     uint2 launchIndex = DispatchRaysIndex();
     uint3 seed1 = uint3(launchIndex.x, launchIndex.y,
         old_depth + g_rayGenCB.maxRayBounces * (payload.iteration + g_rayGenCB.frameID * g_rayGenCB.samplesPerPixel));
@@ -398,7 +513,7 @@ void ClosestHitPBR(inout HitInfo payload, Attributes attr) {
             float NdM = clamp(dot(N, m), kEpsilon, 1.0f);
             float VdH = clamp(dot((!exiting_volume) ? v : -v, h), 0.0f, 1.0f);
 
-            float3 brdf = (1.0f - F) * (G * VdH * LdN / NdM);
+            float3 brdf = (1.0f - F) * (4.0f * G * VdH * LdN / NdM);
             brdf = min(brdf, kMaxBRDF);                                       // clamp to avoid fireflies
             float3 new_pos = worldPosition - new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
 
@@ -425,7 +540,7 @@ void ClosestHitPBR(inout HitInfo payload, Attributes attr) {
 
             float G = V_SmithGGXCorrelated(VdN, LdN, linear_roughness);
             // auto G = V_Schlick(LdN, VdN, roughness);
-            float3 brdf = F * (G * LdN * LdH / NdH);
+            float3 brdf = F * (4.0f * G * LdN * LdH / NdH);
             brdf = min(brdf, kMaxBRDF);                                       // clamp to avoid fireflies
             float3 new_pos = worldPosition + new_pos_offset_dir * kEpsilon5;  // offset to avoid self-intersection
             float3 next_payload_absorption = old_payload_absorption * attenuation * brdf * alpha;
@@ -454,7 +569,7 @@ void MissEnvmap(inout HitInfo payload : SV_RayPayload) {
     // compared to Blender, envmap is rotated 180 degrees around Y (Blender's Z) axis, but same as SP
     float y_rotation = g_rayGenCB.envmapRotation;
     float3 dir = WorldRayDirection();
-    float2 uv = float2(atan2(-dir.z, -dir.x) + y_rotation, -2.0f * asin(dir.y)) * (1.0f / PI);
+    float2 uv = float2(atan2(-dir.z, -dir.x) + y_rotation, -2.0f * asin(dir.y)) * inv_PI;
     uv = uv * 0.5f + 0.5f;
 
     payload.color += payload.absorption * EnvMap.SampleLevel(EnvMapSampler, uv, 0).rgb;

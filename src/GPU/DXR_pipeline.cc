@@ -14,6 +14,7 @@ enum Value : int {
     VertexBufferSlot,
     IndicesOffsetBufferSlot,
     MaterialsBufferSlot,
+    LightsData,
     EnvmapTex,
 
     Count
@@ -78,13 +79,14 @@ void DXR_pipeline::CreateRootSignatures() {
     // Global Root Signature
     // This is a root signature that is shared across all raytracing shaders invoked during a DispatchRays() call.
     {
-        CD3DX12_DESCRIPTOR_RANGE ranges[6];                        // Perfomance TIP: Order from most frequent to least frequent.
+        CD3DX12_DESCRIPTOR_RANGE ranges[7];                        // Perfomance TIP: Order from most frequent to least frequent.
         ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);     // 1 output texture
         ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1);     // 2 static index buffer.
         ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);     // 3 static vertex buffer.
         ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);     // 4 static index offsets buffer.
         ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);     // 5 materials buffer.
-        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 1);  // Envmap texture.
+        ranges[5].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 5);     // 6 lights data buffer.
+        ranges[6].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 1);  // Envmap texture.
 
         D3D12_STATIC_SAMPLER_DESC envmap_sampler = {};  // Envmap static sampler.
         envmap_sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -109,7 +111,8 @@ void DXR_pipeline::CreateRootSignatures() {
         rootParameters[GlobalRootSignatureParams::VertexBufferSlot].InitAsDescriptorTable(1, &ranges[2]);
         rootParameters[GlobalRootSignatureParams::IndicesOffsetBufferSlot].InitAsDescriptorTable(1, &ranges[3]);
         rootParameters[GlobalRootSignatureParams::MaterialsBufferSlot].InitAsDescriptorTable(1, &ranges[4]);
-        rootParameters[GlobalRootSignatureParams::EnvmapTex].InitAsDescriptorTable(1, &ranges[5]);
+        rootParameters[GlobalRootSignatureParams::LightsData].InitAsDescriptorTable(1, &ranges[5]);
+        rootParameters[GlobalRootSignatureParams::EnvmapTex].InitAsDescriptorTable(1, &ranges[6]);
 
         auto flags = D3D12_ROOT_SIGNATURE_FLAG_CBV_SRV_UAV_HEAP_DIRECTLY_INDEXED;
         CD3DX12_ROOT_SIGNATURE_DESC globalRootSignatureDesc(ARRAYSIZE(rootParameters), rootParameters, 2, samplers, flags);
@@ -186,6 +189,8 @@ void DXR_pipeline::CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const
         lib->DefineExport(c_raygenShaderName);
         lib->DefineExport(c_closestHitShaderName);
         lib->DefineExport(c_missShaderName);
+        lib->DefineExport(c_missShadowShaderName);
+        lib->DefineExport(c_anyHitShadowShaderName);
         if (c_anyHitShaderName) {
             lib->DefineExport(c_anyHitShaderName);
         }
@@ -201,6 +206,12 @@ void DXR_pipeline::CreateRaytracingPipeline(D3D12_SHADER_BYTECODE libdxil, const
     }
     hitGroup->SetHitGroupExport(c_hitGroupName);
     hitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
+
+    // Shadow hit group
+    auto shadowHitGroup = raytracingPipeline.CreateSubobject<CD3DX12_HIT_GROUP_SUBOBJECT>();
+    shadowHitGroup->SetAnyHitShaderImport(c_anyHitShadowShaderName);
+    shadowHitGroup->SetHitGroupExport(c_shadowHitGroupName);
+    shadowHitGroup->SetHitGroupType(D3D12_HIT_GROUP_TYPE_TRIANGLES);
 
     // Shader config
     // Defines the maximum sizes in bytes for the ray payload and attribute structure.
@@ -254,12 +265,16 @@ void DXR_pipeline::BuildShaderTables(const wchar_t* c_missShaderName,
 
     void* rayGenShaderIdentifier;
     void* missShaderIdentifier;
+    void* missShadowShaderIdentifier;
     void* hitGroupShaderIdentifier;
+    void* ShadowHitGroupShaderIdentifier;
 
     auto GetShaderIdentifiers = [&](auto* stateObjectProperties) {
         rayGenShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_raygenShaderName);
         missShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_missShaderName);
+        missShadowShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_missShadowShaderName);
         hitGroupShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_hitGroupName);
+        ShadowHitGroupShaderIdentifier = stateObjectProperties->GetShaderIdentifier(c_shadowHitGroupName);
     };
 
     // Get shader identifiers.
@@ -291,19 +306,21 @@ void DXR_pipeline::BuildShaderTables(const wchar_t* c_missShaderName,
 
     // Miss shader table
     {
-        UINT numShaderRecords = 1;
+        UINT numShaderRecords = 2;
         UINT shaderRecordSize = shaderIdentifierSize;
         ShaderTable missShaderTable(device.Get(), numShaderRecords, shaderRecordSize, L"MissShaderTable");
         missShaderTable.push_back(ShaderRecord(missShaderIdentifier, shaderIdentifierSize));
+        missShaderTable.push_back(ShaderRecord(missShadowShaderIdentifier, shaderIdentifierSize));
         m_missShaderTable = missShaderTable.GetResource();
     }
 
     // Hit group shader table
     {
-        UINT numShaderRecords = 1;
+        UINT numShaderRecords = 2;
         UINT shaderRecordSize = shaderIdentifierSize;
         ShaderTable hitGroupShaderTable(device.Get(), numShaderRecords, shaderRecordSize, L"HitGroupShaderTable");
         hitGroupShaderTable.push_back(ShaderRecord(hitGroupShaderIdentifier, shaderIdentifierSize));
+        hitGroupShaderTable.push_back(ShaderRecord(ShadowHitGroupShaderIdentifier, shaderIdentifierSize));
         m_hitGroupShaderTable = hitGroupShaderTable.GetResource();
     }
 }
@@ -371,10 +388,13 @@ void DXR_pipeline::SetRenderingSettings(const RenderSettings& render_settings, f
     RaytracingMode = render_settings.programMode;
 }
 
-void DXR_pipeline::DoRender(
-    const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer, UINT m_width, UINT m_height) {
+void DXR_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer,
+    UINT m_width, UINT m_height, int cubemap_side) {
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
+
+    // set lights count in the constant buffer
+    m_rayGenCB.lightsCount = gpu_model.get_lights_count();
 
     const auto toUAV = CD3DX12_RESOURCE_BARRIER::Transition(
         framebuffer.get_gpu_resource().Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -386,10 +406,10 @@ void DXR_pipeline::DoRender(
         // Since each shader table has only one shader record, the stride is same as the size.
         dispatchDesc->HitGroupTable.StartAddress = hitGroupShaderTable->GetGPUVirtualAddress();
         dispatchDesc->HitGroupTable.SizeInBytes = hitGroupShaderTable->GetDesc().Width;
-        dispatchDesc->HitGroupTable.StrideInBytes = dispatchDesc->HitGroupTable.SizeInBytes;
+        dispatchDesc->HitGroupTable.StrideInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
         dispatchDesc->MissShaderTable.StartAddress = missShaderTable->GetGPUVirtualAddress();
         dispatchDesc->MissShaderTable.SizeInBytes = missShaderTable->GetDesc().Width;
-        dispatchDesc->MissShaderTable.StrideInBytes = dispatchDesc->MissShaderTable.SizeInBytes;
+        dispatchDesc->MissShaderTable.StrideInBytes = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
         dispatchDesc->RayGenerationShaderRecord.StartAddress = m_rayGenShaderTable->GetGPUVirtualAddress();
         dispatchDesc->RayGenerationShaderRecord.SizeInBytes = m_rayGenShaderTable->GetDesc().Width;
         dispatchDesc->Width = m_width;
@@ -415,6 +435,8 @@ void DXR_pipeline::DoRender(
         GlobalRootSignatureParams::IndicesOffsetBufferSlot, gpu_model.combined_mesh_offsets.gpuHandle);
     commandList->SetComputeRootDescriptorTable(
         GlobalRootSignatureParams::MaterialsBufferSlot, gpu_model.materials_array.gpuHandle);
+    commandList->SetComputeRootDescriptorTable(
+        GlobalRootSignatureParams::LightsData, gpu_model.lights_array.gpuHandle);
 
     // Envmap texture and sampler
     commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::EnvmapTex, envmap.GetSRVHandle());
@@ -422,7 +444,7 @@ void DXR_pipeline::DoRender(
     // Bind the heaps, acceleration structure and dispatch rays.
     D3D12_DISPATCH_RAYS_DESC dispatchDesc = {};
     // commandList->SetDescriptorHeaps(1, m_descriptorHeap.GetAddressOf());
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, framebuffer.GetUAVHandle());
+    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, framebuffer.GetUAVHandle(cubemap_side));
     commandList->SetComputeRootShaderResourceView(
         GlobalRootSignatureParams::AccelerationStructureSlot, gpu_model.GetGPUVirtualAddress());
 
@@ -445,6 +467,8 @@ void DXR_pipeline::DoRender(
         framebuffer.get_gpu_resource().Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     commandList->ResourceBarrier(1, &toSRV);
 }
+
+void DXR_pipeline::DoShadowPass(const GPU_model& gpu_model) {}
 
 // no actions required for a model in this raytracing pipeline, because it doesn't use mips
 void DXR_pipeline::OnModelLoad(GPU_model& gpu_model) {} 

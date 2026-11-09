@@ -15,7 +15,7 @@ class Copy_helper {
     Copy_helper();
     ~Copy_helper();
 
-    void Copy(const GPU_texture& dst_texture, const GPU_texture& src_texture);
+    void Copy(const GPU_texture& dst_texture, const GPU_texture& src_texture, int cubemap_side = 0);
 
     static void Reload();
 

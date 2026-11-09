@@ -68,6 +68,8 @@ class Viewer {
     Model& get_model();
     const std::vector<Material>& get_materials_backup() const;
     void set_materials_updated();
+    const std::vector<Light>& get_lights_backup() const;
+    void set_lights_updated();
 
     std::atomic<bool> continuous_rendering = false;
     std::atomic<bool> iterative_rendering = false;
@@ -120,6 +122,7 @@ class Viewer {
     Model model_;
     CPUTexture<hdr_pixel> environment_texture_;
     std::vector<Material> materials_backups_;
+    std::vector<Light> lights_backups_;
     bool need_materials_update_ = false;
     bool need_transforms_update_ = false;
 

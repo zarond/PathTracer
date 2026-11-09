@@ -36,6 +36,7 @@ Viewer::Viewer(Model&& model, CPUTexture<hdr_pixel>&& environmentTexture, const 
     renderer_->load_scene(model_, environment_texture_, last_model_fence_value_, last_envmap_fence_value_);
 
     materials_backups_ = model_.materials;
+    lights_backups_ = model_.lights;
 
     snap_to_camera();
 }
@@ -232,12 +233,15 @@ void Viewer::load_model(Model&& model) {
     renderer_->load_model(model_, last_model_fence_value_);
 
     materials_backups_ = model_.materials;
+    lights_backups_ = model_.lights;
 }
 
 const Model& Viewer::get_model() const { return model_; }
 Model& Viewer::get_model() { return model_; }
 const std::vector<Material>& Viewer::get_materials_backup() const { return materials_backups_; }
 void Viewer::set_materials_updated() { need_materials_update_ = true; }
+const std::vector<Light>& Viewer::get_lights_backup() const { return lights_backups_; }
+void Viewer::set_lights_updated() { need_transforms_update_ = true; }
 
 CPUFrameBuffer& Viewer::get_framebuffer() { return framebuffer_; }
 

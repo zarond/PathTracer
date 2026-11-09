@@ -30,7 +30,7 @@ ComPtr<ID3D12RootSignature> Mipmaps_helper::m_rootSignature{};
 ComPtr<ID3D12PipelineState> Mipmaps_helper::m_PipelineState{};
 ComPtr<ID3D12PipelineState> Mipmaps_helper::m_HiZ_PipelineState{};
 
-Mipmaps_helper::Mipmaps_helper() {
+Mipmaps_helper::Mipmaps_helper(bool can_blur_cubemaps) : CanBlurCubemaps(can_blur_cubemaps) {
     if (!m_rootSignature || !m_PipelineState || !m_HiZ_PipelineState) {
         Reload();
     }
@@ -53,6 +53,7 @@ void Mipmaps_helper::CreateMips(GPU_texture& uav_texture, bool only5Mips, bool H
     const auto height = description.Height;
     const bool isSRGB = (uav_texture.texture_options & TEXTURE_TRAITS::sRGB) != TEXTURE_TRAITS::None;
     const bool isNormalMap = (uav_texture.texture_options & TEXTURE_TRAITS::NormalMap) != TEXTURE_TRAITS::None;
+    const bool isCubemap = (uav_texture.texture_options & TEXTURE_TRAITS::Cubemap) != TEXTURE_TRAITS::None;
 
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
@@ -70,46 +71,47 @@ void Mipmaps_helper::CreateMips(GPU_texture& uav_texture, bool only5Mips, bool H
     int NumMips = GPU_texture::CalculateMipCount(width, height);
     NumMips = only5Mips ? 6 : std::min(NumMips, MipsLimit);
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(HeapStartCpu);
-    CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(HeapStartGpu);
-
-    for (int mipLevel = 0; mipLevel < NumMips; ++mipLevel) {
-        uav_texture.GetUAVHandleForMipLevel(mipLevel, cpuHandle);
-        cpuHandle.Offset(1, HeapHandleIncrement);
-    }
-
     int GroupsX = (GPU_texture::GetMipDimension(width, 1) + 15) / 16;
     int GroupsY = (GPU_texture::GetMipDimension(height, 1) + 15) / 16;
     int numGroups = GroupsX * GroupsY;
 
-    commandList->SetComputeRootUnorderedAccessView(GlobalRootSignatureParams::GroupCounters, GroupCounters->GetGPUVirtualAddress());
-    commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, gpuHandle);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(HeapStartCpu);
+    CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(HeapStartGpu);
 
-    if (HiZ && (std::popcount(width) > 1 || std::popcount(height) > 1)) { // non-power-of-two Hi-Z requires special version
-        for (int mipLevel = 0; mipLevel < NumMips - 1; mipLevel += 2) {
-            GroupsX = (GPU_texture::GetMipDimension(width, mipLevel + 1) + 15) / 16;
-            GroupsY = (GPU_texture::GetMipDimension(height, mipLevel + 1) + 15) / 16;
+    for (int face_idx = 0; face_idx < (isCubemap ? 6 : 1); ++face_idx) {
+        for (int mipLevel = 0; mipLevel < NumMips; ++mipLevel) {
+            uav_texture.GetUAVHandleForMipLevel(mipLevel, cpuHandle, face_idx);
+            cpuHandle.Offset(1, HeapHandleIncrement);
+        }
+        commandList->SetComputeRootUnorderedAccessView(GlobalRootSignatureParams::GroupCounters, GroupCounters->GetGPUVirtualAddress());
+        commandList->SetComputeRootDescriptorTable(GlobalRootSignatureParams::OutputViewSlot, gpuHandle);
 
-            MipCSInput input{NumMips, isSRGB, isNormalMap, HiZ, numGroups, mipLevel};
+        if (HiZ && (std::popcount(width) > 1 || std::popcount(height) > 1)) { // non-power-of-two Hi-Z requires special version
+            for (int mipLevel = 0; mipLevel < NumMips - 1; mipLevel += 2) {
+                GroupsX = (GPU_texture::GetMipDimension(width, mipLevel + 1) + 15) / 16;
+                GroupsY = (GPU_texture::GetMipDimension(height, mipLevel + 1) + 15) / 16;
+
+                MipCSInput input{NumMips, isSRGB, isNormalMap, HiZ, numGroups, mipLevel};
+                constexpr int inputSizeInInt = sizeof(MipCSInput) / 4;
+                commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
+
+                commandList->Dispatch(GroupsX, GroupsY, 1);
+
+                const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(uav_texture.get_gpu_resource().Get());
+                commandList->ResourceBarrier(1, &barrier);
+            }
+        } else { // single pass mode for power-of-two Hi-Z and all regulary textures
+            MipCSInput input{NumMips, isSRGB, isNormalMap, HiZ, numGroups, 0};
             constexpr int inputSizeInInt = sizeof(MipCSInput) / 4;
             commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
 
             commandList->Dispatch(GroupsX, GroupsY, 1);
 
-            const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(uav_texture.get_gpu_resource().Get());
+            const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(GroupCounters.Get());
             commandList->ResourceBarrier(1, &barrier);
         }
-    } else { // single pass mode for power-of-two Hi-Z and all regulary textures
-        MipCSInput input{NumMips, isSRGB, isNormalMap, HiZ, numGroups, 0};
-        constexpr int inputSizeInInt = sizeof(MipCSInput) / 4;
-        commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);
-
-        commandList->Dispatch(GroupsX, GroupsY, 1);
-
-        const auto barrier = CD3DX12_RESOURCE_BARRIER::UAV(GroupCounters.Get());
-        commandList->ResourceBarrier(1, &barrier);
+        gpuHandle.Offset(NumMips, HeapHandleIncrement);
     }
-
 }
 
 GPU_texture Mipmaps_helper::GetBlankCompatibleUAVTex(GPU_texture& texture) {
@@ -166,7 +168,7 @@ void Mipmaps_helper::CreateDescriptorHeap() {
 
     D3D12_DESCRIPTOR_HEAP_DESC desc = {};
     desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    desc.NumDescriptors = MipsLimit;
+    desc.NumDescriptors = MipsLimit * (CanBlurCubemaps ? 6 : 1);
     desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     ThrowIfFailed(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_SrvDescHeap)));
     HeapStartCpu = m_SrvDescHeap->GetCPUDescriptorHandleForHeapStart();

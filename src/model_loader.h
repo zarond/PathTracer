@@ -4,11 +4,13 @@
 #include <fastgltf/types.hpp>
 #include <filesystem>
 #include <glm/fwd.hpp>
+#include <glm/gtc/constants.hpp>
 #include <string>
 #include <variant>
 #include <vector>
 
 #include "cpu_texture.h"
+#include "bounding_volumes.h"
 
 namespace app {
 
@@ -59,7 +61,7 @@ struct Material {
     float AOStrength = 1.0f;
     int aoTextureIndex = -1;
     int thicknessTextureIndex = -1;
-    float thicknessFactor = 0.0f;
+    float thicknessFactor = 1.0f;
     fvec3 attenuationColor{0.0f, 0.0f, 0.0f};
     float attenuationDistance = 0.0f;
     bool useBlenderAttenuation = true;
@@ -69,6 +71,27 @@ struct Camera {
     fmat4x4 ModelMatrix;
     std::variant<fastgltf::Camera::Perspective, fastgltf::Camera::Orthographic> camera_params;
     uint32_t nodeIndex;  // original node index from gltf
+};
+
+struct Light {
+    Light(const fastgltf::Light& gltf_light);
+
+    fvec3 color{0.0f};         // RGB light color in linear space.
+    float intensity = 1.0f;    // Point and spot lights use candela (lm/sr) while directional use lux (lm/m^2)
+    float range = 0.0f;        // Range for point and spot lights
+
+    fastgltf::LightType type = fastgltf::LightType::Directional;
+    bool use_range = false;
+
+    // The inner and outer cone angles only apply to spot lights
+    float innerConeAngle = 0.0f;
+    float outerConeAngle = glm::quarter_pi<float>();
+};
+
+struct LightInstance {
+    fmat4x4 ModelMatrix;
+    uint32_t lightIndex;  // index into lights array
+    uint32_t nodeIndex;   // original node index from gltf
 };
 
 struct Node {
@@ -109,14 +132,18 @@ using NodeTree = std::vector<Node>;
 
 struct Model {
     std::vector<Camera> cameras;
+    std::vector<Light> lights;
     std::vector<Material> materials;
     std::vector<Mesh> meshes;
     std::vector<Object> objects;
+    std::vector<LightInstance> light_instances;
     std::vector<CPUTexture<sdr_pixel>> images;
     std::vector<std::string> materials_names;
+    std::vector<std::string> lights_names;
     NodeTree nodes_transforms;              // current transforms
     NodeTree nodes_original_transforms;     // "rest" transforms
     std::vector<Animation> animations;
+    BBox scene_bounds{};
 
     Model() = default;
     Model(Model&&) noexcept = default;

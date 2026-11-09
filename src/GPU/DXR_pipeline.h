@@ -37,6 +37,7 @@ struct RayGenConstantBuffer {
     float invMaxNewRaysPerBounce;
     int maxRayBounces;
     float envmapRotation;
+    int lightsCount;
 };
 
 class IRender_pipeline {
@@ -45,7 +46,9 @@ class IRender_pipeline {
     virtual void SetRenderingSettings(const RenderSettings& render_settings, fvec3 origin, const fmat4x4& NDC2WorldMatrix,
         const fmat4x4& ViewMatrix, const fmat4x4& ProjectionMatrix, fvec2 subpixelOffset, unsigned int frameID, int iteration,
         float invIterationCount) = 0;
-    virtual void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer, UINT width, UINT height) = 0;
+    virtual void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer, 
+        UINT width, UINT height, int cubemap_side = 0) = 0;
+    virtual void DoShadowPass(const GPU_model& gpu_model) = 0;
     virtual void OnModelLoad(GPU_model& gpu_model) = 0;
     virtual void OnEnvmapLoad(GPU_texture& envmap) = 0;
 };
@@ -60,7 +63,10 @@ class DXR_pipeline : public IRender_pipeline {
         const fmat4x4& ViewMatrix, const fmat4x4& ProjectionMatrix, fvec2 subpixelOffset, unsigned int frameID, int iteration,
         float invIterationCount) override;
 
-    void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer, UINT width, UINT height) override;
+    void DoRender(const GPU_model& gpu_model, const GPU_texture& envmap, const GPU_texture& framebuffer,
+        UINT width, UINT height, int cubemap_side = 0) override;
+
+    void DoShadowPass(const GPU_model& gpu_model) override;
 
     void OnModelLoad(GPU_model& gpu_model) override;
 
@@ -95,12 +101,15 @@ class DXR_pipeline : public IRender_pipeline {
     static constexpr const wchar_t* c_dxilLibraryName = L"RaytracingShaders.dxil";  // DXIL library file name
 
     static constexpr const wchar_t* c_hitGroupName = L"MyHitGroup";
+    static constexpr const wchar_t* c_shadowHitGroupName = L"ShadowHitGroup";
     static constexpr const wchar_t* c_raygenShaderName = L"RayGen";
     static constexpr const wchar_t* c_anyHitRCShaderName = L"AnyHitRC";
+    static constexpr const wchar_t* c_anyHitShadowShaderName = L"AnyHitShadow";
     static constexpr const wchar_t* c_closestHitAOShaderName = L"ClosestHitAO";
     static constexpr const wchar_t* c_closestHitRCShaderName = L"ClosestHitRC";
     static constexpr const wchar_t* c_closestHitPBRShaderName = L"ClosestHitPBR";
     static constexpr const wchar_t* c_missAOShaderName = L"MissAO";
+    static constexpr const wchar_t* c_missShadowShaderName = L"MissShadow";
     static constexpr const wchar_t* c_missEnvmapShaderName = L"MissEnvmap";
 
     union AlignedSceneConstantBuffer {
