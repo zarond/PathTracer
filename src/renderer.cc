@@ -95,7 +95,11 @@ void Renderer::reload_acceleration_structure() {
     }
 }
 
-void Renderer::reload_materials() {}
+void Renderer::reload_materials() {
+    if (model_ref_ && accel_struct_) {
+        accel_struct_->update_materials(*model_ref_);
+    }
+}
 
 ray_with_payload Renderer::generate_camera_ray(
     int x, int y, float inv_width, float inv_height, int sampleIndex, fvec2 jitter) const noexcept {

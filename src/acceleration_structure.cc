@@ -253,6 +253,14 @@ void NaiveAS::update_transforms(const Model& model) {
     }
 }
 
+void NaiveAS::update_materials(const Model& model) {
+    assert(model.meshes.size() == mesh_bvh_data_.size());
+    for (size_t i = 0; i < mesh_data_.size(); ++i) {
+        const auto& mat = model.materials[model.meshes[i].materialIndex];
+        mesh_data_[i].doubleSided = mat.doubleSided || mat.hasVolume;
+    }
+}
+
 // NaiveAS
 
 BVH_AS::BVH_AS(const Model& model, int max_triangles_per_leaf) {
@@ -618,6 +626,14 @@ void BVH_AS::update_transforms(const Model& model) {
         obj_data.volume = volume;
         obj_data.ModelMatrix = obj.ModelMatrix;
         obj_data.invModelMatrix = transpose(obj.NormalMatrix);
+    }
+}
+
+void BVH_AS::update_materials(const Model& model) {
+    assert(model.meshes.size() == mesh_bvh_data_.size());
+    for (size_t i = 0; i < mesh_bvh_data_.size(); ++i) {
+        const auto& mat = model.materials[model.meshes[i].materialIndex];
+        mesh_bvh_data_[i].doubleSided = mat.doubleSided || mat.hasVolume;
     }
 }
 

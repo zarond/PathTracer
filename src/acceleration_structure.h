@@ -29,6 +29,7 @@ class IAccelerationStructure {
     virtual ray_triangle_hit_info intersect_ray(const ray& ray, bool any_hit = false) const noexcept = 0;
 
     virtual void update_transforms(const Model& model) = 0;
+    virtual void update_materials(const Model& model) = 0;
     virtual BBox get_scene_bounds() const noexcept = 0;
 };
 
@@ -65,6 +66,7 @@ class NaiveAS : public IAccelerationStructure {
     BBox get_scene_bounds() const noexcept override;
 
     void update_transforms(const Model& model) override;
+    void update_materials(const Model& model) override;
 
   private:
     struct MeshData {
@@ -98,6 +100,7 @@ class BVH_AS : public IAccelerationStructure {
     BBox get_scene_bounds() const noexcept override;
 
     void update_transforms(const Model& model) override;
+    void update_materials(const Model& model) override;
 
   private:
     struct MeshBVHNode {
