@@ -82,9 +82,9 @@ void CS_SphericalHarmonicsIrradiance(uint3 DTid : SV_DispatchThreadID, uint3 Gid
     float3 L;
     float3 cubemap_dir;
     float2 uv = (coord + 0.5f) * g_CB.inv_FrameSize;
-    uv.y = 1.0 - uv.y;
     if (g_CB.isCubemap) {
         uv = uv * 2.0f - 1.0f;
+        uv.y = -uv.y;
         cubemap_dir = CalculateCubeDirection(uv, DTid.z);
         float3 sample_dir = cubemap_dir;
         if (g_CB.FlipCubemapAxis) {
