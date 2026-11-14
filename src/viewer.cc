@@ -377,7 +377,7 @@ void Viewer::apply_rest_pose() {
 }
 
 #ifdef WINDOWS_SPECIFIC
-void Viewer::render_lighting_probe() {
+void Viewer::render_lighting_probe(bool use_scene_center) {
     if (!is_using_gpu_renderer()) {
         return;
     }
@@ -386,7 +386,7 @@ void Viewer::render_lighting_probe() {
         return;
     }
     auto* gpu_renderer = static_cast<GPURenderer*>(i_renderer.get());
-    gpu_renderer->compute_lighting_probe();
+    gpu_renderer->compute_lighting_probe(use_scene_center);
 }
 void Viewer::render_GI(int grid_size) {
     if (grid_size <= 0) {

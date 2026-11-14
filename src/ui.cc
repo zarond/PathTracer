@@ -753,8 +753,12 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
     static int gi_grid_size = 4;
     if (viewer.get_rendering_state() == RenderingState::Idle) {
         ImGui::SliderInt("GI grid size", &gi_grid_size, 1, 32);
+
+        static bool lightProbeUseSceneCenter = false;  // bake the light probe from the scene bbox center instead of the camera origin
+        ImGui::Checkbox("Use scene center", &lightProbeUseSceneCenter);
+        HelpTooltip("Bake the light probe from the scene bounding box center instead of the camera position");
         if (ImGui::Button("Compute light probe")) {
-            viewer.render_lighting_probe();
+            viewer.render_lighting_probe(lightProbeUseSceneCenter);
             light_probe_computed = true;
             render_settings.useLightProbe = true;
             raster_settings_changed = true;

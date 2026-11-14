@@ -60,7 +60,7 @@ class GPURenderer : public IRenderer {
     RenderPipelineMode get_active_pipeline_mode() const;
     void set_active_pipeline_mode(RenderPipelineMode mode);
 
-    void compute_lighting_probe();
+    void compute_lighting_probe(bool use_scene_center);
     void compute_GI(BBox bbox, int longest_dimension_N, bool expand_bbox = false);
 
   private:

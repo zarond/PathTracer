@@ -346,7 +346,7 @@ void GPURenderer::render_shadow_maps() {
     d3d_ctx.WaitForPendingDXR();
 }
 
-void GPURenderer::compute_lighting_probe() {
+void GPURenderer::compute_lighting_probe(bool use_scene_center) {
     assert(model_ref_);
     if (model_ref_ == nullptr || envmap_ref_ == nullptr || gpu_model_ == nullptr) {
         throw std::runtime_error("One of components is nullptr in GPURenderer::render_lighting_probe()");
@@ -358,7 +358,10 @@ void GPURenderer::compute_lighting_probe() {
     }
 
     render_shadow_maps();
-    GPU_texture cubemap = render_cubemap(EnvCube_helper::Specular_size, true, origin_);
+    const auto bbox = gpu_model_->scene_bounds;
+    const fvec3 probe_origin = use_scene_center ? (bbox.min + bbox.max) * 0.5f
+        : origin_;
+    GPU_texture cubemap = render_cubemap(EnvCube_helper::Specular_size, true, probe_origin);
 
     GPU_texture diffuse_probe;
     GPU_texture reflection_probe;
