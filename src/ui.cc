@@ -344,6 +344,8 @@ static void LightsSettingsUI(Viewer& viewer) {
     }
 }
 
+static bool scale_to_window = false;  // automatically scale and center the rendered image to fit the window
+
 void RenderedImageUI(Viewer& viewer, const bool hardware_ray_tracing_support) {
     // Show window with image
     ImGuiIO& io = ImGui::GetIO();
@@ -378,7 +380,10 @@ void RenderedImageUI(Viewer& viewer, const bool hardware_ray_tracing_support) {
     ImGui::Begin("Rendering Image", nullptr, flags);
     const float scroll_speed = 0.05f;
     float scale = std::exp(zoom_scale * scroll_speed);
-    if (ImGui::IsWindowHovered()) {
+    if (scale_to_window) {
+        // Fit the whole image inside the window, ignoring manual zoom and pan
+        scale = std::min(WorkSize.x / (float)dims.x, WorkSize.y / (float)dims.y);
+    } else if (ImGui::IsWindowHovered()) {
         if (io.MouseWheel != 0.0f) {
             zoom_scale += io.MouseWheel;
             zoom_scale = std::max(0.0f, zoom_scale);
@@ -396,7 +401,10 @@ void RenderedImageUI(Viewer& viewer, const bool hardware_ray_tracing_support) {
     const auto& gpu_texture = tonemapping_enabled ? 
         framebuffer.get_tonemapped_texture_resource() : framebuffer.get_texture_resource();
     const auto texture_srv_gpu_handle = gpu_texture.GetSRVHandle();
-    ImGui::SetCursorPos(ImVec2(scale * offset.x + WorkSize.x * 0.5f, scale * offset.y + WorkSize.y * 0.5f));
+    const ImVec2 image_pos = scale_to_window
+        ? ImVec2(WorkSize.x * 0.5f - scale * (float)dims.x * 0.5f, WorkSize.y * 0.5f - scale * (float)dims.y * 0.5f)
+        : ImVec2(scale * offset.x + WorkSize.x * 0.5f, scale * offset.y + WorkSize.y * 0.5f);
+    ImGui::SetCursorPos(image_pos);
     // todo: hardware_ray_tracing_support check is a temporary fix for problem with integrated GPU and ImGui
     if (framebuffer.nearest_filtering && hardware_ray_tracing_support) {
         auto& platform_io = ImGui::GetPlatformIO();
@@ -455,6 +463,8 @@ static void RenderingProgressUI(Viewer& viewer) {
     }
     {
         ImGui::Checkbox("Nearest Filtering", &viewer.get_framebuffer().nearest_filtering);
+        ImGui::Checkbox("Scale to window", &scale_to_window);
+        HelpTooltip("Automatically scale and center the rendered image to fit the window (ignores manual zoom and pan)");
     }
 }
 
