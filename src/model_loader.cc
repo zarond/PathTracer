@@ -138,7 +138,7 @@ Model ModelLoader::construct_model() const {
             .normalTextureIndex = normal_imageIndex,
             .ior = material.ior,
             .dielectric_f0 = f0_dielectric(material.ior),
-            .transmisionFactor = material.transmission ? material.transmission->transmissionFactor : 0.0f,
+            .transmissionFactor = material.transmission ? material.transmission->transmissionFactor : 0.0f,
             .transmissionTextureIndex = transmission_imageIndex,
             .emissiveTextureIndex = emissive_imageIndex,
             .emissiveStrength = material.emissiveStrength,

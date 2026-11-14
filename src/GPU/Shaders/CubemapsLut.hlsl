@@ -19,21 +19,6 @@ SamplerState EnvMapSampler : register(s0, space1);
 // Input parameters
 ConstantBuffer<LutCSInput> InputInfo : register(b0);
 
-float3 CalculateCubeDirection(float2 uv, uint faceIndex)
-{
-    float3 dir = 0;
-    switch(faceIndex)
-    {
-        case 0: dir = float3( 1.0f,  uv.y, -uv.x); break; // +X
-        case 1: dir = float3(-1.0f,  uv.y,  uv.x); break; // -X
-        case 2: dir = float3( uv.x,  1.0f, -uv.y); break; // +Y
-        case 3: dir = float3( uv.x, -1.0f,  uv.y); break; // -Y
-        case 4: dir = float3( uv.x,  uv.y,  1.0f); break; // +Z
-        case 5: dir = float3(-uv.x,  uv.y, -1.0f); break; // -Z
-    }
-    return normalize(dir);
-}
-
 void CalculateCubeClosestTangents(out float3 T, out float3 B, uint faceIndex)
 {
     switch(faceIndex)
@@ -67,7 +52,6 @@ float ComputeEnvmapLod(float3 dir, float pdf, float maxMip, int num_samples) {
 
 float3 SampleEnvmap(float3 dir, float lod) {  // dir is expected to be normalized
     if (InputInfo.isCubemap) {
-        dir.z *= -1.0f; // Flip Z for cubemap sampling
         return EnvMapCube.SampleLevel(EnvMapSampler, dir, lod).xyz;
     } else {
         float2 uv = float2(atan2(-dir.z, -dir.x), -2.0f * asin(dir.y)) * inv_PI;
@@ -85,7 +69,6 @@ void CS_Diffuse_Lut(uint3 DTid : SV_DispatchThreadID) {
 
     float2 uv = (DTid.xy + 0.5f) / destSize;
     uv = uv * 2.0f - 1.0f;
-    uv.y *= -1.0f;  // Flip Y because texture space is top-down
 
     float3 N = CalculateCubeDirection(uv, DTid.z);
     float3 T;
@@ -127,7 +110,6 @@ void CS_Specular_Lut(uint3 DTid : SV_DispatchThreadID) {
 
     float2 uv = (DTid.xy + 0.5f) / destSize;
     uv = uv * 2.0f - 1.0f;
-    uv.y *= -1.0f;  // Flip Y because texture space is top-down
 
     float3 N = CalculateCubeDirection(uv, DTid.z);
     float3 T;

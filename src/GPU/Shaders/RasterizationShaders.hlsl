@@ -290,13 +290,9 @@ float4 PS_Main(PSInput input, bool isFrontFace : SV_IsFrontFace) : SV_TARGET {
         return albedo_color;
     }
 
-    const float rot_cos = g_rasterCB.envmap_rotation_cos;
-    const float rot_sin = g_rasterCB.envmap_rotation_sin;
-    const float2x2 envmap_rotation_matrix = float2x2(rot_cos, -rot_sin, rot_sin, rot_cos);
-
     float3 emissive = sample_emissive_filtered(mat, uv, ASampler);
 
-    bool is_transmissive_material = (mat.transmisionFactor != 0.0f || mat.hasVolume);
+    bool is_transmissive_material = (mat.transmissionFactor != 0.0f || mat.hasVolume);
     bool AO_SSR_Holdout_mask =
         (MaterialID.Load(int3(input.ndc_position.xy, 0)) == MaterialID::Transmissive) && !is_transmissive_material;
 
@@ -362,11 +358,17 @@ float4 PS_Main(PSInput input, bool isFrontFace : SV_IsFrontFace) : SV_TARGET {
     float transmission = transmission_thickness.r;
     float3 transmission_attenuation = 1.0f;
     float3 refracted_v = -v;
+        
+    const float rot_cos = g_rasterCB.envmap_rotation_cos;
+    const float rot_sin = g_rasterCB.envmap_rotation_sin;
+    const float2x2 envmap_rotation_matrix = float2x2(rot_cos, -rot_sin, rot_sin, rot_cos);
+        
     float3 transmissionIBL = calculateTransmittedLight(input.world_position.xyz, input.ndc_position, v, N, mat, Fresnel,
         linear_roughness, transmission, transmission_thickness.g, envmap_rotation_matrix, transmission_attenuation, refracted_v);
 
     float3 DiffuseSampleDir = N;
-    DiffuseSampleDir.xz = mul(envmap_rotation_matrix, DiffuseSampleDir.xz);  // enmap rotation
+    if (g_rasterCB.UseGI == 0)
+        DiffuseSampleDir.xz = mul(envmap_rotation_matrix, DiffuseSampleDir.xz);  // envmap rotation
     float3 diffuseIBL = sampleDiffuseIBL(DiffuseSampleDir, input.world_position.xyz);
     
     float3 SpecularSampleDir = DominantReflectionVector(l, N, linear_roughness);
@@ -425,8 +427,8 @@ BG_VS_OUTPUT VS_Background(uint vID : SV_VERTEXID) {
 float4 PS_Background(BG_VS_OUTPUT input) : SV_TARGET {
     float3 dir = input.viewDir;
 
-    const float rot_cos = g_rasterCB.envmap_rotation_cos;
-    const float rot_sin = g_rasterCB.envmap_rotation_sin;
+    const float rot_cos = g_rasterCB.background_rotation_cos;
+    const float rot_sin = g_rasterCB.background_rotation_sin;
     const float2x2 envmap_rotation_matrix = float2x2(rot_cos, -rot_sin, rot_sin, rot_cos);
 
     dir.xz = mul(envmap_rotation_matrix, dir.xz);  // Rotate around Y-axis
@@ -506,7 +508,7 @@ GBOutput PS_Gbuffer(GBInput input, bool isFrontFace : SV_IsFrontFace) : SV_TARGE
         roughness = SpecularAntialiasing(roughness, N, g_rasterCB.specular_aa_variance, g_rasterCB.specular_aa_threshold);
     }
 
-    bool is_transmissive_material = (mat.transmisionFactor != 0.0f || mat.hasVolume);
+    bool is_transmissive_material = (mat.transmissionFactor != 0.0f || mat.hasVolume);
 
     // Compute velocity from NDC space positions
 	float3 current_ndc = input.ndc_position_curr.xyz / input.ndc_position_curr.w;

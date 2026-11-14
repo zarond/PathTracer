@@ -39,7 +39,7 @@ GPURenderer::GPURenderer() {
 }
 
 void GPURenderer::update_camera_transform_state(
-    fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams) {
+    fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams, bool mirrored_view) {
     origin_ = position;
     viewMatrix_ = glm::lookAt(position, position + direction, up);
     projectionMatrix_ = glm::perspectiveRH_ZO(
@@ -47,6 +47,9 @@ void GPURenderer::update_camera_transform_state(
         perspectiveParams.aspectRatio.value_or(1.77777777777777777f),
         perspectiveParams.znear, 
         perspectiveParams.zfar.value_or(1000.f));
+    if (mirrored_view) {
+        projectionMatrix_[0][0] *= -1.0f;  // Mirror the projection matrix for rendering into cubemap faces.
+    }
     auto viewMatrixNoTranslation = viewMatrix_;
     viewMatrixNoTranslation[3] = fvec4(0.0f, 0.0f, 0.0f, 1.0f);  // Remove translation from view matrix for direction calculation
     NDC2WorldMatrix_ = glm::inverse(projectionMatrix_ * viewMatrixNoTranslation);
@@ -248,21 +251,20 @@ GPU_texture GPURenderer::render_cubemap(const UINT cubemap_size, bool need_mips,
         fvec3 forward;   // camera forward direction
         fvec3 up;        // camera up direction
     };
-    
-    // Right-handed coordinate system
+
     const CubemapFace cubemap_faces[6] = {
-        // +X face (looking right)
+        // +X slot
         {fvec3(1.0f, 0.0f, 0.0f), fvec3(0.0f, 1.0f, 0.0f)},
-        // -X face (looking left)
+        // -X slot
         {fvec3(-1.0f, 0.0f, 0.0f), fvec3(0.0f, 1.0f, 0.0f)},
-        // +Y face (looking up)
-        {fvec3(0.0f, 1.0f, 0.0f), fvec3(0.0f, 0.0f, 1.0f)},
-        // -Y face (looking down)
-        {fvec3(0.0f, -1.0f, 0.0f), fvec3(0.0f, 0.0f, -1.0f)},
-        // +Z face (looking forward)
-        {fvec3(0.0f, 0.0f, -1.0f), fvec3(0.0f, 1.0f, 0.0f)},
-        // -Z face (looking backward)
-        {fvec3(0.0f, 0.0f, 1.0f),  fvec3(0.0f, 1.0f, 0.0f)}
+        // +Y slot
+        {fvec3(0.0f, 1.0f, 0.0f), fvec3(0.0f, 0.0f, -1.0f)},
+        // -Y slot
+        {fvec3(0.0f, -1.0f, 0.0f), fvec3(0.0f, 0.0f, 1.0f)},
+        // +Z slot
+        {fvec3(0.0f, 0.0f, 1.0f), fvec3(0.0f, 1.0f, 0.0f)},
+        // -Z slot
+        {fvec3(0.0f, 0.0f, -1.0f), fvec3(0.0f, 1.0f, 0.0f)}
     };
 
     D3DContext& d3d_ctx = D3DContext::Get();
@@ -282,7 +284,7 @@ GPU_texture GPURenderer::render_cubemap(const UINT cubemap_size, bool need_mips,
 
         // Set up camera for this face
         const auto camera = fastgltf::Camera::Perspective{1.0f, glm ::radians(90.0f), 1000.0f, 0.1f};
-        update_camera_transform_state(cubemap_origin, face.forward, face.up, camera);
+        update_camera_transform_state(cubemap_origin, face.forward, face.up, camera, true);
 
         // Set rendering settings for this frame
         glm::fvec2 jitter{0.0f};
@@ -413,7 +415,7 @@ void GPURenderer::compute_GI(BBox bbox, int longest_dimension_N, bool expand_bbo
                 fvec3 sample_pos = bbox.min + (fvec3{x, y, z} + fvec3{0.5f}) * delta;
                 GPU_texture cubemap = render_cubemap(256, false, sample_pos);
                 const auto sh_probe = Raster_pipeline::ComputeEnvmapSH(
-                    cubemap, true, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, true);
+                    cubemap, true, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
                 sh_probes.push_back(sh_probe);
             }
         }

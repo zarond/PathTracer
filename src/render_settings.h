@@ -33,8 +33,7 @@ struct RenderSettings {
     bool SSRParallaxReprojection = true;
     bool ReprojectionDebugMode = false;
     bool DiffuseUseSphericalHarmonics = false;
-    bool useDiffuseProbe = false;
-    bool useReflectionProbe = false;
+    bool useLightProbe = false;
     bool useGI = false;
     float probeVisibilityFilterStrength = 0.0f;
     bool GIDebugDraw = false;

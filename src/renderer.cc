@@ -29,7 +29,7 @@ fvec4 ndc_from_pixel(float x, float y, float inv_width, float inv_height) {
 namespace app {
 
 void Renderer::update_camera_transform_state(
-    fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams) {
+    fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams, bool mirrored_view) {
     origin_ = position;
     viewMatrix_ = glm::lookAt(position, position + direction, up);
     projectionMatrix_ = glm::perspectiveRH(
@@ -37,6 +37,9 @@ void Renderer::update_camera_transform_state(
         perspectiveParams.aspectRatio.value_or(1.77777777777777777f),
         perspectiveParams.znear, 
         perspectiveParams.zfar.value_or(1000.f));
+    if (mirrored_view) {
+        projectionMatrix_[0][0] *= -1.0f;
+    }
     auto viewMatrixNoTranslation = viewMatrix_;
     viewMatrixNoTranslation[3] = fvec4(0.0f, 0.0f, 0.0f, 1.0f);  // Remove translation from view matrix for direction calculation
     NDC2WorldMatrix_ = glm::inverse(projectionMatrix_ * viewMatrixNoTranslation);

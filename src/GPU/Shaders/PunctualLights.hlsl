@@ -52,7 +52,6 @@ float compute_shadowing(const ShadowMappingInfo shadow_info, const float3 pos, c
         
     if (light_type == LightType::Point) {
          bias *= vec_length;
-         vec.z *= -1;
          float4 shadow_sample = SampleOptimized4MomentShadowMap(Sampler, shadowTexCube, vec, mipLevel);
          return 1.0f - GetHamburger4MSMShadowIntensity(shadow_sample, linearDepth01, bias, moments_bias);
     }

@@ -322,20 +322,19 @@ void Shadow_mapping_helper::CreateCubemapShadowMap(
         fvec3 up;       // camera up direction
     };
 
-    // Right-handed coordinate system
     const CubemapFace cubemap_faces[6] = {
-        // +X face (looking right)
+        // +X slot
         {fvec3(1.0f, 0.0f, 0.0f), fvec3(0.0f, 1.0f, 0.0f)},
-        // -X face (looking left)
+        // -X slot
         {fvec3(-1.0f, 0.0f, 0.0f), fvec3(0.0f, 1.0f, 0.0f)},
-        // +Y face (looking up)
-        {fvec3(0.0f, 1.0f, 0.0f), fvec3(0.0f, 0.0f, 1.0f)},
-        // -Y face (looking down)
-        {fvec3(0.0f, -1.0f, 0.0f), fvec3(0.0f, 0.0f, -1.0f)},
-        // +Z face (looking forward)
-        {fvec3(0.0f, 0.0f, -1.0f), fvec3(0.0f, 1.0f, 0.0f)},
-        // -Z face (looking backward)
-        {fvec3(0.0f, 0.0f, 1.0f), fvec3(0.0f, 1.0f, 0.0f)}};
+        // +Y slot
+        {fvec3(0.0f, 1.0f, 0.0f), fvec3(0.0f, 0.0f, -1.0f)},
+        // -Y slot
+        {fvec3(0.0f, -1.0f, 0.0f), fvec3(0.0f, 0.0f, 1.0f)},
+        // +Z slot
+        {fvec3(0.0f, 0.0f, 1.0f), fvec3(0.0f, 1.0f, 0.0f)},
+        // -Z slot
+        {fvec3(0.0f, 0.0f, -1.0f), fvec3(0.0f, 1.0f, 0.0f)}};
 
     D3DContext& d3d_ctx = D3DContext::Get();
 
@@ -350,16 +349,17 @@ void Shadow_mapping_helper::CreateCubemapShadowMap(
         auto eye = xyz(side_shadow.origin);
         fmat4x4 viewMat = glm::lookAt(eye, eye + face.forward, face.up);
         fmat4x4 projectionMat = glm::perspectiveRH_ZO(glm::half_pi<float>(), 1.0f, near_plane, far_plane);
+        projectionMat[0][0] *= -1.0f;  // Mirror the projection matrix for rendering into cubemap faces.
 
         side_shadow.viewProjection = projectionMat * viewMat;
         side_shadow.direction = fvec4(face.forward, 0.0f);
 
-        CreateShadowMap(gpu_model, side_shadow, shadowMap, face_idx, size, far_plane);
+        CreateShadowMap(gpu_model, side_shadow, shadowMap, face_idx, size, far_plane, true);
     }
 }
 
 void Shadow_mapping_helper::CreateShadowMap(const GPU_model& gpu_model, const ShadowMappingInfo& shadow,
-    const GPU_texture& shadowMap, int cubemap_side, UINT size, float far_plane) {
+    const GPU_texture& shadowMap, int cubemap_side, UINT size, float far_plane, bool mirrored_view) {
     D3DContext& d3d_ctx = D3DContext::Get();
     auto commandList = d3d_ctx.m_DXRCommandList;
 
@@ -438,7 +438,7 @@ void Shadow_mapping_helper::CreateShadowMap(const GPU_model& gpu_model, const Sh
         ShadowPerDrawData draw_data{ obj.ModelMatrix, obj.meshIndex };
         constexpr int drawDataSizeInInt = sizeof(ShadowPerDrawData) / 4;
         commandList->SetGraphicsRoot32BitConstants(GlobalRootSignatureParams::RootConstants, drawDataSizeInInt, &draw_data, 0);
-        bool useReverseWinding = (glm::determinant(glm::mat3(obj.ModelMatrix)) < 0.0f);
+        bool useReverseWinding = (glm::determinant(glm::mat3(obj.ModelMatrix)) < 0.0f) != mirrored_view;
         PSO_variant_key key{
             .original_PSO_index = original_PSO_index,
             .backface_culling = element.backfaceCulling,

@@ -44,7 +44,9 @@ struct RasterConstantBuffer {
     fvec2 invFrameSize;
     float envmap_rotation_sin;
     float envmap_rotation_cos;
-    
+    float background_rotation_sin;
+    float background_rotation_cos;
+
     int lightsCount;
     unsigned int frameID;
     int albedoOnlyMode;
@@ -114,9 +116,8 @@ class Raster_pipeline : public IRender_pipeline {
 
     static void ComputeMipMaps(GPU_texture& texture);
     static SHCoefficients ComputeEnvmapSH(
-        const GPU_texture& envmap, bool is_cubemap = false, 
-        D3D12_RESOURCE_STATES initial_state = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, 
-        bool flip_cubemap_axis = false);
+        const GPU_texture& envmap, bool is_cubemap = false,
+        D3D12_RESOURCE_STATES initial_state = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     static void ComputeEnvmapLut(
         const GPU_texture& envmap, bool is_cubemap, GPU_texture& output_diffuse, GPU_texture& output_specular);
 
@@ -189,8 +190,7 @@ class Raster_pipeline : public IRender_pipeline {
     GPU_texture m_VelocityBuffer;
 
     bool DrawSSROnly = false;
-    bool useDiffuseProbe = false;
-    bool useReflectionProbe = false;
+    bool useLightProbe = false;
     bool GIDebugDraw = false;
     bool m_disableDepthClip = false;
 

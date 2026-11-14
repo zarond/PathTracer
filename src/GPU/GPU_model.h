@@ -67,7 +67,7 @@ struct GPU_Material {  // enforce packing rules on CPU Material data
     int normalTextureIndex;
     float ior;
     float dielectric_f0;
-    float transmisionFactor;
+    float transmissionFactor;
     int transmissionTextureIndex;
     int emissiveTextureIndex;
     float emissiveStrength;

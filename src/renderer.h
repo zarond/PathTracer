@@ -58,7 +58,7 @@ class IRenderer {
     virtual ~IRenderer() = default;
 
     virtual void update_camera_transform_state(
-        fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams) = 0;
+        fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams, bool mirrored_view = false) = 0;
 
     virtual void load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap, size_t ModelFenceValue,
         size_t EnvmapFenceValue) = 0;  // should be in constructor?
@@ -89,7 +89,7 @@ class Renderer : public IRenderer {
     Renderer& operator=(const Renderer&) = delete;
 
     void update_camera_transform_state(
-        fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams);
+        fvec3 position, fvec3 direction, fvec3 up, fastgltf::Camera::Perspective perspectiveParams, bool mirrored_view = false);
 
     void load_scene(const Model& model, const CPUTexture<hdr_pixel>& envmap, size_t ModelFenceValue,
         size_t EnvmapFenceValue);  // should be in constructor?

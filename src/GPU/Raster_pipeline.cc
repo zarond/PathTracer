@@ -129,6 +129,8 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_rasterCB.invProjection = inverse(ProjectionMatrix);
     m_rasterCB.envmap_rotation_cos = cos(render_settings.envmapRotation);
     m_rasterCB.envmap_rotation_sin = sin(render_settings.envmapRotation);
+    m_rasterCB.background_rotation_cos = cos(render_settings.envmapRotation);
+    m_rasterCB.background_rotation_sin = sin(render_settings.envmapRotation);
     m_rasterCB.subpixelOffset = subpixelOffset;
     m_rasterCB.frameID = frameID;
     m_rasterCB.albedoOnlyMode = (render_settings.programMode == RayProgramMode::RayCaster);
@@ -157,8 +159,7 @@ void Raster_pipeline::SetRenderingSettings(const RenderSettings& render_settings
     m_rasterCB.UseGI = render_settings.useGI;
     m_rasterCB.probeVisibilityFilterStrength = render_settings.probeVisibilityFilterStrength;
     GIDebugDraw = render_settings.GIDebugDraw;
-    useDiffuseProbe = render_settings.useDiffuseProbe;
-    useReflectionProbe = render_settings.useReflectionProbe;
+    useLightProbe = render_settings.useLightProbe;
     DrawSSROnly = render_settings.DrawSSROnly;
     m_disableDepthClip = render_settings.disableDepthClip;
     m_SSR_helper.DenoiseEnabled = render_settings.SSRDenoiseEnabled;
@@ -368,10 +369,17 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     commandList->RSSetViewports(1, &m_viewport);
     commandList->RSSetScissorRects(1, &m_scissorRect);
 
-    if (useDiffuseProbe) {
+    if (useLightProbe) {
         m_GI_settings.diffuse = diffuse_irradiance_sh_from_probe;
     } else {
         m_GI_settings.diffuse = diffuse_irradiance_sh;
+    }
+
+    // Probe textures and the GI probe grid are scene renders in world space:
+    // don't apply envmap rotation again
+    if (useLightProbe) {
+        m_rasterCB.envmap_rotation_cos = 1.0f;
+        m_rasterCB.envmap_rotation_sin = 0.0f;
     }
 
     // Copy the updated scene constant buffer to GPU.
@@ -386,14 +394,11 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     commandList->SetGraphicsRootDescriptorTable(
         GlobalRootSignatureParams::MaterialsBufferSlot, gpu_model.materials_array.gpuHandle);
     commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::DFGTex, DFG_lut.GetSRVHandle());
-    if (useDiffuseProbe) {
+    if (useLightProbe) {
         commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::DiffuseLutTex, Diffuse_probe.GetSRVHandle());
-    } else {
-        commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::DiffuseLutTex, Diffuse_lut.GetSRVHandle());
-    }
-    if (useReflectionProbe) {
         commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SpecularLutTex, Reflection_probe.GetSRVHandle());
     } else {
+        commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::DiffuseLutTex, Diffuse_lut.GetSRVHandle());
         commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SpecularLutTex, Specular_lut.GetSRVHandle());
     }
     if ((m_rasterCB.UseGI || GIDebugDraw) && gi_data_handles.gpuHandle.ptr) {
@@ -460,6 +465,9 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     offset += num_transmissive_objects;
     std::span<const DrawableSortingInfo> blend_objects{m_sortedDrawables.begin() + offset, m_sortedDrawables.end()};
 
+    // Rendering into a cubemap face uses the mirrored camera view, so we need to reverse the winding order for backface culling.
+    const bool mirrored_view = (framebuffer.texture_options & TEXTURE_TRAITS::Cubemap) != TEXTURE_TRAITS::None;
+
     // draw mesh lambda
     auto draw_object = [&](const DrawableSortingInfo element, unsigned int original_PSO_index, bool UseAOTexture = false) {
         const auto& obj = *element.object;
@@ -468,7 +476,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
         RasterPerDrawData draw_data{obj.ModelMatrix, obj.ModelMatrix_prev, obj.NormalMatrix, obj.meshIndex, element.modelScale, UseAOTexture};
         constexpr int drawDataSizeInInt = sizeof(RasterPerDrawData) / 4;
         commandList->SetGraphicsRoot32BitConstants(GlobalRootSignatureParams::RootConstants, drawDataSizeInInt, &draw_data, 0);
-        bool useReverseWinding = (glm::determinant(glm::mat3(obj.ModelMatrix)) < 0.0f);
+        bool useReverseWinding = (glm::determinant(glm::mat3(obj.ModelMatrix)) < 0.0f) != mirrored_view;
         PSO_variant_key key{
             .original_PSO_index = original_PSO_index,
             .backface_culling = element.backfaceCulling,
@@ -568,7 +576,7 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     }
     // Draw GI probes as spheres
     if (GIDebugDraw) {
-        PSO_variant_key key{.original_PSO_index = RenderShaders::GIDebug};
+        PSO_variant_key key{.original_PSO_index = RenderShaders::GIDebug, .reverse_winding = mirrored_view};
         m_PSO_helper.set_pipeline_state(commandList, key);
         auto grid = m_GI_settings.grid_dim;
         uint32_t probeCount = grid.x * grid.y * grid.z;
@@ -578,11 +586,11 @@ void Raster_pipeline::DoRender(const GPU_model& gpu_model, const GPU_texture& en
     // Draw background
     PSO_variant_key key{.original_PSO_index = RenderShaders::Background};
     m_PSO_helper.set_pipeline_state(commandList, key);
-    if (useReflectionProbe) {
+    if (useLightProbe) {
         commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SpecularLutTex, Specular_lut.GetSRVHandle());
     }
     commandList->DrawInstanced(3, 1, 0, 0);
-    if (useReflectionProbe) {
+    if (useLightProbe) {
         commandList->SetGraphicsRootDescriptorTable(GlobalRootSignatureParams::SpecularLutTex, Reflection_probe.GetSRVHandle());
     }
 
@@ -808,7 +816,7 @@ void Raster_pipeline::ComputeEnvmapLut(
 }
 
 SHCoefficients Raster_pipeline::ComputeEnvmapSH(
-    const GPU_texture& envmap, bool is_cubemap, D3D12_RESOURCE_STATES initial_state, bool flip_cubemap_axis) {
+    const GPU_texture& envmap, bool is_cubemap, D3D12_RESOURCE_STATES initial_state) {
     static SphericalHarmonics_helper SH_helper{};
     D3DContext& d3d_ctx = D3DContext::Get();
     d3d_ctx.InitDXRCommandList();
@@ -821,7 +829,7 @@ SHCoefficients Raster_pipeline::ComputeEnvmapSH(
     }
     
     SH_helper.Init();
-    SH_helper.Compute(envmap, is_cubemap, flip_cubemap_axis);
+    SH_helper.Compute(envmap, is_cubemap);
 
     if (initial_state != D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE) {
         auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(

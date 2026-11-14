@@ -254,7 +254,7 @@ void NaiveAS::update_transforms(const Model& model) {
 }
 
 void NaiveAS::update_materials(const Model& model) {
-    assert(model.meshes.size() == mesh_bvh_data_.size());
+    assert(model.meshes.size() == mesh_data_.size());
     for (size_t i = 0; i < mesh_data_.size(); ++i) {
         const auto& mat = model.materials[model.meshes[i].materialIndex];
         mesh_data_[i].doubleSided = mat.doubleSided || mat.hasVolume;

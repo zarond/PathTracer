@@ -284,7 +284,7 @@ static void MaterialsSettingsUI(Viewer& viewer) {
     settings_changed |=
         ImGui::SliderFloat("Dielectric F0", &current_material.dielectric_f0, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
     settings_changed |= 
-        ImGui::SliderFloat("Transmission F.", &current_material.transmisionFactor, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
+        ImGui::SliderFloat("Transmission F.", &current_material.transmissionFactor, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_ClampOnInput);
     settings_changed |= ImGui::SliderFloat("Emissive Strength F.", &current_material.emissiveStrength, 0.0f, 10.0f, "%.3f");
     settings_changed |= ImGui::SliderFloat("Thickness F.", &current_material.thicknessFactor, 0.0f, 10.0f, "%.3f", ImGuiSliderFlags_Logarithmic);
     settings_changed |= ImGui::Checkbox("Double Sided", &current_material.doubleSided);
@@ -660,8 +660,9 @@ static void GeneralRenderSettingsUI(Viewer& viewer, ConsoleArgs& console_argumen
             imgui_combo("Ray Program Mode:", std::array{"RayCaster", "AmbientOcclusion", "PBR"}, console_arguments.programMode);
 
         if (settings_changed) {
-            auto new_render_settings = RenderSettings{console_arguments};
-            viewer.set_render_settings(new_render_settings);
+            auto render_settings = viewer.get_render_settings();
+            render_settings.programMode = console_arguments.programMode;
+            viewer.set_render_settings(render_settings);
         }
         if (size_changed) {
             auto& framebuffer = viewer.get_framebuffer();
@@ -688,22 +689,22 @@ static void RaytracingRenderSettingsUI(Viewer& viewer, ConsoleArgs& console_argu
         return;
     }
 
+    auto render_settings = viewer.get_render_settings();
     bool settings_changed = false;
 
-    settings_changed |= SliderUInt("samples per pixel", &console_arguments.samplesPerPixel, 1, 128);
+    settings_changed |= SliderUInt("samples per pixel", &render_settings.samplesPerPixel, 1, 128);
     HelpTooltip("For GPU raytracing best to use Iterative Rendering and set Samples per pixel = 1 ");
-    settings_changed |= SliderUInt("max ray bounces", &console_arguments.maxRayBounces, 0, 10);
-    settings_changed |= SliderUInt("max new rays per bounce", &console_arguments.maxNewRaysPerBounce, 0, 32);
+    settings_changed |= SliderUInt("max ray bounces", &render_settings.maxRayBounces, 0, 10);
+    settings_changed |= SliderUInt("max new rays per bounce", &render_settings.maxNewRaysPerBounce, 0, 32);
     HelpTooltip("For AmbientOcclusion mode only, set >= 1");
     if (!viewer.is_using_gpu_renderer()) {
-        SliderUInt("max triangles per BVH leaf", &console_arguments.maxTrianglesPerBVHLeaf, 1, 32);
+        SliderUInt("max triangles per BVH leaf", &render_settings.maxTrianglesPerBVHLeaf, 1, 32);
         settings_changed |= ImGui::IsItemDeactivatedAfterEdit();
         settings_changed |=
-            imgui_combo("Acceleration Struct Type:", std::array{"Naive", "BVH"}, console_arguments.accelStructType);
+            imgui_combo("Acceleration Struct Type:", std::array{"Naive", "BVH"}, render_settings.accelStructType);
     }
     if (settings_changed) {
-        auto new_render_settings = RenderSettings{console_arguments};
-        viewer.set_render_settings(new_render_settings);
+        viewer.set_render_settings(render_settings);
     }
 }
 
@@ -719,8 +720,9 @@ static void CommonRenderSettingsUI(Viewer& viewer, ConsoleArgs& console_argument
         ImGui::DragInt("environment rotation", &console_arguments.envmapRotation, 1.0f, 0, 360, nullptr, ImGuiSliderFlags_WrapAround);
     HelpTooltip("environment rotation in degrees around UP axis.");
     if (settings_changed) {
-        auto new_render_settings = RenderSettings{console_arguments};
-        viewer.set_render_settings(new_render_settings);
+        auto render_settings = viewer.get_render_settings();
+        render_settings.envmapRotation = glm::radians(static_cast<float>(console_arguments.envmapRotation));
+        viewer.set_render_settings(render_settings);
     }
 }
 
@@ -754,7 +756,7 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
         if (ImGui::Button("Compute light probe")) {
             viewer.render_lighting_probe();
             light_probe_computed = true;
-            render_settings.useReflectionProbe = true;
+            render_settings.useLightProbe = true;
             raster_settings_changed = true;
         }
         if (ImGui::Button("Compute GI") && gi_grid_size > 0) {
@@ -767,8 +769,7 @@ static void RasterRenderSettingsUI(Viewer& viewer) {
         ImGui::Text("Stop rendering process to compute light probe");
     }
     if (light_probe_computed) {
-        raster_settings_changed |= ImGui::Checkbox("Use diffuse probe", &render_settings.useDiffuseProbe);
-        raster_settings_changed |= ImGui::Checkbox("Use reflection probe", &render_settings.useReflectionProbe);
+        raster_settings_changed |= ImGui::Checkbox("Use light probe", &render_settings.useLightProbe);
     }
     if (gi_computed) {
         raster_settings_changed |= ImGui::Checkbox("Use GI", &render_settings.useGI);

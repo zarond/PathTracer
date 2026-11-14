@@ -1,3 +1,5 @@
+#include "Common.hlsl"
+
 static const float PI = 3.14159265359f;
 
 struct SHCSInput {
@@ -7,7 +9,6 @@ struct SHCSInput {
     uint numGroups;
     uint useUVcoords;
     uint isCubemap;
-    uint FlipCubemapAxis;
 };
 
 Texture2D<float4> SrcTexture : register(t0);
@@ -42,21 +43,6 @@ void evalSH9(float3 d, out float sh[9]) {
     sh[8] = 0.5462742153 * (x * x - z * z); // L22
 }
 
-float3 CalculateCubeDirection(float2 uv, uint faceIndex)
-{
-    float3 dir = 0;
-    switch(faceIndex)
-    {
-        case 0: dir = float3( 1.0f,  uv.y, -uv.x); break; // +X
-        case 1: dir = float3(-1.0f,  uv.y,  uv.x); break; // -X
-        case 2: dir = float3( uv.x,  1.0f, -uv.y); break; // +Y
-        case 3: dir = float3( uv.x, -1.0f,  uv.y); break; // -Y
-        case 4: dir = float3( uv.x,  uv.y,  1.0f); break; // +Z
-        case 5: dir = float3(-uv.x,  uv.y, -1.0f); break; // -Z
-    }
-    return normalize(dir);
-}
-
 // Helper function for the analytical solid angle calculation
 float AreaElement(float x, float y) {
     return atan2(x * y, sqrt(x * x + y * y + 1.0));
@@ -84,13 +70,8 @@ void CS_SphericalHarmonicsIrradiance(uint3 DTid : SV_DispatchThreadID, uint3 Gid
     float2 uv = (coord + 0.5f) * g_CB.inv_FrameSize;
     if (g_CB.isCubemap) {
         uv = uv * 2.0f - 1.0f;
-        uv.y = -uv.y;
         cubemap_dir = CalculateCubeDirection(uv, DTid.z);
-        float3 sample_dir = cubemap_dir;
-        if (g_CB.FlipCubemapAxis) {
-            sample_dir.z *= -1.0f; // Flip Z for cubemap sampling
-        }
-        L = SrcTextureCube.SampleLevel(Sampler, sample_dir, 0);
+        L = SrcTextureCube.SampleLevel(Sampler, cubemap_dir, 0);
     } else if (g_CB.useUVcoords) { // for ultra low resolution envmaps
         L = SrcTexture.SampleLevel(Sampler, uv, 0);
     } else {

@@ -28,7 +28,6 @@ struct SHCSInput {
     uint numGroups;
     uint useUVcoords;
     uint isCubemap;
-    uint FlipCubemapAxis;
 };
 
 ComPtr<ID3D12RootSignature> SphericalHarmonics_helper::m_rootSignature{};
@@ -90,7 +89,7 @@ void SphericalHarmonics_helper::resize_tmp_buffer(int new_width, int new_height,
         &heapProps, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&tmp_buffer));
 }
 
-void SphericalHarmonics_helper::Compute(const GPU_texture& envmap, bool is_cubemap, bool flip_cubemap_axis) {
+void SphericalHarmonics_helper::Compute(const GPU_texture& envmap, bool is_cubemap) {
     const auto& resource = envmap.get_gpu_resource();
     const auto description = resource->GetDesc();
     auto width = description.Width;
@@ -128,13 +127,12 @@ void SphericalHarmonics_helper::Compute(const GPU_texture& envmap, bool is_cubem
     bool useUVcoords = low_resolution_mode;
 
     SHCSInput input{
-        {width, height}, 
-        {1.0f / width, 1.0f / height}, 
-        {GroupsX, GroupsY}, 
-        static_cast<uint>(numGroups), 
-        useUVcoords, 
-        is_cubemap, 
-        flip_cubemap_axis};
+        {width, height},
+        {1.0f / width, 1.0f / height},
+        {GroupsX, GroupsY},
+        static_cast<uint>(numGroups),
+        useUVcoords,
+        is_cubemap};
     constexpr int inputSizeInInt = sizeof(SHCSInput) / 4;
     commandList->SetComputeRootUnorderedAccessView(GlobalRootSignatureParams::GroupCounters, GroupCounters->GetGPUVirtualAddress());
     commandList->SetComputeRoot32BitConstants(GlobalRootSignatureParams::RootConstants, inputSizeInInt, &input, 0);

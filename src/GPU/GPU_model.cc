@@ -347,7 +347,7 @@ GPU_Material::GPU_Material(const Material& mat, const std::vector<int>& texture_
     normalTextureIndex = lambda_normal_map(mat.normalTextureIndex);
     ior = mat.ior;
     dielectric_f0 = mat.dielectric_f0;
-    transmisionFactor = mat.transmisionFactor;
+    transmissionFactor = mat.transmissionFactor;
     transmissionTextureIndex = lambda(mat.transmissionTextureIndex);
     emissiveTextureIndex = lambda(mat.emissiveTextureIndex);
     emissiveStrength = mat.emissiveStrength;

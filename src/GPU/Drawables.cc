@@ -25,7 +25,7 @@ void sort_objects_for_rendering(
         float ZDistanceToCamera = dot(camera_forward, v);
         bool backfaceCulling = (mat.doubleSided == 0);
         bool alphaBlending = mat.alphaBlending;
-        bool transmittance = mat.hasVolume || (mat.transmisionFactor != 0.0f);
+        bool transmittance = mat.hasVolume || (mat.transmissionFactor != 0.0f);
 
         glm::fvec3 scale;
         scale.x = glm::length(fvec3(obj.ModelMatrix[0][0], obj.ModelMatrix[1][0], obj.ModelMatrix[2][0]));

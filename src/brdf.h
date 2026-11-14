@@ -65,7 +65,7 @@ inline fvec4 sample_emissive(const Material& material, const std::vector<CPUText
            material.emissiveStrength;
 }
 inline float sample_transmission(const Material& material, const std::vector<CPUTexture<sdr_pixel>>& images, const fvec2 uv) {
-    return sample_r(material.transmisionFactor,
+    return sample_r(material.transmissionFactor,
         material.transmissionTextureIndex >= 0 ? &images[material.transmissionTextureIndex] : nullptr, uv);
 }
 inline fvec4 sample_environment(const fvec3 dir, const CPUTexture<hdr_pixel>& environment_texture, float y_rotation = 0.0f) {

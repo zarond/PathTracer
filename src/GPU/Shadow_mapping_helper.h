@@ -45,7 +45,7 @@ class Shadow_mapping_helper {
 
   private:
     void CreateShadowMap(const GPU_model& gpu_model, const ShadowMappingInfo& shadow,
-        const GPU_texture& shadowMap, int cubemap_side, UINT size, float far_plane);
+        const GPU_texture& shadowMap, int cubemap_side, UINT size, float far_plane, bool mirrored_view = false);
     void CreateCubemapShadowMap(
         const GPU_model& gpu_model, const ShadowMappingInfo& shadow, GPU_texture& shadowMap, UINT size, float far_plane);
     

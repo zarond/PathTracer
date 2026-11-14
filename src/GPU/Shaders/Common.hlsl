@@ -1,5 +1,23 @@
 #pragma once
 
+// Standard hardware cubemap face convention (D3D face order +X,-X,+Y,-Y,+Z,-Z).
+// uv is NDC-like [-1,1] per face with y in texture space (top-down).
+float3 CalculateCubeDirection(float2 uv, uint faceIndex)
+{
+    uv.y = -uv.y;  // texture space is top-down; face mapping below expects y-up coords
+    float3 dir = 0;
+    switch(faceIndex)
+    {
+        case 0: dir = float3( 1.0f,  uv.y, -uv.x); break; // +X
+        case 1: dir = float3(-1.0f,  uv.y,  uv.x); break; // -X
+        case 2: dir = float3( uv.x,  1.0f, -uv.y); break; // +Y
+        case 3: dir = float3( uv.x, -1.0f,  uv.y); break; // -Y
+        case 4: dir = float3( uv.x,  uv.y,  1.0f); break; // +Z
+        case 5: dir = float3(-uv.x,  uv.y, -1.0f); break; // -Z
+    }
+    return normalize(dir);
+}
+
 // Hit information, aka ray payload
 // Note that the payload should be kept as small as possible,
 // and that its size must be declared in the corresponding
@@ -40,6 +58,8 @@ struct RasterConstantBuffer {
     float2 invFrameSize;
     float envmap_rotation_sin;
     float envmap_rotation_cos;
+    float background_rotation_sin;
+    float background_rotation_cos;
 
     int lightsCount;
     unsigned int frameID;
@@ -99,7 +119,7 @@ struct Material {
     int normalTextureIndex;
     float ior;
     float dielectric_f0;
-    float transmisionFactor;
+    float transmissionFactor;
     int transmissionTextureIndex;
     int emissiveTextureIndex;
     float emissiveStrength;
@@ -277,7 +297,7 @@ float3 sample_emissive(const Material material, const float2 uv, const SamplerSt
     return sample;
 }
 float sample_transmission(const Material material, const float2 uv, const SamplerState Sampler) {
-    float sample = material.transmisionFactor;
+    float sample = material.transmissionFactor;
     Texture2D<float4> Tex = ResourceDescriptorHeap[material.transmissionTextureIndex];
     sample *= Tex.SampleLevel(Sampler, uv, 0).r;
     return sample;
@@ -329,13 +349,13 @@ float sample_thickness_filtered(const Material material, const float2 uv, const 
     return sample;
 }
 float2 sample_transmission_thickness_filtered(const Material material, const float2 uv, const SamplerState Sampler) {
-    float2 sample = float2(material.transmisionFactor, material.thicknessFactor);
+    float2 sample = float2(material.transmissionFactor, material.thicknessFactor);
     Texture2D<float4> Tex = ResourceDescriptorHeap[material.transmissionTextureIndex];
     sample *= Tex.Sample(Sampler, uv).rg;
     return sample;
 }
 float sample_transmission_filtered(const Material material, const float2 uv, const SamplerState Sampler) {
-    float sample = material.transmisionFactor;
+    float sample = material.transmissionFactor;
     Texture2D<float4> Tex = ResourceDescriptorHeap[material.transmissionTextureIndex];
     sample *= Tex.Sample(Sampler, uv).r;
     return sample;
