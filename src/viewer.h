@@ -73,6 +73,7 @@ class Viewer {
 
     std::atomic<bool> continuous_rendering = false;
     std::atomic<bool> iterative_rendering = false;
+    std::atomic<float> last_render_frame_time_ms = -1.0f;
     void reset_iteration_counter();
     int get_iteration_counter() const;
 

@@ -427,7 +427,13 @@ static void RenderingProgressUI(Viewer& viewer) {
     const auto rendering_state = viewer.get_rendering_state();
     float progress = viewer.get_render_progress();
 
-    ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+    ImGui::Text("Application UI average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+    {
+        const float render_frame_time = viewer.last_render_frame_time_ms.load();
+        if (render_frame_time > 0.0f) {
+            ImGui::Text("Render frame time %.3f ms. (%.1f FPS)", render_frame_time, 1000.0f / render_frame_time);
+        }
+    }
     ImGui::Text("Render progress %.1f percent.", 100.f * progress);
     ImGui::ProgressBar(progress);
     if (rendering_state == RenderingState::Idle) {
@@ -514,7 +520,7 @@ static void CameraUI(Viewer& viewer) {
             ImGui::SliderFloat("Camera Speed", &camera_speed, 0.01f, 20.0f);
             ImGui::SliderFloat("Camera Rotation Speed", &camera_rotation_speed, 0.01f, 50.0f);
             {
-                static bool fps_free_camera = false;
+                static bool fps_free_camera = true;
                 ImGui::Checkbox("Use First Person free camera", &fps_free_camera);
                 HelpTooltip("Use WASD and QE to move, Right Mouse button to rotate");
                 if (fps_free_camera) {

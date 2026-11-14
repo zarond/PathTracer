@@ -133,7 +133,11 @@ void Viewer::render() {
     }
     bool camera_moved = camera_updated_in_last_frame_.load();
     bool use_iterative_rendering = !camera_moved && iterative_rendering;
+    const auto render_start = std::chrono::high_resolution_clock::now();
     renderer_->render_frame(framebuffer_, continuous_rendering, use_iterative_rendering, iterations_counter_);
+    const auto render_duration =
+        std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - render_start);
+    last_render_frame_time_ms.store(static_cast<float>(render_duration.count()) / 1000.0f);
     if (use_iterative_rendering) {
         ++iterations_counter_;
     } else {
