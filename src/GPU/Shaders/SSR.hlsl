@@ -71,22 +71,11 @@ float3 ReconstructViewPosition(float2 uv, float depth) {
     return float3(x_vs, y_vs, z_vs);
 }
 
-float3 ViewPositionToUV(float3 pos) {
-    //float4 clip = mul(g_CB.Projection, float4(pos, 1.0f));
-    //clip.xyz /= clip.w;
-    //return float3(clip.xy * float2(0.5f, -0.5f) + 0.5f, clip.z);
-
-    // Same as above, but optimized for standard perspective projection matrix
-    const float proj_00 = g_CB.Projection._11;
-    const float proj_11 = g_CB.Projection._22;
+float linear_depth(float non_linear_depth) {
+    // Assuming standard perspective projection matrix, reconstruct linear depth from non-linear depth
     const float proj_22 = g_CB.Projection._33;
     const float proj_23 = g_CB.Projection._34;
-    float inv_z = 1.0f / pos.z;
-    float x_ndc = -pos.x * proj_00 * inv_z;
-    float y_ndc = -pos.y * proj_11 * inv_z;
-    float z_ndc = -proj_22 - proj_23 * inv_z;
-    float3 ndc = float3(x_ndc, y_ndc, z_ndc);
-    return float3(ndc.xy * float2(0.5f, -0.5f) + 0.5f, ndc.z);
+    return -proj_23 / (proj_22 + non_linear_depth);
 }
 
 float UVEdgeFade(float2 uv) {
@@ -102,36 +91,37 @@ float ThresholdFade(float value, float threshold, float mult_range, float lin_ra
 bool IsPotentialHit(float3 sampleUV, float sampleDepth) { return sampleUV.z >= sampleDepth; }
 
 // Algebraic Projection Scaling (Non-Linear Derivative)
-float calculate_depth_threshold(float depth)
+float calculate_depth_threshold(float depth, float depth_threshold_scale, float proj_22)
 {
-    const float proj_22 = g_CB.Projection._33;
-    const float proj_23_rec = g_CB.proj_23_reciprocal;
     // Non-linear rate of change (dz_raw / dz_view)
     float tmp = (proj_22 + depth);
-    float dz_raw = tmp * tmp * (-proj_23_rec);
+    float dz_raw = tmp * tmp; // * (-proj_23_rec) is folded into depth_threshold_scale
     // Scaled non-linear threshold
-    return g_CB.DepthThreshold * dz_raw;
+    return depth_threshold_scale * dz_raw;
 }
-    
-bool CheckPotentialHit(float3 sampleUV, float sampleDepth, float3 rayUVDirNorm, float3 l)
+
+bool CheckPotentialHit(float3 sampleUV, float sampleDepth, float3 rayUVDirNorm, float3 l,
+                       float depth_threshold_scale, float proj_22)
 {
     const float3 hit_normals = Gbuffer.SampleLevel(PointSampler, sampleUV.xy, 0).xyz;
     const float LoN = dot(l, hit_normals);
     if (LoN > 0.0f) {
         return false;
     }
-    float threshold = calculate_depth_threshold(sampleDepth);
+    float threshold = calculate_depth_threshold(sampleDepth, depth_threshold_scale, proj_22);
     if (sampleUV.z - sampleDepth > threshold) {
         return false; 
     }
     return true;
 }
 
-uint2 GetMipDimension(uint mipLevel) { return max(1, g_CB.FrameSize >> mipLevel); }
+uint2 GetMipDimension(uint2 frame_size_uint, uint mipLevel) { return max(1, frame_size_uint >> mipLevel); }
 
 void AdvanceToNextCell(
-    inout float3 sampleUV, float3 rayUVDirNorm, float3 inv_rayUVDirNorm, float sampleDepth, float2 texel, inout int mip) {
-    uint2 mip_size = GetMipDimension(mip);
+    inout float3 sampleUV, float3 rayUVDirNorm, float3 inv_rayUVDirNorm, float sampleDepth,
+    uint2 frame_size_uint, int max_mip, inout int mip) 
+{
+    uint2 mip_size = GetMipDimension(frame_size_uint, mip);
     float2 cell_size = 1.0f / mip_size;
     float2 cell_index = floor(sampleUV.xy * mip_size);
 
@@ -157,7 +147,7 @@ void AdvanceToNextCell(
         sampleUV.z = sampleDepth;
     } else {
         // We safely hit the X/Y cell wall. Push 0.1 pixels past it to enter the next cell.
-        mip = min(mip + 1, g_CB.MaxDepthMipLevel);
+        mip = min(mip + 1, max_mip);
         sampleUV += (max(t_exit_XY, 0) + 0.1) * rayUVDirNorm;
     }
 }
@@ -170,6 +160,12 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
 
     const float2 texel = g_CB.texel_size;
     const float2 uv = (DTid.xy + 0.5f) * texel;
+    const float2 center_ndc = uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
+    const float neg_half_proj_00 = -0.5f * g_CB.Projection._11;
+    const float half_proj_11 = 0.5f * g_CB.Projection._22;
+    const float2 frame_size = g_CB.FrameSize;
+    const uint2 frame_size_uint = g_CB.FrameSize;
+    const int max_mip = g_CB.MaxDepthMipLevel;
 
     const float centerDepth = Depth.Load(DTid);
     if (centerDepth >= 1.0f || centerDepth <= 0.0f) {
@@ -207,15 +203,22 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
 
     const float3 l = reflect(-v, h);
 
-    const float3 rayUVDir = ViewPositionToUV(pos + l * 0.01f) - float3(uv, centerDepth);
-    const float3 rayScreenDir = rayUVDir * float3(g_CB.FrameSize, 1.0f);
+    const float proj_22 = g_CB.Projection._33;
+    const float depth_threshold_scale = g_CB.DepthThreshold * (-g_CB.proj_23_reciprocal);
+    const float2 center_ray_xy = center_ndc * float2(-g_CB.inv_proj_00, -g_CB.inv_proj_11);
 
+    // Screen-space march direction (xy in pixels, z in NDC)
+    const float2 march_delta = -float2(l.x - center_ray_xy.x * l.z,
+                                       l.y - center_ray_xy.y * l.z);
+    const float2 rayPixelDirXY = march_delta * frame_size * float2(neg_half_proj_00, half_proj_11);
+    const float rayPixelDirZ = (proj_22 + centerDepth) * l.z;
+    const float3 rayScreenDir = float3(rayPixelDirXY, rayPixelDirZ);
     const float rayScreenDirLength = length(rayScreenDir.xy);
     const float3 rayScreenDirNorm = rayScreenDir / rayScreenDirLength;
 
     const float3 rayUVDirNorm = rayScreenDirNorm * float3(texel, 1.0f);
     const float3 inv_rayUVDirNorm = 1.0f / rayUVDirNorm;
-        
+
     float one_pixel_step_size = min(texel.x * abs(inv_rayUVDirNorm.x), texel.y * abs(inv_rayUVDirNorm.y));
 
     float3 sampleUV = float3(uv + one_pixel_step_size * rayUVDirNorm.xy, centerDepth);
@@ -226,7 +229,7 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
         sampleDepth = Depth.SampleLevel(PointSampler, sampleUV.xy, mip);
         if (IsPotentialHit(sampleUV, sampleDepth)) {
             if (mip == 0) {
-                found_hit = CheckPotentialHit(sampleUV, sampleDepth, rayUVDirNorm, l);
+                found_hit = CheckPotentialHit(sampleUV, sampleDepth, rayUVDirNorm, l, depth_threshold_scale, proj_22);
                 if (found_hit) {
                     break;
                 }
@@ -236,14 +239,16 @@ void CS_SSR_trace(uint3 DTid : SV_DispatchThreadID) {
                 mip -= 1;
             }
         } else {
-            AdvanceToNextCell(sampleUV, rayUVDirNorm, inv_rayUVDirNorm, sampleDepth, texel, mip);
+            AdvanceToNextCell(sampleUV, rayUVDirNorm, inv_rayUVDirNorm, sampleDepth, frame_size_uint, max_mip, mip);
         }
     }
     if (!found_hit) {
         sampleUV = l; // save ray direction in VS in case of miss
         inv_pdf = -inv_pdf; // negative inv_pdf indicates miss
+    } else {
+        sampleUV.z = linear_depth(sampleUV.z); // store view-space z: the resolve reconstructs without a divide
     }
-    Output[DTid.xy] = float4(sampleUV, inv_pdf); // save UV + NDC Z coords in case of hit
+    Output[DTid.xy] = float4(sampleUV, inv_pdf); // hit: UV + view-space Z; miss: ray direction
 }
     
 struct ssr_hit_info {
@@ -263,11 +268,11 @@ ssr_hit_info decode_SSR_hit_info(float4 SSR_sample)
     float3 hit_pos;
     if (hit_valid) {
         float2 current_uv = SSR_sample.xy;
-        float depth = SSR_sample.z;
+        float linear_z = SSR_sample.z;
         float2 ndc_xy = current_uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
         float2 prev_ndc = ndc_xy - Velocity.SampleLevel(PointSampler, current_uv, 0).rg;
         prev_uv = prev_ndc * float2(0.5f, -0.5f) + 0.5f;
-        hit_pos = ReconstructViewPosition(current_uv, depth);    
+        hit_pos = linear_z * float3(-ndc_xy.x * g_CB.inv_proj_00, -ndc_xy.y * g_CB.inv_proj_11, 1.0f);
     } else {
         hit_pos = SSR_sample.xyz; // Use the ray direction in view space for misses
     }
@@ -289,7 +294,7 @@ float3 prefilteredSample(float ray_distance, float linearRoughness, float depth,
     // Sample Frame texture with roughness LOD blur
     return Frame.SampleLevel(LinearSampler, uv, lod).rgb;
 }
-    
+
 float ndc_depth(float linear_depth) {
     const float proj_22 = g_CB.Projection._33;
     const float proj_23 = g_CB.Projection._34;
@@ -298,13 +303,6 @@ float ndc_depth(float linear_depth) {
     return z_ndc;
 }
 
-float linear_depth(float non_linear_depth) {
-    // Assuming standard perspective projection matrix, reconstruct linear depth from non-linear depth
-    const float proj_22 = g_CB.Projection._33;
-    const float proj_23 = g_CB.Projection._34;
-    return -proj_23 / (proj_22 + non_linear_depth);
-}
-    
 groupshared ssr_hit_info LDS_SSR[20][20]; // 20 = 2 + 16 + 2
     
 void PopulateSharedMemory(uint3 DTid, uint3 Gid, uint3 Tid, uint Gidx)
