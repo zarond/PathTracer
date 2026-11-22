@@ -108,7 +108,10 @@ void CS_GTAO(uint3 DTid : SV_DispatchThreadID)
     // same as ReconstructViewPosition, but code is outside for variable reuse
     const float2 center_ndc = uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f);
     const float3 center_ray = float3(-center_ndc.x * g_CB.inv_proj_00, -center_ndc.y * g_CB.inv_proj_11, 1.0f);
-    const float2 ray_xy_per_uv = float2(-2.0f * g_CB.inv_proj_00, 2.0f * g_CB.inv_proj_11);
+
+    const float neg_half_proj_00 = -0.5f * g_CB.Projection._11;
+    const float half_proj_11 = 0.5f * g_CB.Projection._22;
+    const float2 frame_size = g_CB.FrameSize;
     
     const float centerDepth = Depth.Load(DTid);
     if (centerDepth >= 1.0f || centerDepth <= 0.0f) {
@@ -124,6 +127,7 @@ void CS_GTAO(uint3 DTid : SV_DispatchThreadID)
     const float z_center = neg_proj_23 / (proj_22 + centerDepth);
     const float3 viewPos = z_center * center_ray;
     const float3 viewDir = normalize(center_ray);
+    const float inv_z_center = -1.0f / z_center;
 
     float3 ls_X = float3(1, 0, 0);
     ls_X = normalize(ls_X - viewDir * dot(viewDir, ls_X));  // orthogonalize
@@ -141,16 +145,22 @@ void CS_GTAO(uint3 DTid : SV_DispatchThreadID)
         const float3 rayViewDir = cos_rot * ls_X + sin_rot * ls_Y;
         
         const float2 projected_normal = float2(dot(normal, rayViewDir), dot(normal, viewDir));
-        const float projected_normal_length = length(projected_normal);
-        const float projected_normal_inv_length = (projected_normal_length < kEpsilon) ? 1.0f : 1.0f / projected_normal_length;
+        const float pn_len_sq = dot(projected_normal, projected_normal);
+        const float projected_normal_length = sqrt(pn_len_sq);
+        const float projected_normal_inv_length = (projected_normal_length < kEpsilon) ? 1.0f : rsqrt(pn_len_sq);
         const float2 projected_normal_normalized = clamp(projected_normal * projected_normal_inv_length, -1.0f, 1.0f);
         const float normal_angle = (-sign(projected_normal_normalized.x)) * acos(projected_normal_normalized.y);
         
-        const float2 rayUVDir = ViewPositionToUV(viewPos + rayViewDir * 0.01f).xy - uv;
-        const float2 rayScreenDir = AO_distance * 100.0f * rayUVDir * g_CB.FrameSize;
-
-        const float rayScreenDirLength = length(rayScreenDir);
-        const float2 rayScreenDirNorm = texel * rayScreenDir / rayScreenDirLength; // also apply texel scale here to avoid extra multiplication in the loop
+        // Screen-space march direction calculation. The screen motion per unit step along rayViewDir is the
+        // projection derivative at viewPos for ViewPositionToUV function
+        const float2 march_delta = -float2(rayViewDir.x - center_ray.x * rayViewDir.z,
+                                           rayViewDir.y - center_ray.y * rayViewDir.z);
+        const float2 rayPixelDir = march_delta * frame_size * float2(neg_half_proj_00, half_proj_11);
+        const float rayPixelDirLength = length(rayPixelDir);
+        const float rayScreenDirLengthLimit = AO_distance * rayPixelDirLength * inv_z_center;
+        const float inv_len = 1.0f / rayPixelDirLength;
+        const float2 inv_len_texel = texel / rayPixelDirLength;
+        const float2 rayScreenDirNorm = rayPixelDir * inv_len_texel;  // also apply texel scale here to avoid extra multiplication in the loop
 
         // Orthonormal slice frame {rayViewDir, viewDir, slice_normal}. 
         // A sample at offset t lies on its own pixel ray: samplePos == z_s * (center_ray + t * dR), with
@@ -165,7 +175,7 @@ void CS_GTAO(uint3 DTid : SV_DispatchThreadID)
         const float3 L0 = float3(dot(center_ray, rayViewDir), dot(center_ray, viewDir), dot(center_ray, slice_normal));
         // viewPos coords in slice frame
         const float3 offset0 = viewPos.z * L0;  // since viewPos == viewPos.z * center_ray
-        const float2 dR = rayScreenDirNorm * ray_xy_per_uv;
+        const float2 dR = march_delta * inv_len;   // pixel-ray change per unit march offset
         const float3 L1 = float3(dot(dR, rayViewDir.xy), dot(dR, viewDir.xy), dot(dR, slice_normal.xy));
 
         float min_angle;
@@ -184,8 +194,8 @@ void CS_GTAO(uint3 DTid : SV_DispatchThreadID)
                 }
                 t_offset += step_size;
                 const float t_offset_with_noise = t_offset + spatial_offsets_noise * step_size;
-                if (t_offset_with_noise > rayScreenDirLength) break;
-                const float2 sampleUV = uv + sign * rayScreenDirNorm * t_offset_with_noise;
+                if (t_offset_with_noise > rayScreenDirLengthLimit) break;
+                const float2 sampleUV = uv + (sign * t_offset_with_noise) * rayScreenDirNorm;
                 if (any(sampleUV < 0.0f | sampleUV > 1.0f)) break;
                 const float sampleDepth = Depth.SampleLevel(Sampler, sampleUV, DepthLod);
                 
