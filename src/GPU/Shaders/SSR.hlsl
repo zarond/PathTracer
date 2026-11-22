@@ -103,14 +103,14 @@ float calculate_depth_threshold(float depth, float depth_threshold_scale, float 
 bool CheckPotentialHit(float3 sampleUV, float sampleDepth, float3 rayUVDirNorm, float3 l,
                        float depth_threshold_scale, float proj_22)
 {
+    float threshold = calculate_depth_threshold(sampleDepth, depth_threshold_scale, proj_22);
+    if (sampleUV.z - sampleDepth > threshold) {
+        return false; 
+    }
     const float3 hit_normals = Gbuffer.SampleLevel(PointSampler, sampleUV.xy, 0).xyz;
     const float LoN = dot(l, hit_normals);
     if (LoN > 0.0f) {
         return false;
-    }
-    float threshold = calculate_depth_threshold(sampleDepth, depth_threshold_scale, proj_22);
-    if (sampleUV.z - sampleDepth > threshold) {
-        return false; 
     }
     return true;
 }
