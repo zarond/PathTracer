@@ -136,27 +136,30 @@ void CS_Reprojection(uint3 DTid : SV_DispatchThreadID) {
         return;
     }
 
-    float4 m1 = 0.0;
-	//float4 m2 = 0.0;
-    [unroll]
-	for (int x = -1; x <= 1; x++)
-	{
+    float4 mean = 0.0;
+    if (g_CB.use_reflection_distance) {
+        float4 m1 = 0.0;
+        //float4 m2 = 0.0;
         [unroll]
-		for (int y = -1; y <= 1; y++)
-		{
-			int2 offset = int2(x, y);
-			int2 coord = DTid.xy + offset;
+        for (int x = -1; x <= 1; x++)
+        {
+            [unroll]
+            for (int y = -1; y <= 1; y++)
+            {
+                int2 offset = int2(x, y);
+                int2 coord = DTid.xy + offset;
 
-			float4 sampleColor = NewTexture.Load(int3(coord, 0));
+                float4 sampleColor = NewTexture.Load(int3(coord, 0));
 
-			m1 += sampleColor;
-			//m2 += sampleColor * sampleColor;
-		}
-	}
+                m1 += sampleColor;
+                //m2 += sampleColor * sampleColor;
+            }
+        }
 
-	float4 mean = m1 / 9.0;
-	//float4 variance = (m2 / 9.0) - (mean * mean);
-    //float4 stddev = sqrt(max(variance, 0.0f));
+        mean = m1 / 9.0;
+        //float4 variance = (m2 / 9.0) - (mean * mean);
+        //float4 stddev = sqrt(max(variance, 0.0f));
+    }
 
     float4 ndc = float4(uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), centerDepth, 1.0f);
 	float3 prevNDC = ndc.xyz - VelocityNDC;
@@ -169,10 +172,10 @@ void CS_Reprojection(uint3 DTid : SV_DispatchThreadID) {
     float2 prevUV_reflection = NDC2UV(prevNDC_reflection.xy);
     
     float4 prevColor = OldTexture.SampleLevel(LinearSampler, prevUV, 0);
-    float4 prevColor_reflection = OldTexture.SampleLevel(LinearSampler, prevUV_reflection, 0);
     
     bool use_reflection_hit = false;
     if (g_CB.use_reflection_distance) {
+        float4 prevColor_reflection = OldTexture.SampleLevel(LinearSampler, prevUV_reflection, 0);
         float colDistance = MagnitudeSquare(prevColor.rgb - mean.rgb);
 	    float colDistanceReflection = MagnitudeSquare(prevColor_reflection.rgb - mean.rgb);
         use_reflection_hit = (colDistanceReflection < colDistance);
